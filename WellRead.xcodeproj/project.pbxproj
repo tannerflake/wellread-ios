@@ -1,0 +1,430 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		B0010001 /* WellReadApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010001 /* WellReadApp.swift */; };
+		B0010002 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010002 /* RootView.swift */; };
+		B0010003 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010003 /* AppState.swift */; };
+		B0010004 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010004 /* Theme.swift */; };
+		B0010005 /* User.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010005 /* User.swift */; };
+		B0010006 /* Book.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010006 /* Book.swift */; };
+		B0010007 /* Comment.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010007 /* Comment.swift */; };
+		B0010008 /* Post.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010008 /* Post.swift */; };
+		B0010009 /* UserBook.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010009 /* UserBook.swift */; };
+		B001000A /* GoogleBooksService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001000A /* GoogleBooksService.swift */; };
+		B001000B /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001000B /* MainTabView.swift */; };
+		B001000C /* OnboardingFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001000C /* OnboardingFlowView.swift */; };
+		B001000D /* AddBookFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001000D /* AddBookFlowView.swift */; };
+		B001000E /* BookSearchRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001000E /* BookSearchRow.swift */; };
+		B001000F /* BookCoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001000F /* BookCoverView.swift */; };
+		B0010010 /* FeedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010010 /* FeedView.swift */; };
+		B0010011 /* DiscoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010011 /* DiscoverView.swift */; };
+		B0010012 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010012 /* LibraryView.swift */; };
+		B0010013 /* GridLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010013 /* GridLibraryView.swift */; };
+		B0010014 /* RatingLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010014 /* RatingLibraryView.swift */; };
+		B0010015 /* TierListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010015 /* TierListView.swift */; };
+		B0010016 /* TimelineLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010016 /* TimelineLibraryView.swift */; };
+		B0010017 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010017 /* ProfileView.swift */; };
+		B0010018 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F0010019 /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		E0010000 /* WellRead.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WellRead.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F0010001 /* WellReadApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WellReadApp.swift; sourceTree = "<group>"; };
+		F0010002 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		F0010003 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		F0010004 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		F0010005 /* User.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = User.swift; sourceTree = "<group>"; };
+		F0010006 /* Book.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Book.swift; sourceTree = "<group>"; };
+		F0010007 /* Comment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Comment.swift; sourceTree = "<group>"; };
+		F0010008 /* Post.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Post.swift; sourceTree = "<group>"; };
+		F0010009 /* UserBook.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserBook.swift; sourceTree = "<group>"; };
+		F001000A /* GoogleBooksService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleBooksService.swift; sourceTree = "<group>"; };
+		F001000B /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
+		F001000C /* OnboardingFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowView.swift; sourceTree = "<group>"; };
+		F001000D /* AddBookFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddBookFlowView.swift; sourceTree = "<group>"; };
+		F001000E /* BookSearchRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookSearchRow.swift; sourceTree = "<group>"; };
+		F001000F /* BookCoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCoverView.swift; sourceTree = "<group>"; };
+		F0010010 /* FeedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedView.swift; sourceTree = "<group>"; };
+		F0010011 /* DiscoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoverView.swift; sourceTree = "<group>"; };
+		F0010012 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
+		F0010013 /* GridLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GridLibraryView.swift; sourceTree = "<group>"; };
+		F0010014 /* RatingLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RatingLibraryView.swift; sourceTree = "<group>"; };
+		F0010015 /* TierListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TierListView.swift; sourceTree = "<group>"; };
+		F0010016 /* TimelineLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineLibraryView.swift; sourceTree = "<group>"; };
+		F0010017 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
+		F0010018 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		F0010019 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		C0010001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		G0010000 = {
+			isa = PBXGroup;
+			children = (
+				G0010001 /* WellRead */,
+				G0010002 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		G0010001 /* WellRead */ = {
+			isa = PBXGroup;
+			children = (
+				F0010001 /* WellReadApp.swift */,
+				F0010002 /* RootView.swift */,
+				F0010018 /* Info.plist */,
+				F0010019 /* Assets.xcassets */,
+				G0010003 /* AppState */,
+				G0010004 /* Models */,
+				G0010005 /* Theme */,
+				G0010006 /* Services */,
+				G0010007 /* Views */,
+			);
+			path = WellRead;
+			sourceTree = "<group>";
+		};
+		G0010002 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				E0010000 /* WellRead.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		G0010003 /* AppState */ = {
+			isa = PBXGroup;
+			children = (
+				F0010003 /* AppState.swift */,
+			);
+			path = AppState;
+			sourceTree = "<group>";
+		};
+		G0010004 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				F0010005 /* User.swift */,
+				F0010006 /* Book.swift */,
+				F0010009 /* UserBook.swift */,
+				F0010008 /* Post.swift */,
+				F0010007 /* Comment.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		G0010005 /* Theme */ = {
+			isa = PBXGroup;
+			children = (
+				F0010004 /* Theme.swift */,
+			);
+			path = Theme;
+			sourceTree = "<group>";
+		};
+		G0010006 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				F001000A /* GoogleBooksService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		G0010007 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				F001000B /* MainTabView.swift */,
+				G0010008 /* Onboarding */,
+				G0010009 /* AddBook */,
+				G001000A /* Components */,
+				G001000B /* Feed */,
+				G001000C /* Discover */,
+				G001000D /* Library */,
+				G001000E /* Profile */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		G0010008 /* Onboarding */ = {
+			isa = PBXGroup;
+			children = (
+				F001000C /* OnboardingFlowView.swift */,
+			);
+			path = Onboarding;
+			sourceTree = "<group>";
+		};
+		G0010009 /* AddBook */ = {
+			isa = PBXGroup;
+			children = (
+				F001000D /* AddBookFlowView.swift */,
+				F001000E /* BookSearchRow.swift */,
+			);
+			path = AddBook;
+			sourceTree = "<group>";
+		};
+		G001000A /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				F001000F /* BookCoverView.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
+		G001000B /* Feed */ = {
+			isa = PBXGroup;
+			children = (
+				F0010010 /* FeedView.swift */,
+			);
+			path = Feed;
+			sourceTree = "<group>";
+		};
+		G001000C /* Discover */ = {
+			isa = PBXGroup;
+			children = (
+				F0010011 /* DiscoverView.swift */,
+			);
+			path = Discover;
+			sourceTree = "<group>";
+		};
+		G001000D /* Library */ = {
+			isa = PBXGroup;
+			children = (
+				F0010012 /* LibraryView.swift */,
+				F0010013 /* GridLibraryView.swift */,
+				F0010016 /* TimelineLibraryView.swift */,
+				F0010014 /* RatingLibraryView.swift */,
+				F0010015 /* TierListView.swift */,
+			);
+			path = Library;
+			sourceTree = "<group>";
+		};
+		G001000E /* Profile */ = {
+			isa = PBXGroup;
+			children = (
+				F0010017 /* ProfileView.swift */,
+			);
+			path = Profile;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		T0010001 /* WellRead */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C0020001 /* Build configuration list for PBXNativeTarget "WellRead" */;
+			buildPhases = (
+				C0010002 /* Sources */,
+				C0010001 /* Frameworks */,
+				C0010003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = WellRead;
+			productName = WellRead;
+			productReference = E0010000 /* WellRead.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		P0010001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+			};
+			buildConfigurationList = C0020002 /* Build configuration list for PBXProject "WellRead" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = G0010000;
+			productRefGroup = G0010002 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				T0010001 /* WellRead */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		C0010003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B0010018 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		C0010002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B0010001 /* WellReadApp.swift in Sources */,
+				B0010002 /* RootView.swift in Sources */,
+				B0010003 /* AppState.swift in Sources */,
+				B0010004 /* Theme.swift in Sources */,
+				B0010005 /* User.swift in Sources */,
+				B0010006 /* Book.swift in Sources */,
+				B0010007 /* Comment.swift in Sources */,
+				B0010008 /* Post.swift in Sources */,
+				B0010009 /* UserBook.swift in Sources */,
+				B001000A /* GoogleBooksService.swift in Sources */,
+				B001000B /* MainTabView.swift in Sources */,
+				B001000C /* OnboardingFlowView.swift in Sources */,
+				B001000D /* AddBookFlowView.swift in Sources */,
+				B001000E /* BookSearchRow.swift in Sources */,
+				B001000F /* BookCoverView.swift in Sources */,
+				B0010010 /* FeedView.swift in Sources */,
+				B0010011 /* DiscoverView.swift in Sources */,
+				B0010012 /* LibraryView.swift in Sources */,
+				B0010013 /* GridLibraryView.swift in Sources */,
+				B0010014 /* RatingLibraryView.swift in Sources */,
+				B0010015 /* TierListView.swift in Sources */,
+				B0010016 /* TimelineLibraryView.swift in Sources */,
+				B0010017 /* ProfileView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		X0010001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		X0010002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_OPTIMIZATION_LEVEL = s;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		X0010003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				SDKROOT = iphoneos;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = WellRead/Info.plist;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.wellread.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		X0010004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				SDKROOT = iphoneos;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = WellRead/Info.plist;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.wellread.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		C0020001 /* Build configuration list for PBXNativeTarget "WellRead" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				X0010003 /* Debug */,
+				X0010004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C0020002 /* Build configuration list for PBXProject "WellRead" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				X0010001 /* Debug */,
+				X0010002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = P0010001 /* Project object */;
+}
