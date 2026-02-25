@@ -87,8 +87,10 @@ final class AuthService: ObservableObject {
 
     func signInWithGoogle(presentingViewController: UIViewController) async {
         authError = nil
-        guard let clientID = FirebaseApp.app()?.options.clientID else {
-            authError = "Firebase client ID not found."
+        let clientID = FirebaseApp.app()?.options.clientID
+            ?? Self.clientIDFromGoogleServicePlist()
+        guard let clientID else {
+            authError = "Google Sign-In needs CLIENT_ID. In Firebase Console, re-download GoogleService-Info.plist for your iOS app (with Google Sign-In enabled)."
             return
         }
         let config = GIDConfiguration(clientID: clientID)
@@ -136,5 +138,18 @@ final class AuthService: ObservableObject {
         let data = Data(input.utf8)
         let hash = SHA256.hash(data: data)
         return hash.compactMap { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Reads CLIENT_ID from Firebase config plist in the app bundle (for Google Sign-In).
+    /// Checks GoogleService-Info.plist first, then WellRead Firebase Service Info.plist.
+    private static func clientIDFromGoogleServicePlist() -> String? {
+        let names = ["GoogleService-Info", "WellRead Firebase Service Info"]
+        for name in names {
+            guard let url = Bundle.main.url(forResource: name, withExtension: "plist"),
+                  let plist = NSDictionary(contentsOf: url) as? [String: Any],
+                  let clientID = plist["CLIENT_ID"] as? String else { continue }
+            return clientID
+        }
+        return nil
     }
 }
