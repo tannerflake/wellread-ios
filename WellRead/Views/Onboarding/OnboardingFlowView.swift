@@ -2,24 +2,26 @@
 //  OnboardingFlowView.swift
 //  WellRead
 //
-//  Sign up / login, choose username, set goal, add 3 books (simplified for MVP).
+//  Sign in with Apple / Google; optional profile steps later.
 //
 
 import SwiftUI
+import AuthenticationServices
 
 struct OnboardingFlowView: View {
+    @EnvironmentObject var authService: AuthService
     @EnvironmentObject var appState: AppState
     @State private var step: Step = .welcome
     @State private var username = ""
     @State private var readingGoal = "24"
-    
+
     enum Step {
         case welcome
         case username
         case goal
         case done
     }
-    
+
     var body: some View {
         ZStack {
             Theme.background.ignoresSafeArea()
@@ -37,7 +39,7 @@ struct OnboardingFlowView: View {
             .padding(Theme.horizontalPadding)
         }
     }
-    
+
     private var welcomeStep: some View {
         VStack(spacing: 24) {
             Image(systemName: "book.closed.fill")
@@ -51,24 +53,47 @@ struct OnboardingFlowView: View {
                 .foregroundStyle(Theme.textSecondary)
                 .multilineTextAlignment(.center)
             Spacer().frame(height: 24)
-            Button("Get started") {
-                step = .username
+
+            if let error = authService.authError {
+                Text(error)
+                    .font(Theme.caption())
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
             }
-            .font(Theme.headline())
-            .foregroundStyle(Theme.background)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .background(Theme.accent)
+
+            SignInWithAppleButton(.signIn) { request in
+                authService.makeAppleRequest(request)
+            } onCompletion: { result in
+                Task {
+                    await authService.handleAppleCompletion(result)
+                }
+            }
+            .signInWithAppleButtonStyle(.white)
+            .frame(height: 50)
             .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
-            Button("I already have an account") {
-                appState.loadDemoState()
+
+            Button {
+                guard let vc = RootViewController.topMost() else { return }
+                Task {
+                    await authService.signInWithGoogle(presentingViewController: vc)
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "globe")
+                    Text("Continue with Google")
+                }
+                .font(Theme.headline())
+                .foregroundStyle(Theme.textPrimary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(Theme.surface)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
             }
-            .font(Theme.callout())
-            .foregroundStyle(Theme.accent)
         }
         .padding(.top, 80)
     }
-    
+
     private var usernameStep: some View {
         VStack(spacing: 24) {
             Text("Choose a username")
@@ -93,7 +118,7 @@ struct OnboardingFlowView: View {
         }
         .padding(.top, 80)
     }
-    
+
     private var goalStep: some View {
         VStack(spacing: 24) {
             Text("Books to read this year?")
@@ -119,7 +144,7 @@ struct OnboardingFlowView: View {
         }
         .padding(.top, 80)
     }
-    
+
     private var doneStep: some View {
         VStack(spacing: 24) {
             ProgressView()

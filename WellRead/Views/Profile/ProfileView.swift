@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct ProfileView: View {
+    @EnvironmentObject var authService: AuthService
     @EnvironmentObject var appState: AppState
     
     var body: some View {
@@ -36,7 +37,7 @@ struct ProfileView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Button("Sign out", role: .destructive) {
-                            appState.signOut()
+                            authService.signOut()
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
