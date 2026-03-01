@@ -1,6 +1,7 @@
 # Secrets — do not commit keys
 WellRead/Secrets.plist
 Secrets.plist
+scripts/import-books/service-account.json
 
 # Xcode
 xcuserdata/

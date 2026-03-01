@@ -14,6 +14,7 @@ struct OnboardingFlowView: View {
     @State private var step: Step = .welcome
     @State private var username = ""
     @State private var readingGoal = "24"
+    @State private var showReviewerLogin = false
 
     enum Step {
         case welcome
@@ -38,6 +39,10 @@ struct OnboardingFlowView: View {
             }
             .padding(Theme.horizontalPadding)
         }
+        .sheet(isPresented: $showReviewerLogin) {
+            ReviewerLoginView()
+                .environmentObject(authService)
+        }
     }
 
     private var welcomeStep: some View {
@@ -45,6 +50,9 @@ struct OnboardingFlowView: View {
             Image(systemName: "book.closed.fill")
                 .font(.system(size: 64))
                 .foregroundStyle(Theme.accent)
+                .onLongPressGesture(minimumDuration: 2.0) {
+                    showReviewerLogin = true
+                }
             Text("WellRead")
                 .font(Theme.largeTitle())
                 .foregroundStyle(Theme.textPrimary)

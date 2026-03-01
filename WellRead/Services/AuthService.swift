@@ -149,6 +149,14 @@ final class AuthService: ObservableObject {
         }
     }
 
+    // MARK: - Reviewer (Email/Password) Sign-In
+    /// Hidden path for App Review. Uses Firebase Email/Password; same auth state listener runs so Firestore user is created and app routes as with Apple/Google.
+
+    func signInWithEmail(_ email: String, password: String) async throws {
+        authError = nil
+        _ = try await Auth.auth().signIn(withEmail: email.trimmingCharacters(in: .whitespacesAndNewlines), password: password)
+    }
+
     // MARK: - Sign Out
 
     func signOut() {

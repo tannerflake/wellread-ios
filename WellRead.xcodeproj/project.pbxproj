@@ -25,6 +25,7 @@
 		B001000A /* GoogleBooksService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001000A /* GoogleBooksService.swift */; };
 		B001000B /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001000B /* MainTabView.swift */; };
 		B001000C /* OnboardingFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001000C /* OnboardingFlowView.swift */; };
+		B0010029 /* ReviewerLoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010029 /* ReviewerLoginView.swift */; };
 		B001000D /* AddBookFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001000D /* AddBookFlowView.swift */; };
 		B001000E /* BookSearchRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001000E /* BookSearchRow.swift */; };
 		B001000F /* BookCoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001000F /* BookCoverView.swift */; };
@@ -68,6 +69,7 @@
 		F001000A /* GoogleBooksService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleBooksService.swift; sourceTree = "<group>"; };
 		F001000B /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
 		F001000C /* OnboardingFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowView.swift; sourceTree = "<group>"; };
+		F0010029 /* ReviewerLoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewerLoginView.swift; sourceTree = "<group>"; };
 		F001000D /* AddBookFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddBookFlowView.swift; sourceTree = "<group>"; };
 		F001000E /* BookSearchRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookSearchRow.swift; sourceTree = "<group>"; };
 		F001000F /* BookCoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCoverView.swift; sourceTree = "<group>"; };
@@ -215,6 +217,7 @@
 			isa = PBXGroup;
 			children = (
 				F001000C /* OnboardingFlowView.swift */,
+				F0010029 /* ReviewerLoginView.swift */,
 			);
 			path = Onboarding;
 			sourceTree = "<group>";
@@ -370,6 +373,7 @@
 				B001000A /* GoogleBooksService.swift in Sources */,
 				B001000B /* MainTabView.swift in Sources */,
 				B001000C /* OnboardingFlowView.swift in Sources */,
+				B0010029 /* ReviewerLoginView.swift in Sources */,
 				B001000D /* AddBookFlowView.swift in Sources */,
 				B001000E /* BookSearchRow.swift in Sources */,
 				B001000F /* BookCoverView.swift in Sources */,
@@ -463,7 +467,7 @@
 				SDKROOT = iphoneos;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -489,7 +493,7 @@
 				SDKROOT = iphoneos;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
