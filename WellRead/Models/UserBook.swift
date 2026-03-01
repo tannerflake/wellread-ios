@@ -15,7 +15,7 @@ enum ReadingStatus: String, Codable, CaseIterable {
 
 struct UserBook: Identifiable, Codable, Equatable {
     var id: UUID
-    var userId: UUID
+    var userId: String  // Firebase Auth uid (for Firestore query)
     var bookId: String
     var book: Book?
     var status: ReadingStatus
@@ -33,11 +33,11 @@ struct UserBook: Identifiable, Codable, Equatable {
         let b2 = Book(id: "2", title: "Deep Work", author: "Cal Newport", coverURL: "https://books.google.com/books/content?id=6h76CwAAQBAJ&printsec=frontcover&img=1", pageCount: 296, publishedDate: nil, description: nil, genres: ["Productivity"])
         let b3 = Book(id: "3", title: "The Midnight Library", author: "Matt Haig", coverURL: "https://books.google.com/books/content?id=zLk9DwAAQBAJ&printsec=frontcover&img=1", pageCount: 304, publishedDate: nil, description: nil, genres: ["Fiction"])
         let now = Date()
-        let userId = User.demo.id
+        let demoUserId = "demo-user-id"
         return [
-            UserBook(id: UUID(), userId: userId, bookId: b1.id, book: b1, status: .read, rating: 9, reviewText: "Life-changing.", dateStarted: now.addingTimeInterval(-86400*30), dateFinished: now.addingTimeInterval(-86400*7), createdAt: now, updatedAt: now, recommendedTo: [], tier: "S"),
-            UserBook(id: UUID(), userId: userId, bookId: b2.id, book: b2, status: .read, rating: 8, reviewText: "Essential for focus.", dateStarted: now.addingTimeInterval(-86400*60), dateFinished: now.addingTimeInterval(-86400*35), createdAt: now, updatedAt: now, recommendedTo: [], tier: "A"),
-            UserBook(id: UUID(), userId: userId, bookId: b3.id, book: b3, status: .currentlyReading, rating: nil, reviewText: nil, dateStarted: now.addingTimeInterval(-86400*3), dateFinished: nil, createdAt: now, updatedAt: now, recommendedTo: [], tier: nil)
+            UserBook(id: UUID(), userId: demoUserId, bookId: b1.id, book: b1, status: .read, rating: 9, reviewText: "Life-changing.", dateStarted: now.addingTimeInterval(-86400*30), dateFinished: now.addingTimeInterval(-86400*7), createdAt: now, updatedAt: now, recommendedTo: [], tier: "S"),
+            UserBook(id: UUID(), userId: demoUserId, bookId: b2.id, book: b2, status: .read, rating: 8, reviewText: "Essential for focus.", dateStarted: now.addingTimeInterval(-86400*60), dateFinished: now.addingTimeInterval(-86400*35), createdAt: now, updatedAt: now, recommendedTo: [], tier: "A"),
+            UserBook(id: UUID(), userId: demoUserId, bookId: b3.id, book: b3, status: .currentlyReading, rating: nil, reviewText: nil, dateStarted: now.addingTimeInterval(-86400*3), dateFinished: nil, createdAt: now, updatedAt: now, recommendedTo: [], tier: nil)
         ]
     }()
 }

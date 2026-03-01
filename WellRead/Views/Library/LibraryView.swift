@@ -2,7 +2,7 @@
 //  LibraryView.swift
 //  WellRead
 //
-//  Segmented: All | Read | Currently Reading | Want to Read.
+//  Segmented: Read | Currently Reading | Want to Read.
 //  View toggle: Grid | Timeline | Tier List | Rating.
 //
 
@@ -10,11 +10,10 @@ import SwiftUI
 
 struct LibraryView: View {
     @EnvironmentObject var appState: AppState
-    @State private var segment: LibrarySegment = .all
+    @State private var segment: LibrarySegment = .read
     @State private var viewMode: LibraryViewMode = .grid
-    
+
     enum LibrarySegment: String, CaseIterable {
-        case all = "All"
         case read = "Read"
         case currentlyReading = "Reading"
         case wantToRead = "Want to Read"
@@ -45,7 +44,6 @@ struct LibraryView: View {
     
     var filteredBooks: [UserBook] {
         switch segment {
-        case .all: return appState.userBooks
         case .read: return appState.readBooks
         case .currentlyReading: return appState.currentlyReading
         case .wantToRead: return appState.wantToRead
@@ -67,9 +65,9 @@ struct LibraryView: View {
                         TierListView(userBooks: appState.readBooks, onUpdateTier: { id, tier in
                             appState.setTier(for: id, tier: tier)
                         })
-                    } else if viewMode == .timeline && (segment == .all || segment == .read) {
+                    } else if viewMode == .timeline && segment == .read {
                         TimelineLibraryView(userBooks: filteredBooks)
-                    } else if viewMode == .rating && (segment == .all || segment == .read) {
+                    } else if viewMode == .rating && segment == .read {
                         RatingLibraryView(userBooks: filteredBooks)
                     } else {
                         GridLibraryView(userBooks: filteredBooks)

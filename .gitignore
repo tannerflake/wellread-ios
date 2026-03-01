@@ -1,0 +1,11 @@
+# Secrets — do not commit keys
+WellRead/Secrets.plist
+Secrets.plist
+
+# Xcode
+xcuserdata/
+*.xcuserstate
+DerivedData/
+
+# macOS
+.DS_Store

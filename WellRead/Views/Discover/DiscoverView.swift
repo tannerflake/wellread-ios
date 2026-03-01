@@ -79,15 +79,49 @@ struct DiscoverView: View {
         isLoadingAI = true
         aiSuggestions = []
         Task {
-            try? await Task.sleep(nanoseconds: 800_000_000)
-            let readTitles = appState.readBooks.compactMap { $0.book?.title }
-            let query = !readTitles.isEmpty ? readTitles.prefix(2).joined(separator: " ") : "popular books"
-            let books = (try? await GoogleBooksService.shared.search(query: query)) ?? []
-            await MainActor.run {
-                aiSuggestions = Array(books.prefix(5))
-                isLoadingAI = false
+            if ApiKeys.claude != nil {
+                await loadAISuggestionsViaClaude()
+            } else {
+                await loadAISuggestionsViaGoogleOnly()
             }
+            await MainActor.run { isLoadingAI = false }
         }
+    }
+
+    private func loadAISuggestionsViaClaude() async {
+        let readTitles = appState.readBooks.compactMap { $0.book?.title }
+        let context = readTitles.isEmpty
+            ? "The user hasn't finished any books yet."
+            : "Books the user has read: \(readTitles.prefix(10).joined(separator: ", "))."
+        let system = "You are a book recommendation assistant. Reply with exactly 5 book recommendations. Each line must be only the book title (and optionally ' by Author'). No numbering, no bullets, no extra text. One book per line."
+        let userMessage = "\(context) Suggest 5 books they might enjoy next. Reply with exactly 5 lines, each line one book title (optionally 'Title by Author')."
+        do {
+            let response = try await ClaudeService.shared.sendMessage(system: system, userMessage: userMessage)
+            let lines = response
+                .components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+                .prefix(5)
+            var books: [Book] = []
+            for line in lines {
+                let query = line.replacingOccurrences(of: " by ", with: " ")
+                if let first = try? await GoogleBooksService.shared.search(query: String(query)).first {
+                    books.append(first)
+                }
+            }
+            await MainActor.run { aiSuggestions = Array(books) }
+        } catch {
+            let fallback = (try? await GoogleBooksService.shared.search(query: "popular books")).map { Array($0.prefix(5)) } ?? []
+            await MainActor.run { aiSuggestions = fallback }
+        }
+    }
+
+    private func loadAISuggestionsViaGoogleOnly() async {
+        try? await Task.sleep(nanoseconds: 800_000_000)
+        let readTitles = appState.readBooks.compactMap { $0.book?.title }
+        let query = !readTitles.isEmpty ? readTitles.prefix(2).joined(separator: " ") : "popular books"
+        let books = (try? await GoogleBooksService.shared.search(query: query)) ?? []
+        await MainActor.run { aiSuggestions = Array(books.prefix(5)) }
     }
     
     private var trendingSection: some View {

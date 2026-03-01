@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		8B7B90EC2F54C77000B7FB0C /* Secrets.plist in Resources */ = {isa = PBXBuildFile; fileRef = 8B7B90EB2F54C72300B7FB0C /* Secrets.plist */; };
 		8BB4CBC02F4E9AEF0068B4B6 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 8BE1FABE2F4E8A70006ED44D /* FirebaseCore */; };
 		8BB4CBC32F4E9F2B0068B4B6 /* WellRead Firebase Service Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 8BB4CBC22F4E9F2B0068B4B6 /* WellRead Firebase Service Info.plist */; };
 		8BB4CBC62F4E9AEF0068B4B6 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 8BE1FABF2F4E8A70006ED44D /* FirebaseAuth */; };
@@ -41,9 +42,16 @@
 		B0010020 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010020 /* AuthService.swift */; };
 		B0010021 /* UserRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010021 /* UserRepository.swift */; };
 		B0010022 /* RootViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010022 /* RootViewController.swift */; };
+		B0010023 /* BookRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010023 /* BookRepository.swift */; };
+		B0010024 /* UserBookRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010024 /* UserBookRepository.swift */; };
+		B0010025 /* PostRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010025 /* PostRepository.swift */; };
+		B0010026 /* CommentRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010026 /* CommentRepository.swift */; };
+		B0010027 /* ApiKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010027 /* ApiKeys.swift */; };
+		B0010028 /* ClaudeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010028 /* ClaudeService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		8B7B90EB2F54C72300B7FB0C /* Secrets.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Secrets.plist; sourceTree = "<group>"; };
 		8BB4CBC22F4E9F2B0068B4B6 /* WellRead Firebase Service Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "WellRead Firebase Service Info.plist"; sourceTree = "<group>"; };
 		8BB4CBC42F4EA0910068B4B6 /* WellRead.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WellRead.entitlements; sourceTree = "<group>"; };
 		8BE1FAC02F4E8A70006ED44D /* WellRead/GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "WellRead/GoogleService-Info.plist"; sourceTree = "<group>"; };
@@ -76,6 +84,12 @@
 		F0010020 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
 		F0010021 /* UserRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserRepository.swift; sourceTree = "<group>"; };
 		F0010022 /* RootViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootViewController.swift; sourceTree = "<group>"; };
+		F0010023 /* BookRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookRepository.swift; sourceTree = "<group>"; };
+		F0010024 /* UserBookRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserBookRepository.swift; sourceTree = "<group>"; };
+		F0010025 /* PostRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostRepository.swift; sourceTree = "<group>"; };
+		F0010026 /* CommentRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommentRepository.swift; sourceTree = "<group>"; };
+		F0010027 /* ApiKeys.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApiKeys.swift; sourceTree = "<group>"; };
+		F0010028 /* ClaudeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -104,6 +118,7 @@
 		G0010000 = {
 			isa = PBXGroup;
 			children = (
+				8B7B90EB2F54C72300B7FB0C /* Secrets.plist */,
 				G0010001 /* WellRead */,
 				G0010002 /* Products */,
 				8BB4CBC12F4E9AEF0068B4B6 /* Recovered References */,
@@ -169,8 +184,14 @@
 			isa = PBXGroup;
 			children = (
 				F001000A /* GoogleBooksService.swift */,
+				F0010027 /* ApiKeys.swift */,
+				F0010028 /* ClaudeService.swift */,
 				F0010020 /* AuthService.swift */,
 				F0010021 /* UserRepository.swift */,
+				F0010023 /* BookRepository.swift */,
+				F0010024 /* UserBookRepository.swift */,
+				F0010025 /* PostRepository.swift */,
+				F0010026 /* CommentRepository.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -322,6 +343,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				8B7B90EC2F54C77000B7FB0C /* Secrets.plist in Resources */,
 				B0010018 /* Assets.xcassets in Resources */,
 				B0010019 /* (null) in Resources */,
 				B001001A /* WellRead/GoogleService-Info.plist in Resources */,
@@ -362,6 +384,12 @@
 				B0010020 /* AuthService.swift in Sources */,
 				B0010021 /* UserRepository.swift in Sources */,
 				B0010022 /* RootViewController.swift in Sources */,
+				B0010023 /* BookRepository.swift in Sources */,
+				B0010024 /* UserBookRepository.swift in Sources */,
+				B0010025 /* PostRepository.swift in Sources */,
+				B0010026 /* CommentRepository.swift in Sources */,
+				B0010027 /* ApiKeys.swift in Sources */,
+				B0010028 /* ClaudeService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

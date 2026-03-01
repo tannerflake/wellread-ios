@@ -16,6 +16,7 @@ import GoogleSignIn
 @MainActor
 final class AuthService: ObservableObject {
     @Published private(set) var firebaseUser: FirebaseAuth.User?
+    @Published private(set) var appUser: User?
     @Published private(set) var isLoading = true
     @Published var authError: String?
 
@@ -31,8 +32,10 @@ final class AuthService: ObservableObject {
             Task { @MainActor in
                 self?.firebaseUser = user
                 self?.isLoading = false
-                if let uid = user?.uid {
-                    await self?.userRepo.ensureUserDocument(uid: uid)
+                if let user = user {
+                    await self?.loadOrCreateAppUser(firebaseUser: user)
+                } else {
+                    self?.appUser = nil
                 }
             }
         }
@@ -42,6 +45,43 @@ final class AuthService: ObservableObject {
         if let handle = authStateListener {
             Auth.auth().removeStateDidChangeListener(handle)
         }
+    }
+
+    /// Loads the Firestore user document, or builds a minimal User from Firebase Auth so the app never sticks on loading (e.g. offline or slow network).
+    private func loadOrCreateAppUser(firebaseUser user: FirebaseAuth.User) async {
+        let uid = user.uid
+        let fallbackUser = User(
+            id: UUID(),
+            username: user.email?.components(separatedBy: "@").first ?? "user_\(String(uid.prefix(8)))",
+            displayName: user.displayName?.isEmpty == false ? user.displayName! : (user.email ?? "User"),
+            bio: nil,
+            profileImageURL: user.photoURL?.absoluteString,
+            joinedAt: Date(),
+            followers: [],
+            following: [],
+            totalBooksRead: 0,
+            totalPagesRead: 0,
+            readingGoal: nil
+        )
+        let fromFirestore: User? = await withTaskGroup(of: User?.self) { group in
+            group.addTask {
+                await self.userRepo.ensureUserDocument(
+                    uid: uid,
+                    displayName: user.displayName,
+                    email: user.email,
+                    photoURL: user.photoURL?.absoluteString
+                )
+                return await self.userRepo.getUser(uid: uid)
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 10_000_000_000) // 10s timeout
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first ?? nil
+        }
+        self.appUser = fromFirestore ?? fallbackUser
     }
 
     // MARK: - Apple Sign-In (nonce required)

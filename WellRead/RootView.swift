@@ -2,7 +2,7 @@
 //  RootView.swift
 //  WellRead
 //
-//  Root: auth gate or main tab bar. Driven by AuthService.
+//  Root: auth gate or main tab bar. Driven by AuthService (Firebase Auth + Firestore user).
 //
 
 import SwiftUI
@@ -15,50 +15,41 @@ struct RootView: View {
     var body: some View {
         Group {
             if authService.isLoading {
-                ZStack {
-                    Theme.background.ignoresSafeArea()
-                    ProgressView()
-                        .tint(Theme.accent)
-                }
+                loadingView
             } else if authService.firebaseUser == nil {
                 OnboardingFlowView()
+            } else if authService.appUser == nil {
+                loadingView
             } else {
                 MainTabView()
             }
         }
         .animation(.easeInOut(duration: 0.25), value: authService.isLoading)
         .animation(.easeInOut(duration: 0.25), value: authService.firebaseUser?.uid)
-        .onChange(of: authService.firebaseUser?.uid) { _, newValue in
-            if let uid = newValue, let fbUser = authService.firebaseUser {
-                appState.currentUser = userFromFirebase(fbUser)
+        .animation(.easeInOut(duration: 0.25), value: authService.appUser?.id)
+        .onChange(of: authService.appUser) { _, newUser in
+            if let user = newUser {
+                appState.currentUser = user
                 appState.isAuthenticated = true
-            } else {
+                if let uid = authService.firebaseUser?.uid {
+                    appState.startFirestoreListeners(uid: uid)
+                }
+            } else if authService.firebaseUser == nil {
                 appState.signOut()
             }
         }
-        .onAppear {
-            if authService.firebaseUser != nil {
-                appState.currentUser = userFromFirebase(authService.firebaseUser!)
-                appState.isAuthenticated = true
+        .onChange(of: authService.firebaseUser?.uid) { _, newValue in
+            if newValue == nil {
+                appState.signOut()
             }
         }
     }
 
-    private func userFromFirebase(_ fb: FirebaseAuth.User) -> User {
-        let displayName = fb.displayName ?? fb.email ?? fb.uid
-        let username = fb.email?.components(separatedBy: "@").first ?? String(fb.uid.prefix(8))
-        return User(
-            id: UUID(),
-            username: username,
-            displayName: displayName,
-            bio: nil,
-            profileImageURL: fb.photoURL?.absoluteString,
-            joinedAt: Date(),
-            followers: [],
-            following: [],
-            totalBooksRead: 0,
-            totalPagesRead: 0,
-            readingGoal: nil
-        )
+    private var loadingView: some View {
+        ZStack {
+            Theme.background.ignoresSafeArea()
+            ProgressView()
+                .tint(Theme.accent)
+        }
     }
 }

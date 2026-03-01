@@ -133,7 +133,6 @@ struct OnboardingFlowView: View {
                 .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
             Button("Finish") {
                 step = .done
-                appState.loadDemoState()
             }
             .font(Theme.headline())
             .foregroundStyle(Theme.background)

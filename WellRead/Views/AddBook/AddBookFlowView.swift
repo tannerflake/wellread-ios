@@ -9,10 +9,16 @@ import SwiftUI
 
 struct AddBookFlowView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var authService: AuthService
     @EnvironmentObject var appState: AppState
+    @FocusState private var isSearchFocused: Bool
     @State private var query = ""
     @State private var results: [Book] = []
     @State private var isSearching = false
+    @State private var hasSearched = false
+    @State private var searchError: String?
+    @State private var isSaving = false
+    @State private var saveError: String?
     @State private var selectedBook: Book?
     @State private var status: ReadingStatus = .read
     @State private var rating: Double = 7
@@ -68,6 +74,10 @@ struct AddBookFlowView: View {
                 TextField("Search by title or author", text: $query)
                     .font(Theme.body())
                     .foregroundStyle(Theme.textPrimary)
+                    .textContentType(.none)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .focused($isSearchFocused)
                     .onSubmit { runSearch() }
             }
             .padding()
@@ -83,7 +93,17 @@ struct AddBookFlowView: View {
                 .background(Theme.accent)
                 .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
                 .padding(.horizontal)
-            
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+
+            if !hasSearched && !isSearching && searchError == nil {
+                Text("Tap Search or press Return to find books.")
+                    .font(Theme.caption())
+                    .foregroundStyle(Theme.textSecondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+            }
+
             if isSearching {
                 HStack {
                     ProgressView().tint(Theme.accent)
@@ -91,6 +111,26 @@ struct AddBookFlowView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding()
+            }
+            
+            if let err = searchError {
+                VStack(spacing: 12) {
+                    Text(err)
+                        .font(Theme.callout())
+                        .foregroundStyle(.red)
+                        .multilineTextAlignment(.center)
+                    Button("Try Again") { runSearch() }
+                        .font(Theme.callout())
+                        .foregroundStyle(Theme.accent)
+                }
+                .frame(maxWidth: .infinity)
+                .padding()
+            } else if hasSearched && !isSearching && results.isEmpty {
+                Text("No results. Try different keywords.")
+                    .font(Theme.callout())
+                    .foregroundStyle(Theme.textSecondary)
+                    .frame(maxWidth: .infinity)
+                    .padding()
             }
             
             ScrollView {
@@ -109,18 +149,26 @@ struct AddBookFlowView: View {
     }
     
     private func runSearch() {
-        guard !query.isEmpty else { return }
+        isSearchFocused = false
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
         isSearching = true
+        searchError = nil
         results = []
         Task {
             do {
-                let books = try await GoogleBooksService.shared.search(query: query)
+                let books = try await GoogleBooksService.shared.search(query: trimmed)
                 await MainActor.run {
                     results = books
+                    hasSearched = true
                     isSearching = false
                 }
             } catch {
-                await MainActor.run { isSearching = false }
+                await MainActor.run {
+                    hasSearched = true
+                    isSearching = false
+                    searchError = error.localizedDescription.isEmpty ? "Search failed. Check your connection and try again." : error.localizedDescription
+                }
             }
         }
     }
@@ -209,30 +257,70 @@ struct AddBookFlowView: View {
                 .background(Theme.accent)
                 .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
                 .padding(.horizontal)
+                .disabled(isSaving)
+            if let err = saveError {
+                Text(err).font(Theme.caption()).foregroundStyle(.red).padding(.horizontal)
+            }
         }
         .padding(.top, 24)
     }
     
     private func saveAndDismiss() {
-        guard let book = selectedBook, let user = appState.currentUser else { dismiss(); return }
+        guard let book = selectedBook, let uid = authService.firebaseUser?.uid else { dismiss(); return }
         let now = Date()
-        var ub = UserBook(
-            id: UUID(),
-            userId: user.id,
+        let tempId = UUID()
+        let ratingValue = status == .read ? Int(rating) : nil
+        let review = reviewText.isEmpty ? nil : reviewText
+        let dateFinished = status == .read ? now : nil
+        let dateStarted = status == .currentlyReading ? now : nil
+
+        var optimistic = UserBook(
+            id: tempId,
+            userId: uid,
             bookId: book.id,
             book: book,
             status: status,
-            rating: status == .read ? Int(rating) : nil,
-            reviewText: reviewText.isEmpty ? nil : reviewText,
-            dateStarted: nil,
-            dateFinished: status == .read ? now : nil,
+            rating: ratingValue,
+            reviewText: review,
+            dateStarted: dateStarted,
+            dateFinished: dateFinished,
             createdAt: now,
             updatedAt: now,
             recommendedTo: [],
             tier: nil
         )
-        if status == .currentlyReading { ub.dateStarted = now }
-        appState.addUserBook(ub)
-        dismiss()
+        appState.addUserBook(optimistic)
+        isSaving = true
+        saveError = nil
+        Task {
+            do {
+                let userBookRepo = UserBookRepository()
+                _ = try await userBookRepo.addUserBook(
+                    userId: uid,
+                    book: book,
+                    status: status,
+                    rating: ratingValue,
+                    reviewText: review,
+                    dateStarted: dateStarted,
+                    dateFinished: dateFinished
+                )
+                if status == .read {
+                    let postRepo = PostRepository()
+                    _ = try await postRepo.createPost(
+                        userId: uid,
+                        type: .finishedBook,
+                        bookId: book.id,
+                        caption: review
+                    )
+                }
+                await MainActor.run { dismiss() }
+            } catch {
+                await MainActor.run {
+                    appState.userBooks.removeAll { $0.id == tempId }
+                    saveError = error.localizedDescription
+                    isSaving = false
+                }
+            }
+        }
     }
 }
