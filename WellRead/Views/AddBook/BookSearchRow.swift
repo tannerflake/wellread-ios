@@ -28,6 +28,8 @@ struct BookSearchRow: View {
                     .foregroundStyle(Theme.textTertiary)
             }
             .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
             .wellReadCard()
         }
         .buttonStyle(.plain)

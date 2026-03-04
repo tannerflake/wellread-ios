@@ -2,16 +2,20 @@
 //  GridLibraryView.swift
 //  WellRead
 //
+//  When onMoveToRead is set (e.g. Want to Read segment), long-press a cover to mark as Read.
+//
 
 import SwiftUI
 
 struct GridLibraryView: View {
     let userBooks: [UserBook]
-    
+    /// When non-nil (e.g. on Want to Read), long-press a book to move it to Read.
+    var onMoveToRead: ((UserBook) -> Void)? = nil
+
     private let columns = [
         GridItem(.adaptive(minimum: 100), spacing: Theme.gridSpacing)
     ]
-    
+
     var body: some View {
         ScrollView {
             LazyVGrid(columns: columns, spacing: Theme.gridSpacing) {
@@ -19,6 +23,18 @@ struct GridLibraryView: View {
                     if let book = ub.book {
                         VStack(alignment: .leading, spacing: 6) {
                             BookCoverView(book: book, size: 100)
+                                .onLongPressGesture(minimumDuration: 0.5) {
+                                    onMoveToRead?(ub)
+                                }
+                                .contextMenu {
+                                    if let onMoveToRead {
+                                        Button {
+                                            onMoveToRead(ub)
+                                        } label: {
+                                            Label("Mark as Read", systemImage: "checkmark.circle")
+                                        }
+                                    }
+                                }
                             Text(book.title)
                                 .font(Theme.caption())
                                 .foregroundStyle(Theme.textPrimary)

@@ -2,23 +2,45 @@
 //  BookRepository.swift
 //  WellRead
 //
-//  Firestore books collection: get or create by Google Books ID.
+//  Firestore books collection: get or create by Google Books ID. In-memory cache for fast repeat lookups.
 //
 
 import Foundation
 import FirebaseFirestore
 
 final class BookRepository {
+    static let shared = BookRepository()
+
     private let db = FirestoreDatabase.firestore
     private let books = "books"
+    private var memoryCache: [String: Book] = [:]
+    private let cacheQueue = DispatchQueue(label: "com.wellread.bookrepo.cache")
 
-    /// Gets a book by id (Google Books ID). Returns nil if not found.
+    /// Prewarm cache with books (e.g. from disk-loaded library) so getBook returns immediately for these ids.
+    func prewarmCache(with books: [Book]) {
+        cacheQueue.sync {
+            for b in books {
+                memoryCache[b.id] = b
+            }
+        }
+    }
+
+    /// Clear in-memory cache (e.g. on sign-out). Optional.
+    func clearCache() {
+        cacheQueue.sync { memoryCache.removeAll() }
+    }
+
+    /// Gets a book by id. Checks in-memory cache first, then Firestore. Caches result.
     func getBook(id: String) async -> Book? {
+        if let cached = cacheQueue.sync(execute: { memoryCache[id] }) {
+            return cached
+        }
         let ref = db.collection(books).document(id)
         do {
             let snapshot = try await ref.getDocument()
-            guard snapshot.exists, let data = snapshot.data() else { return nil }
-            return book(from: data, id: id)
+            guard snapshot.exists, let data = snapshot.data(), let b = book(from: data, id: id) else { return nil }
+            cacheQueue.sync { memoryCache[id] = b }
+            return b
         } catch {
             return nil
         }

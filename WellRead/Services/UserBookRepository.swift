@@ -13,7 +13,7 @@ final class UserBookRepository {
     private let userBooks = "userBooks"
     private let bookRepo: BookRepository
 
-    init(bookRepository: BookRepository = BookRepository()) {
+    init(bookRepository: BookRepository = BookRepository.shared) {
         self.bookRepo = bookRepository
     }
 
@@ -98,6 +98,7 @@ final class UserBookRepository {
             "updatedAt": Timestamp(date: now),
             "recommendedTo": [] as [String],
             "tier": NSNull(),
+            "tierOrder": NSNull(),
         ])
         return UserBook(
             id: id,
@@ -112,11 +113,12 @@ final class UserBookRepository {
             createdAt: now,
             updatedAt: now,
             recommendedTo: [],
-            tier: nil
+            tier: nil,
+            tierOrder: nil
         )
     }
 
-    /// Updates status, rating, review, dates.
+    /// Updates status, rating, review, dates, tier, tierOrder.
     func updateUserBook(_ userBook: UserBook) async throws {
         let ref = db.collection(userBooks).document(userBook.id.uuidString)
         try await ref.updateData([
@@ -126,6 +128,8 @@ final class UserBookRepository {
             "dateStarted": userBook.dateStarted.map { Timestamp(date: $0) } as Any,
             "dateFinished": userBook.dateFinished.map { Timestamp(date: $0) } as Any,
             "updatedAt": Timestamp(date: userBook.updatedAt),
+            "tier": userBook.tier as Any,
+            "tierOrder": userBook.tierOrder as Any,
         ])
     }
 
@@ -151,6 +155,7 @@ final class UserBookRepository {
         let dateStarted = (data["dateStarted"] as? Timestamp)?.dateValue()
         let dateFinished = (data["dateFinished"] as? Timestamp)?.dateValue()
         let tier = data["tier"] as? String
+        let tierOrder = data["tierOrder"] as? Int
         return UserBook(
             id: id,
             userId: userId,
@@ -164,7 +169,8 @@ final class UserBookRepository {
             createdAt: createdAt,
             updatedAt: updatedAt,
             recommendedTo: [],
-            tier: tier
+            tier: tier,
+            tierOrder: tierOrder
         )
     }
 }

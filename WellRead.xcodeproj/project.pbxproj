@@ -49,6 +49,8 @@
 		B0010026 /* CommentRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010026 /* CommentRepository.swift */; };
 		B0010027 /* ApiKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010027 /* ApiKeys.swift */; };
 		B0010028 /* ClaudeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010028 /* ClaudeService.swift */; };
+		B001002A /* LocalLibraryCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001002A /* LocalLibraryCache.swift */; };
+		B001002B /* BookProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001002B /* BookProfileView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -92,6 +94,8 @@
 		F0010026 /* CommentRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommentRepository.swift; sourceTree = "<group>"; };
 		F0010027 /* ApiKeys.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApiKeys.swift; sourceTree = "<group>"; };
 		F0010028 /* ClaudeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeService.swift; sourceTree = "<group>"; };
+		F001002A /* LocalLibraryCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLibraryCache.swift; sourceTree = "<group>"; };
+		F001002B /* BookProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookProfileView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -194,6 +198,7 @@
 				F0010024 /* UserBookRepository.swift */,
 				F0010025 /* PostRepository.swift */,
 				F0010026 /* CommentRepository.swift */,
+				F001002A /* LocalLibraryCache.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -204,6 +209,7 @@
 				F001000B /* MainTabView.swift */,
 				G0010008 /* Onboarding */,
 				G0010009 /* AddBook */,
+				G0010011 /* Book */,
 				G001000A /* Components */,
 				G001000B /* Feed */,
 				G001000C /* Discover */,
@@ -211,6 +217,14 @@
 				G001000E /* Profile */,
 			);
 			path = Views;
+			sourceTree = "<group>";
+		};
+		G0010011 /* Book */ = {
+			isa = PBXGroup;
+			children = (
+				F001002B /* BookProfileView.swift */,
+			);
+			path = Book;
 			sourceTree = "<group>";
 		};
 		G0010008 /* Onboarding */ = {
@@ -394,6 +408,8 @@
 				B0010026 /* CommentRepository.swift in Sources */,
 				B0010027 /* ApiKeys.swift in Sources */,
 				B0010028 /* ClaudeService.swift in Sources */,
+				B001002A /* LocalLibraryCache.swift in Sources */,
+				B001002B /* BookProfileView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

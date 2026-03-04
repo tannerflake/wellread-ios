@@ -2,20 +2,19 @@
 //  MainTabView.swift
 //  WellRead
 //
-//  Bottom tab bar: Feed, Discover, Add (center), Library, Profile.
+//  Bottom tab bar: Feed, Discover, Add (center), Profile (library + profile merged).
 //
 
 import SwiftUI
 
 struct MainTabView: View {
-    @State private var selectedTab: Tab = .library
+    @State private var selectedTab: Tab = .profile
     @State private var showAddBook = false
     
     enum Tab: String, CaseIterable {
         case feed
         case discover
         case add
-        case library
         case profile
     }
     
@@ -26,8 +25,7 @@ struct MainTabView: View {
                 case .feed: FeedView()
                 case .discover: DiscoverView()
                 case .add: Color.clear
-                case .library: LibraryView()
-                case .profile: ProfileView()
+                case .profile: ProfileLibraryView()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -43,12 +41,11 @@ struct MainTabView: View {
             tabButton(.feed, icon: "book.closed.fill", label: "Feed")
             tabButton(.discover, icon: "sparkles", label: "Discover")
             addButton
-            tabButton(.library, icon: "books.vertical.fill", label: "Library")
-            tabButton(.profile, icon: "person.fill", label: "Profile")
+            tabButton(.profile, icon: "books.vertical.fill", label: "Profile")
         }
         .padding(.horizontal, 8)
-        .padding(.top, 12)
-        .padding(.bottom, 28)
+        .padding(.top, 6)
+        .padding(.bottom, 16)
         .background(Theme.background.opacity(0.95))
         .overlay(
             Rectangle()
@@ -66,9 +63,9 @@ struct MainTabView: View {
                 selectedTab = tab
             }
         } label: {
-            VStack(spacing: 4) {
+            VStack(spacing: 2) {
                 Image(systemName: icon)
-                    .font(.system(size: 22, weight: .medium))
+                    .font(.system(size: 20, weight: .medium))
                 Text(label)
                     .font(Theme.caption())
             }
@@ -82,9 +79,9 @@ struct MainTabView: View {
         Button {
             showAddBook = true
         } label: {
-            VStack(spacing: 4) {
+            VStack(spacing: 2) {
                 Image(systemName: "plus.circle.fill")
-                    .font(.system(size: 36))
+                    .font(.system(size: 32))
                 Text("Add")
                     .font(Theme.caption())
             }

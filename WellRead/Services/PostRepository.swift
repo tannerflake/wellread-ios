@@ -11,7 +11,7 @@ import FirebaseFirestore
 final class PostRepository {
     private let db = FirestoreDatabase.firestore
     private let posts = "posts"
-    private let bookRepo = BookRepository()
+    private let bookRepo = BookRepository.shared
     private let userRepo = UserRepository()
 
     /// Listens to feed: posts ordered by createdAt (for now, all posts; later filter by following).

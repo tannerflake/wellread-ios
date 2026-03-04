@@ -27,7 +27,8 @@ struct UserBook: Identifiable, Codable, Equatable {
     var updatedAt: Date
     var recommendedTo: [UUID]
     var tier: String?  // S, A, B, C, D for tier list
-    
+    var tierOrder: Int?  // order within tier (0-based); nil = end
+
     static let demoList: [UserBook] = {
         let b1 = Book(id: "1", title: "Atomic Habits", author: "James Clear", coverURL: "https://books.google.com/books/content?id=wRqtDwAAQBAJ&printsec=frontcover&img=1", pageCount: 320, publishedDate: nil, description: nil, genres: ["Self-Help"])
         let b2 = Book(id: "2", title: "Deep Work", author: "Cal Newport", coverURL: "https://books.google.com/books/content?id=6h76CwAAQBAJ&printsec=frontcover&img=1", pageCount: 296, publishedDate: nil, description: nil, genres: ["Productivity"])
@@ -35,9 +36,9 @@ struct UserBook: Identifiable, Codable, Equatable {
         let now = Date()
         let demoUserId = "demo-user-id"
         return [
-            UserBook(id: UUID(), userId: demoUserId, bookId: b1.id, book: b1, status: .read, rating: 9, reviewText: "Life-changing.", dateStarted: now.addingTimeInterval(-86400*30), dateFinished: now.addingTimeInterval(-86400*7), createdAt: now, updatedAt: now, recommendedTo: [], tier: "S"),
-            UserBook(id: UUID(), userId: demoUserId, bookId: b2.id, book: b2, status: .read, rating: 8, reviewText: "Essential for focus.", dateStarted: now.addingTimeInterval(-86400*60), dateFinished: now.addingTimeInterval(-86400*35), createdAt: now, updatedAt: now, recommendedTo: [], tier: "A"),
-            UserBook(id: UUID(), userId: demoUserId, bookId: b3.id, book: b3, status: .currentlyReading, rating: nil, reviewText: nil, dateStarted: now.addingTimeInterval(-86400*3), dateFinished: nil, createdAt: now, updatedAt: now, recommendedTo: [], tier: nil)
+            UserBook(id: UUID(), userId: demoUserId, bookId: b1.id, book: b1, status: .read, rating: 9, reviewText: "Life-changing.", dateStarted: now.addingTimeInterval(-86400*30), dateFinished: now.addingTimeInterval(-86400*7), createdAt: now, updatedAt: now, recommendedTo: [], tier: "S", tierOrder: 0),
+            UserBook(id: UUID(), userId: demoUserId, bookId: b2.id, book: b2, status: .read, rating: 8, reviewText: "Essential for focus.", dateStarted: now.addingTimeInterval(-86400*60), dateFinished: now.addingTimeInterval(-86400*35), createdAt: now, updatedAt: now, recommendedTo: [], tier: "A", tierOrder: 0),
+            UserBook(id: UUID(), userId: demoUserId, bookId: b3.id, book: b3, status: .currentlyReading, rating: nil, reviewText: nil, dateStarted: now.addingTimeInterval(-86400*3), dateFinished: nil, createdAt: now, updatedAt: now, recommendedTo: [], tier: nil, tierOrder: nil)
         ]
     }()
 }

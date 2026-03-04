@@ -20,6 +20,7 @@ struct AddBookFlowView: View {
     @State private var isSaving = false
     @State private var saveError: String?
     @State private var selectedBook: Book?
+    @State private var selectedBookForProfile: Book?
     @State private var status: ReadingStatus = .read
     @State private var rating: Double = 7
     @State private var reviewText = ""
@@ -55,6 +56,13 @@ struct AddBookFlowView: View {
                         .foregroundStyle(Theme.accent)
                 }
             }
+            .navigationDestination(item: $selectedBookForProfile) { book in
+                BookProfileView(book: book) {
+                    selectedBook = book
+                    selectedBookForProfile = nil
+                    step = .status
+                }
+            }
         }
     }
     
@@ -85,16 +93,21 @@ struct AddBookFlowView: View {
             .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
             .padding(.horizontal)
             
-            Button("Search") { runSearch() }
-                .font(Theme.headline())
-                .foregroundStyle(Theme.background)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(Theme.accent)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
-                .padding(.horizontal)
-                .buttonStyle(.plain)
-                .contentShape(Rectangle())
+            ZStack {
+                Theme.accent
+                Text("Search")
+                    .font(Theme.headline())
+                    .foregroundStyle(Theme.background)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 48)
+            .contentShape(Rectangle())
+            .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+            .padding(.horizontal)
+            .onTapGesture {
+                isSearchFocused = false
+                runSearch()
+            }
 
             if !hasSearched && !isSearching && searchError == nil {
                 Text("Tap Search or press Return to find books.")
@@ -137,8 +150,7 @@ struct AddBookFlowView: View {
                 LazyVStack(spacing: 12) {
                     ForEach(results) { book in
                         BookSearchRow(book: book) {
-                            selectedBook = book
-                            step = .status
+                            selectedBookForProfile = book
                         }
                     }
                 }
@@ -189,7 +201,7 @@ struct AddBookFlowView: View {
                 .padding(.horizontal)
             }
             Text("Status").font(Theme.headline()).foregroundStyle(Theme.textSecondary).padding(.horizontal)
-            ForEach(ReadingStatus.allCases, id: \.self) { s in
+            ForEach(ReadingStatus.allCases.filter { $0 != .currentlyReading }, id: \.self) { s in
                 Button {
                     status = s
                     if s == .read {

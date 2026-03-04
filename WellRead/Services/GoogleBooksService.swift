@@ -159,24 +159,36 @@ final class GoogleBooksService {
         return books
     }
 
+    /// Prefer decent quality for thumbnails: medium first, then large, small, thumbnail, smallThumbnail, extraLarge last. No book is returned if no image at all.
     private func mapToBook(item: GoogleBooksItem) -> Book? {
         guard let info = item.volumeInfo, let title = info.title, !title.isEmpty else { return nil }
         let links = info.imageLinks
-        let coverURL = [links?.extraLarge, links?.large, links?.medium, links?.small, links?.thumbnail, links?.smallThumbnail]
+        let rawOrder: [String?] = [
+            links?.medium,
+            links?.large,
+            links?.small,
+            links?.thumbnail,
+            links?.smallThumbnail,
+            links?.extraLarge
+        ]
+        var seen = Set<String>()
+        let allURLs: [String] = rawOrder
             .compactMap { $0 }
             .map { $0.hasPrefix("http://") ? "https" + $0.dropFirst(4) : $0 }
-            .first { !$0.isEmpty }
-        guard let coverURL = coverURL else { return nil }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
+        guard let primary = allURLs.first else { return nil }
+        let fallbacks = Array(allURLs.dropFirst())
         let author = info.authors?.joined(separator: ", ") ?? "Unknown"
         return Book(
             id: item.id,
             title: title,
             author: author,
-            coverURL: coverURL,
+            coverURL: primary,
             pageCount: info.pageCount,
             publishedDate: parsePublishedDate(info.publishedDate),
             description: info.description,
-            genres: info.categories ?? []
+            genres: info.categories ?? [],
+            fallbackCoverURLs: fallbacks.isEmpty ? nil : fallbacks
         )
     }
 }
