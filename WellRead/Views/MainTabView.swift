@@ -48,8 +48,8 @@ struct MainTabView: View {
             addButton
         }
         .padding(.horizontal, 8)
-        .padding(.top, 6)
-        .padding(.bottom, 16)
+        .padding(.top, 4)
+        .padding(.bottom, 6)
         .background(Theme.background.opacity(0.95))
         .overlay(
             Rectangle()

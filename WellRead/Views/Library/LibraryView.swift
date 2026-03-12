@@ -23,7 +23,7 @@ struct ProfileLibraryView: View {
 
     enum LibrarySegment: String, CaseIterable {
         case read = "Read"
-        case wantToRead = "Want to Read"
+        case wantToRead = "Queue"
     }
 
     var filteredBooks: [UserBook] {
@@ -54,15 +54,15 @@ struct ProfileLibraryView: View {
             ZStack {
                 Theme.background.ignoresSafeArea()
                 VStack(spacing: 0) {
+                    if segment == .read && !availableYears.isEmpty {
+                        yearFilterBar
+                    }
+
                     Picker("", selection: $segment) {
                         ForEach(LibrarySegment.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                     }
                     .pickerStyle(.segmented)
                     .padding()
-
-                    if segment == .read && !availableYears.isEmpty {
-                        yearFilterBar
-                    }
 
                     libraryContent
                 }
@@ -74,10 +74,13 @@ struct ProfileLibraryView: View {
                 BookProfileView(
                     book: book,
                     readBooksForSimilar: appState.readBooks,
-                    onNotInterested: { selectedBookForProfile = nil },
+                    onNotInterested: nil,
                     onWantToRead: { appState.addToWantToRead(book: book); selectedBookForProfile = nil },
                     onHaveRead: { appState.addAsRead(book: book); selectedBookForProfile = nil }
                 )
+                .padding(.horizontal)
+                .padding(.bottom, 24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .toolbar {
                 ToolbarItem(placement: .principal) {
@@ -228,6 +231,7 @@ struct ProfileLibraryView: View {
             Spacer()
         }
         .padding(.horizontal)
+        .padding(.top, 4)
         .padding(.bottom, 8)
     }
 

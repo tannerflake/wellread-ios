@@ -61,6 +61,26 @@ private func tierColor(for tier: String?) -> Color {
     }
 }
 
+/// Invisible drop slot between or around books so the user can drop at a specific position (front, between, or back) in a tier. No visible UI—only hit area for drops.
+private struct TierRowDropSlot: View {
+    let tier: String?
+    let insertionIndex: Int
+    let onUpdateTierAndOrder: (UUID, String?, Int?) -> Void
+
+    private let minWidth: CGFloat = 4
+
+    var body: some View {
+        Color.clear
+            .frame(minWidth: minWidth, minHeight: 80)
+            .contentShape(Rectangle())
+            .dropDestination(for: TierDragItem.self) { items, _ in
+                guard let payload = items.first else { return false }
+                onUpdateTierAndOrder(payload.userBookId, tier, insertionIndex)
+                return true
+            } isTargeted: { _ in }
+    }
+}
+
 /// Payload for tier-list drag-and-drop. Uses plain-text UUID for reliable in-app transfer.
 struct TierDragItem: Transferable, Hashable {
     let userBookId: UUID
@@ -121,54 +141,70 @@ struct TierListView: View {
     }
 }
 
+private let tierBookSize: CGFloat = 72
+private let tierSlotWidth: CGFloat = 4
+private let tierRowPadding: CGFloat = 2
+
 struct TierRowView: View {
     let tier: String?
     let books: [UserBook]
     let onUpdateTierAndOrder: (UUID, String?, Int?) -> Void
     var onBookTap: ((Book) -> Void)? = nil
-    @State private var isTargeted = false
 
     var header: String {
         tier ?? "Unranked"
     }
 
     var body: some View {
-        HStack(spacing: 0) {
+        HStack(alignment: .top, spacing: 0) {
             ZStack {
                 tierColor(for: tier)
                 Text(header)
                     .font(Theme.headline())
                     .foregroundStyle(header == "Unranked" ? Theme.textSecondary : Color.black.opacity(0.75))
             }
-            .frame(width: 44)
-            .frame(minHeight: 120)
+            .frame(minWidth: 44, maxWidth: 44, minHeight: 120)
+            .frame(maxHeight: .infinity)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(books, id: \.id) { ub in
-                        if ub.book != nil {
-                            TierBookCell(userBook: ub, onBookTap: onBookTap)
+            GeometryReader { geo in
+                let width = geo.size.width
+                let booksPerRow = max(1, Int((width - tierRowPadding * 2 - tierSlotWidth) / (tierBookSize + tierSlotWidth)))
+                let rows: [[UserBook]] = books.isEmpty
+                    ? []
+                    : stride(from: 0, to: books.count, by: booksPerRow).map { start in
+                        Array(books[start..<min(start + booksPerRow, books.count)])
+                    }
+                VStack(alignment: .leading, spacing: 4) {
+                    if rows.isEmpty {
+                        HStack(spacing: 0) {
+                            TierRowDropSlot(tier: tier, insertionIndex: 0, onUpdateTierAndOrder: onUpdateTierAndOrder)
+                        }
+                        .padding(.horizontal, 1)
+                    } else {
+                        ForEach(Array(rows.enumerated()), id: \.offset) { rowIndex, rowBooks in
+                            let startIndex = rowIndex * booksPerRow
+                            HStack(spacing: 0) {
+                                ForEach(Array(rowBooks.enumerated()), id: \.element.id) { i, ub in
+                                    TierRowDropSlot(tier: tier, insertionIndex: startIndex + i, onUpdateTierAndOrder: onUpdateTierAndOrder)
+                                    if ub.book != nil {
+                                        TierBookCell(userBook: ub, onBookTap: onBookTap)
+                                    }
+                                }
+                                TierRowDropSlot(tier: tier, insertionIndex: startIndex + rowBooks.count, onUpdateTierAndOrder: onUpdateTierAndOrder)
+                            }
+                            .padding(.horizontal, 1)
                         }
                     }
                 }
-                .padding(.horizontal, 8)
+                .animation(.easeInOut(duration: 0.3), value: books.map(\.id))
                 .padding(.vertical, 4)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(minHeight: 120)
-            .frame(maxWidth: .infinity)
             .background(
                 RoundedRectangle(cornerRadius: 0)
-                    .fill(isTargeted ? Theme.accent.opacity(0.2) : Theme.surface.opacity(0.6))
+                    .fill(Theme.surface.opacity(0.6))
             )
-            .contentShape(Rectangle())
-            .dropDestination(for: TierDragItem.self) { items, _ in
-                guard let payload = items.first else { return false }
-                onUpdateTierAndOrder(payload.userBookId, tier, nil)
-                isTargeted = false
-                return true
-            } isTargeted: { targeted in
-                isTargeted = targeted
-            }
         }
         .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
     }

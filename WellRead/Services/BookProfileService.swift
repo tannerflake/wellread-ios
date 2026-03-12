@@ -15,20 +15,28 @@ final class BookProfileService {
 
     private init() {}
 
-    /// Two-sentence summary. Uses book description if present; otherwise asks Claude to write two sentences from title/author. Cached by book.id.
+    private let summaryMaxCharacters = 200
+
+    /// Short summary (max 200 characters). Uses book description if present; otherwise asks Claude. Cached by book.id.
     func twoSentenceSummary(for book: Book) async -> String? {
         let key = book.id
         if let cached = queue.sync(execute: { summaryCache[key] }) { return cached }
-        let system = "You are a concise book summarizer. Reply with exactly two sentences that summarize the book. No heading, no bullets, no extra text. If given a long description, condense it to exactly two sentences. If given only title and author, write two sentences that describe what the book is about based on common knowledge."
+        let system = "You are a concise book summarizer. Reply with a very short summary of the book in at most two sentences. Maximum 200 characters total. No heading, no bullets, no extra text. If given a long description, condense it. If given only title and author, write a brief summary based on common knowledge. Stay under 200 characters."
         let input: String
         if let d = book.description, !d.isEmpty {
-            input = "Book: \(book.title) by \(book.author).\n\nDescription:\n\(d)\n\nSummarize in exactly two sentences."
+            input = "Book: \(book.title) by \(book.author).\n\nDescription:\n\(d)\n\nSummarize in at most two sentences, under 200 characters."
         } else {
-            input = "Book: \(book.title) by \(book.author). Write exactly two sentences that describe what this book is about."
+            input = "Book: \(book.title) by \(book.author). Write a brief summary in at most two sentences, under 200 characters."
         }
         do {
             let response = try await ClaudeService.shared.sendMessage(system: system, userMessage: input)
-            let trimmed = response.trimmingCharacters(in: .whitespacesAndNewlines)
+            var trimmed = response.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.count > summaryMaxCharacters {
+                trimmed = String(trimmed.prefix(summaryMaxCharacters)).trimmingCharacters(in: .whitespacesAndNewlines)
+                if let lastSpace = trimmed.lastIndex(of: " ") {
+                    trimmed = String(trimmed[..<lastSpace])
+                }
+            }
             queue.sync { summaryCache[key] = trimmed }
             return trimmed.isEmpty ? nil : trimmed
         } catch {

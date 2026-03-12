@@ -159,17 +159,17 @@ final class GoogleBooksService {
         return books
     }
 
-    /// Prefer decent quality for thumbnails: medium first, then large, small, thumbnail, smallThumbnail, extraLarge last. No book is returned if no image at all.
+    /// Use imageLinks in documented size order (best available first). No book is returned if no image at all.
     private func mapToBook(item: GoogleBooksItem) -> Book? {
         guard let info = item.volumeInfo, let title = info.title, !title.isEmpty else { return nil }
         let links = info.imageLinks
         let rawOrder: [String?] = [
-            links?.medium,
+            links?.extraLarge,
             links?.large,
+            links?.medium,
             links?.small,
             links?.thumbnail,
-            links?.smallThumbnail,
-            links?.extraLarge
+            links?.smallThumbnail
         ]
         var seen = Set<String>()
         let allURLs: [String] = rawOrder

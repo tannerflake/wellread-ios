@@ -2,14 +2,14 @@
 //  GridLibraryView.swift
 //  WellRead
 //
-//  When onMoveToRead is set (e.g. Want to Read segment), long-press a cover to mark as Read.
+//  When onMoveToRead is set (e.g. Queue segment), long-press a cover to mark as Read.
 //
 
 import SwiftUI
 
 struct GridLibraryView: View {
     let userBooks: [UserBook]
-    /// When non-nil (e.g. on Want to Read), long-press a book to move it to Read.
+    /// When non-nil (e.g. on Queue), long-press a book to move it to Read.
     var onMoveToRead: ((UserBook) -> Void)? = nil
     /// When set, tapping a book cover opens the book profile.
     var onBookTap: ((Book) -> Void)? = nil

@@ -8,9 +8,25 @@
 import Foundation
 
 enum ReadingStatus: String, Codable, CaseIterable {
-    case wantToRead = "Want to Read"
+    case wantToRead = "Queue"
     case currentlyReading = "Currently Reading"
     case read = "Read"
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        switch raw {
+        case "Queue", "Want to Read": self = .wantToRead
+        case "Currently Reading": self = .currentlyReading
+        case "Read": self = .read
+        default: self = .wantToRead
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
 }
 
 struct UserBook: Identifiable, Codable, Equatable {

@@ -20,6 +20,9 @@ final class AppState: ObservableObject {
     @Published var isLoadingDiscoverSuggestions = false
     @Published var likedPostIds: Set<String> = []
 
+    /// True only after we've loaded dismissed book IDs from Firestore, so discover suggestions exclude them from the first fetch.
+    private var dismissedBookIdsLoaded = false
+
     private let userBookRepo = UserBookRepository()
     private let postRepo = PostRepository()
     private let dismissedRepo = DismissedSuggestionsRepository()
@@ -36,6 +39,7 @@ final class AppState: ObservableObject {
     func startFirestoreListeners(uid: String) {
         stopFirestoreListeners()
         currentUserId = uid
+        dismissedBookIdsLoaded = false
 
         // Load from disk first so the user sees their library immediately.
         if let cached = LocalLibraryCache.shared.loadLibrary(userId: uid), !cached.isEmpty {
@@ -60,7 +64,11 @@ final class AppState: ObservableObject {
         Task { [weak self] in
             guard let self = self, let uid = self.currentUserId else { return }
             let ids = await self.dismissedRepo.fetchDismissedBookIds(userId: uid)
-            await MainActor.run { self.dismissedBookIds = Set(ids) }
+            await MainActor.run {
+                self.dismissedBookIds = Set(ids)
+                self.dismissedBookIdsLoaded = true
+                self.loadDiscoverSuggestionsIfNeeded()
+            }
         }
         Task { [weak self] in
             guard let self = self, let uid = self.currentUserId else { return }
@@ -85,6 +93,7 @@ final class AppState: ObservableObject {
         userBooks = []
         feedPosts = []
         dismissedBookIds = []
+        dismissedBookIdsLoaded = false
         discoverCurrentSuggestion = nil
         discoverSuggestionQueue = []
         likedPostIds = []
@@ -129,25 +138,30 @@ final class AppState: ObservableObject {
         inTarget.sort { ($0.tierOrder ?? 999) < ($1.tierOrder ?? 999) }
         let insertAt = order.map { min($0, inTarget.count) } ?? inTarget.count
         inTarget.insert(moved, at: insertAt)
-        for (i, ub) in inTarget.enumerated() {
-            guard let idx = userBooks.firstIndex(where: { $0.id == ub.id }) else { continue }
-            let changed = userBooks[idx].tier != ub.tier || userBooks[idx].tierOrder != i
-            userBooks[idx].tier = ub.tier
-            userBooks[idx].tierOrder = i
-            if ub.id == userBookId { userBooks[idx].updatedAt = now }
-            if changed { toPersist.append(userBooks[idx]) }
-        }
-
-        // Source tier (if different): renumber remaining books
+        var inSourceUpdates: [(Int, Int)] = []
         if !sameTier(sourceTier, tier) {
             var inSource = userBooks.filter { sameTier($0.tier, sourceTier) }
             inSource.sort { ($0.tierOrder ?? 999) < ($1.tierOrder ?? 999) }
             for (i, ub) in inSource.enumerated() {
                 guard let idx = userBooks.firstIndex(where: { $0.id == ub.id }) else { continue }
                 if userBooks[idx].tierOrder != i {
-                    userBooks[idx].tierOrder = i
-                    toPersist.append(userBooks[idx])
+                    inSourceUpdates.append((idx, i))
                 }
+            }
+        }
+
+        withAnimation(.easeInOut(duration: 0.3)) {
+            for (i, ub) in inTarget.enumerated() {
+                guard let idx = userBooks.firstIndex(where: { $0.id == ub.id }) else { continue }
+                let changed = userBooks[idx].tier != ub.tier || userBooks[idx].tierOrder != i
+                userBooks[idx].tier = ub.tier
+                userBooks[idx].tierOrder = i
+                if ub.id == userBookId { userBooks[idx].updatedAt = now }
+                if changed { toPersist.append(userBooks[idx]) }
+            }
+            for (idx, i) in inSourceUpdates {
+                userBooks[idx].tierOrder = i
+                toPersist.append(userBooks[idx])
             }
         }
 
@@ -158,7 +172,7 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Move a book from Want to Read (or any status) to Read. Sets dateFinished to now and persists.
+    /// Move a book from Queue (or any status) to Read. Sets dateFinished to now and persists.
     func moveToRead(_ userBook: UserBook) {
         var updated = userBook
         updated.status = .read
@@ -191,7 +205,17 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Add a book to Want to Read. Firestore listener will update userBooks.
+    /// Remove a book from dismissed (undo Pass) and show it again as the current Discover suggestion.
+    func returnToDiscoverBook(_ book: Book) {
+        dismissedBookIds.remove(book.id)
+        discoverCurrentSuggestion = book
+        guard let uid = currentUserId else { return }
+        Task {
+            try? await dismissedRepo.removeDismissed(userId: uid, bookId: book.id)
+        }
+    }
+
+    /// Add a book to Queue. Firestore listener will update userBooks.
     func addToWantToRead(book: Book) {
         guard let uid = currentUserId else { return }
         Task {
@@ -209,8 +233,9 @@ final class AppState: ObservableObject {
 
     // MARK: - Discover suggestions (prefetch so suggestions are ready when user taps Discover)
 
-    /// Call when app/tab bar appears to load first suggestion in background. No-op if already have a suggestion or are loading.
+    /// Call when app/tab bar appears to load first suggestion in background. No-op if already have a suggestion or are loading. Waits for dismissed IDs to load from Firestore so we never suggest passed books.
     func loadDiscoverSuggestionsIfNeeded() {
+        guard dismissedBookIdsLoaded else { return }
         guard discoverCurrentSuggestion == nil, discoverSuggestionQueue.isEmpty, !isLoadingDiscoverSuggestions else { return }
         isLoadingDiscoverSuggestions = true
         Task { [weak self] in
@@ -230,7 +255,7 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Advance to next suggestion (e.g. after Pass / Want to read / Read). Fetches more in background if queue is empty.
+    /// Advance to next suggestion (e.g. after Pass / Queue / Read). Fetches more in background if queue is empty.
     func advanceDiscoverSuggestion() {
         if discoverSuggestionQueue.isEmpty {
             discoverCurrentSuggestion = nil

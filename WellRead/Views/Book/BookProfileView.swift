@@ -3,7 +3,7 @@
 //  WellRead
 //
 //  Default book profile (Hinge-style): hero cover, title, author, summary, notable quote,
-//  optional "Similar to" row, and three actions (Pass, Want to read, Read).
+//  optional "Similar to" row, and three actions (Pass, Read, Queue).
 //
 
 import SwiftUI
@@ -15,6 +15,8 @@ struct BookProfileView: View {
     var onNotInterested: (() -> Void)? = nil
     var onWantToRead: (() -> Void)? = nil
     var onHaveRead: (() -> Void)? = nil
+    /// When set, tapping a similar book opens that book (e.g. sets navigation selection). Used from Discover.
+    var onBookTap: ((Book) -> Void)? = nil
 
     @State private var summary: String?
     @State private var notableQuote: String?
@@ -52,48 +54,6 @@ struct BookProfileView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, 16)
 
-                    // Similar to — cute little icons (only when we have similar books)
-                    if !readBooksForSimilar.isEmptyOrNil && (similarLoading || !similarBooks.isEmpty) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Similar to books you've read")
-                                .font(Theme.headline())
-                                .foregroundStyle(Theme.textSecondary)
-                            if similarLoading {
-                                HStack(spacing: 12) {
-                                    ForEach(0..<3, id: \.self) { _ in
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .fill(Theme.surface)
-                                            .frame(width: 52, height: 52 * 1.5)
-                                            .overlay(ProgressView().tint(Theme.accent))
-                                    }
-                                }
-                            } else {
-                                ScrollView(.horizontal, showsIndicators: false) {
-                                    HStack(spacing: 14) {
-                                        ForEach(similarBooks) { similar in
-                                            VStack(spacing: 6) {
-                                                BookCoverView(book: similar, size: 52)
-                                                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                                                Text(similar.title)
-                                                    .font(.caption2)
-                                                    .foregroundStyle(Theme.textSecondary)
-                                                    .lineLimit(2)
-                                                    .multilineTextAlignment(.center)
-                                                    .frame(width: 64)
-                                            }
-                                        }
-                                    }
-                                    .padding(.vertical, 4)
-                                }
-                            }
-                        }
-                        .padding()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Theme.surface)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
-                        .padding(.horizontal)
-                    }
-
                     // Summary
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Summary")
@@ -119,6 +79,48 @@ struct BookProfileView: View {
                     .background(Theme.surface)
                     .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
                     .padding(.horizontal)
+
+                    // Similar to — cute little icons (only when we have similar books)
+                    if !readBooksForSimilar.isEmptyOrNil && (similarLoading || !similarBooks.isEmpty) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Similar to books you've read")
+                                .font(Theme.headline())
+                                .foregroundStyle(Theme.textSecondary)
+                            if similarLoading {
+                                HStack(spacing: 12) {
+                                    ForEach(0..<3, id: \.self) { _ in
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .fill(Theme.surface)
+                                            .frame(width: 52, height: 52 * 1.5)
+                                            .overlay(ProgressView().tint(Theme.accent))
+                                    }
+                                }
+                            } else {
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 14) {
+                                        ForEach(similarBooks) { similar in
+                                            VStack(spacing: 6) {
+                                                BookCoverView(book: similar, size: 52, onTap: onBookTap != nil ? { onBookTap?(similar) } : nil)
+                                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                                                Text(similar.title)
+                                                    .font(.caption2)
+                                                    .foregroundStyle(Theme.textSecondary)
+                                                    .lineLimit(2)
+                                                    .multilineTextAlignment(.center)
+                                                    .frame(width: 64)
+                                            }
+                                        }
+                                    }
+                                    .padding(.vertical, 4)
+                                }
+                            }
+                        }
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Theme.surface)
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+                        .padding(.horizontal)
+                    }
 
                     // Notable quote
                     VStack(alignment: .leading, spacing: 8) {
@@ -155,7 +157,6 @@ struct BookProfileView: View {
                 actionBar
             }
         }
-        .background(Theme.background)
         .navigationBarTitleDisplayMode(.inline)
         .task(id: book.id) {
             summaryLoading = true
@@ -188,18 +189,6 @@ struct BookProfileView: View {
                 }
                 .buttonStyle(.plain)
             }
-            if onWantToRead != nil {
-                Button(action: { onWantToRead?() }) {
-                    Label("Want to read", systemImage: "book.circle.fill")
-                        .font(Theme.headline())
-                        .foregroundStyle(Theme.background)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(Theme.accent)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
-                }
-                .buttonStyle(.plain)
-            }
             if onHaveRead != nil {
                 Button(action: { onHaveRead?() }) {
                     Label("Read", systemImage: "checkmark.circle.fill")
@@ -212,11 +201,22 @@ struct BookProfileView: View {
                 }
                 .buttonStyle(.plain)
             }
+            if onWantToRead != nil {
+                Button(action: { onWantToRead?() }) {
+                    Label("Queue", systemImage: "book.circle.fill")
+                        .font(Theme.headline())
+                        .foregroundStyle(Theme.background)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Theme.accent)
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding(.horizontal)
         .padding(.vertical, 10)
         .padding(.bottom, tabBarInset)
-        .background(Theme.background)
     }
 }
 

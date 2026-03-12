@@ -22,6 +22,12 @@ final class DismissedSuggestionsRepository {
         ])
     }
 
+    /// Remove a dismissed book for the user (e.g. when they tap Back to return to that book).
+    func removeDismissed(userId: String, bookId: String) async throws {
+        let docId = "\(userId)_\(bookId)"
+        try await db.collection(collectionName).document(docId).delete()
+    }
+
     /// Fetch all dismissed book IDs for the user.
     func fetchDismissedBookIds(userId: String) async -> [String] {
         do {

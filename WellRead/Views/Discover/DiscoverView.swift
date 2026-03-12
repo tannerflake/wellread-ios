@@ -11,6 +11,7 @@ import SwiftUI
 struct DiscoverView: View {
     @EnvironmentObject var appState: AppState
     @State private var selectedBookForProfile: Book?
+    @State private var bookWeCameFrom: Book?
 
     var body: some View {
         NavigationStack {
@@ -41,6 +42,19 @@ struct DiscoverView: View {
                     onWantToRead: { appState.addToWantToRead(book: book); selectedBookForProfile = nil },
                     onHaveRead: { appState.addAsRead(book: book); selectedBookForProfile = nil }
                 )
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            if let prev = bookWeCameFrom {
+                                appState.returnToDiscoverBook(prev)
+                            }
+                            bookWeCameFrom = nil
+                            selectedBookForProfile = nil
+                        } label: {
+                            Image(systemName: "chevron.left")
+                        }
+                    }
+                }
             }
             .onAppear {
                 if appState.discoverCurrentSuggestion == nil, !appState.discoverSuggestionQueue.isEmpty {
@@ -103,7 +117,11 @@ struct DiscoverView: View {
             readBooksForSimilar: appState.readBooks,
             onNotInterested: { performNotInterested(book) },
             onWantToRead: { performWantToRead(book) },
-            onHaveRead: { performHaveRead(book) }
+            onHaveRead: { performHaveRead(book) },
+            onBookTap: { tappedBook in
+                bookWeCameFrom = appState.discoverCurrentSuggestion
+                selectedBookForProfile = tappedBook
+            }
         )
         .padding(.horizontal)
         .padding(.bottom, 24)
@@ -140,7 +158,7 @@ struct DiscoverBookCard: View {
                 .foregroundStyle(Theme.textPrimary)
                 .lineLimit(2)
                 .frame(width: 100, alignment: .leading)
-            Button("Want to Read") {
+            Button("Queue") {
                 onAdd()
             }
             .font(.caption2)
