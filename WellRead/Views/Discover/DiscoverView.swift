@@ -40,7 +40,9 @@ struct DiscoverView: View {
                     readBooksForSimilar: appState.readBooks,
                     onNotInterested: { selectedBookForProfile = nil },
                     onWantToRead: { appState.addToWantToRead(book: book); selectedBookForProfile = nil },
-                    onHaveRead: { appState.addAsRead(book: book); selectedBookForProfile = nil }
+                    onHaveRead: { appState.addAsRead(book: book); selectedBookForProfile = nil },
+                    isOnReadList: appState.isBookOnReadList(bookId: book.id),
+                    isInQueue: appState.isBookInQueue(bookId: book.id)
                 )
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -121,7 +123,9 @@ struct DiscoverView: View {
             onBookTap: { tappedBook in
                 bookWeCameFrom = appState.discoverCurrentSuggestion
                 selectedBookForProfile = tappedBook
-            }
+            },
+            isOnReadList: appState.isBookOnReadList(bookId: book.id),
+            isInQueue: appState.isBookInQueue(bookId: book.id)
         )
         .padding(.horizontal)
         .padding(.bottom, 24)

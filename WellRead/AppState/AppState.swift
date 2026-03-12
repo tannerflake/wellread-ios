@@ -196,6 +196,16 @@ final class AppState: ObservableObject {
         userBooks.filter { $0.status == .wantToRead }
     }
 
+    /// True if the given book id is on the user's read list.
+    func isBookOnReadList(bookId: String) -> Bool {
+        userBooks.contains { $0.bookId == bookId && $0.status == .read }
+    }
+
+    /// True if the given book id is in the user's queue (want to read).
+    func isBookInQueue(bookId: String) -> Bool {
+        userBooks.contains { $0.bookId == bookId && $0.status == .wantToRead }
+    }
+
     /// Mark a book as "not interested" so we never suggest it again.
     func addDismissedBookId(_ bookId: String) {
         dismissedBookIds.insert(bookId)

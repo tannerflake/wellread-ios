@@ -41,7 +41,9 @@ struct FeedView: View {
                     readBooksForSimilar: appState.readBooks,
                     onNotInterested: { selectedBookForProfile = nil },
                     onWantToRead: { appState.addToWantToRead(book: book); selectedBookForProfile = nil },
-                    onHaveRead: { appState.addAsRead(book: book); selectedBookForProfile = nil }
+                    onHaveRead: { appState.addAsRead(book: book); selectedBookForProfile = nil },
+                    isOnReadList: appState.isBookOnReadList(bookId: book.id),
+                    isInQueue: appState.isBookInQueue(bookId: book.id)
                 )
             }
             .sheet(item: $postForComments) { post in

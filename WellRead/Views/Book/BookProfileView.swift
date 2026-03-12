@@ -17,6 +17,10 @@ struct BookProfileView: View {
     var onHaveRead: (() -> Void)? = nil
     /// When set, tapping a similar book opens that book (e.g. sets navigation selection). Used from Discover.
     var onBookTap: ((Book) -> Void)? = nil
+    /// True when this book is already on the user's read list (affects Read button appearance).
+    var isOnReadList: Bool = false
+    /// True when this book is already in the user's queue (affects Queue button appearance).
+    var isInQueue: Bool = false
 
     @State private var summary: String?
     @State private var notableQuote: String?
@@ -191,19 +195,19 @@ struct BookProfileView: View {
             }
             if onHaveRead != nil {
                 Button(action: { onHaveRead?() }) {
-                    Label("Read", systemImage: "checkmark.circle.fill")
+                    Label(isOnReadList ? "On read list" : "Read", systemImage: "checkmark.circle.fill")
                         .font(Theme.headline())
-                        .foregroundStyle(Theme.accent)
+                        .foregroundStyle(isOnReadList ? Theme.background : Theme.accent)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .background(Theme.surface)
+                        .background(isOnReadList ? Theme.accent : Theme.surface)
                         .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
                 }
                 .buttonStyle(.plain)
             }
             if onWantToRead != nil {
                 Button(action: { onWantToRead?() }) {
-                    Label("Queue", systemImage: "book.circle.fill")
+                    Label(isInQueue ? "In queue" : "Queue", systemImage: "book.circle.fill")
                         .font(Theme.headline())
                         .foregroundStyle(Theme.background)
                         .frame(maxWidth: .infinity)
