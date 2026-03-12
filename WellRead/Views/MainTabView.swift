@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct MainTabView: View {
+    @EnvironmentObject var appState: AppState
     @State private var selectedTab: Tab = .profile
     @State private var showAddBook = false
     
@@ -34,14 +35,17 @@ struct MainTabView: View {
         }
         .ignoresSafeArea(.keyboard)
         .sheet(isPresented: $showAddBook) { AddBookFlowView() }
+        .onAppear {
+            appState.loadDiscoverSuggestionsIfNeeded()
+        }
     }
     
     private var tabBar: some View {
         HStack(spacing: 0) {
             tabButton(.feed, icon: "book.closed.fill", label: "Feed")
             tabButton(.discover, icon: "sparkles", label: "Discover")
-            addButton
             tabButton(.profile, icon: "books.vertical.fill", label: "Profile")
+            addButton
         }
         .padding(.horizontal, 8)
         .padding(.top, 6)

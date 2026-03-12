@@ -11,4 +11,5 @@ struct Comment: Identifiable, Codable {
     var userId: String   // Firebase Auth uid
     var text: String
     var createdAt: Date
+    var displayName: String?  // Optional; set when writing so we can show without lookup
 }

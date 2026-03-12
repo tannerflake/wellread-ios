@@ -11,6 +11,8 @@ struct GridLibraryView: View {
     let userBooks: [UserBook]
     /// When non-nil (e.g. on Want to Read), long-press a book to move it to Read.
     var onMoveToRead: ((UserBook) -> Void)? = nil
+    /// When set, tapping a book cover opens the book profile.
+    var onBookTap: ((Book) -> Void)? = nil
 
     private let columns = [
         GridItem(.adaptive(minimum: 100), spacing: Theme.gridSpacing)
@@ -22,7 +24,7 @@ struct GridLibraryView: View {
                 ForEach(userBooks) { ub in
                     if let book = ub.book {
                         VStack(alignment: .leading, spacing: 6) {
-                            BookCoverView(book: book, size: 100)
+                            BookCoverView(book: book, size: 100, onTap: onBookTap != nil ? { onBookTap?(book) } : nil)
                                 .onLongPressGesture(minimumDuration: 0.5) {
                                     onMoveToRead?(ub)
                                 }

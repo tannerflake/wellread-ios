@@ -84,6 +84,14 @@ final class AuthService: ObservableObject {
         self.appUser = fromFirestore ?? fallbackUser
     }
 
+    /// Refreshes appUser from Firestore (e.g. after profile photo upload). Call from MainActor.
+    func refreshAppUser() async {
+        guard let uid = firebaseUser?.uid else { return }
+        if let user = await userRepo.getUser(uid: uid) {
+            self.appUser = user
+        }
+    }
+
     // MARK: - Apple Sign-In (nonce required)
 
     /// Call from SignInWithAppleButton onRequest: configures nonce and scopes on the request.

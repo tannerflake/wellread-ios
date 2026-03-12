@@ -43,21 +43,23 @@ final class CommentRepository {
     }
 
     /// Adds a comment and increments post's commentCount.
-    func addComment(postId: String, userId: String, text: String) async throws -> Comment {
+    func addComment(postId: String, userId: String, text: String, displayName: String?) async throws -> Comment {
         let id = UUID()
         let now = Date()
         let ref = db.collection(comments).document(id.uuidString)
-        try await ref.setData([
+        var data: [String: Any] = [
             "postId": postId,
             "userId": userId,
             "text": text,
             "createdAt": Timestamp(date: now),
-        ])
+        ]
+        if let name = displayName { data["displayName"] = name }
+        try await ref.setData(data)
         let postRef = db.collection("posts").document(postId)
         try await postRef.updateData([
             "commentCount": FieldValue.increment(Int64(1)),
         ])
-        return Comment(id: id, postId: postId, userId: userId, text: text, createdAt: now)
+        return Comment(id: id, postId: postId, userId: userId, text: text, createdAt: now, displayName: displayName)
     }
 
     private func comment(from data: [String: Any], docId: String) -> Comment? {
@@ -66,6 +68,7 @@ final class CommentRepository {
               let text = data["text"] as? String,
               let createdAt = (data["createdAt"] as? Timestamp)?.dateValue(),
               let id = UUID(uuidString: docId) else { return nil }
-        return Comment(id: id, postId: postId, userId: userId, text: text, createdAt: createdAt)
+        let displayName = data["displayName"] as? String
+        return Comment(id: id, postId: postId, userId: userId, text: text, createdAt: createdAt, displayName: displayName)
     }
 }

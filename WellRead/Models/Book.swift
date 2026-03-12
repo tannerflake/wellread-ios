@@ -36,6 +36,34 @@ struct Book: Identifiable, Equatable, Hashable {
         components.queryItems = query
         return components.string ?? urlString
     }
+
+    /// For Google Books URLs, returns multiple URLs with zoom=0,1,2,3,4,5 so we can try lower resolutions if high-res fails. Non-Google URLs return a single-element array.
+    static func coverURLsToTry(from urlString: String) -> [String] {
+        guard urlString.contains("books.google.com"),
+              var components = URLComponents(string: urlString) else {
+            return urlString.isEmpty ? [] : [urlString]
+        }
+        var result: [String] = []
+        let query = components.queryItems ?? []
+        for zoom in [0, 1, 2, 3, 4, 5] {
+            var q = query
+            q.removeAll { $0.name.lowercased() == "zoom" }
+            q.append(URLQueryItem(name: "zoom", value: "\(zoom)"))
+            components.queryItems = q
+            if let s = components.string, !result.contains(s) {
+                result.append(s)
+            }
+        }
+        return result.isEmpty ? [urlString] : result
+    }
+
+    /// Builds standard Google Books cover URLs from a volume ID (e.g. from API). Use as last-resort fallbacks when API image links fail or return placeholders.
+    static func coverURLsFromBookId(_ bookId: String) -> [String] {
+        let id = bookId.trimmingCharacters(in: .whitespaces)
+        guard id.count >= 5, id.count <= 50, id.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" || $0 == "-" }) else { return [] }
+        guard let encoded = id.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else { return [] }
+        return (0...5).map { "https://books.google.com/books/content?id=\(encoded)&printsec=frontcover&img=1&zoom=\($0)" }
+    }
 }
 
 extension Book: Codable {

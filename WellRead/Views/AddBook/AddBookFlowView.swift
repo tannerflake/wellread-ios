@@ -57,11 +57,13 @@ struct AddBookFlowView: View {
                 }
             }
             .navigationDestination(item: $selectedBookForProfile) { book in
-                BookProfileView(book: book) {
-                    selectedBook = book
-                    selectedBookForProfile = nil
-                    step = .status
-                }
+                BookProfileView(
+                    book: book,
+                    readBooksForSimilar: appState.readBooks,
+                    onNotInterested: { selectedBookForProfile = nil },
+                    onWantToRead: { appState.addToWantToRead(book: book); selectedBookForProfile = nil },
+                    onHaveRead: { appState.addAsRead(book: book); selectedBookForProfile = nil }
+                )
             }
         }
     }

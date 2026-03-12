@@ -25,6 +25,13 @@ private final class CoverImageCache {
         if let cached = cache.object(forKey: key) { return cached }
         guard let (data, _) = try? await session.data(from: url),
               let img = UIImage(data: data) else { return nil }
+        // Reject Google Books "image not available" placeholder: tiny files or very small dimensions.
+        if url.absoluteString.contains("books.google.com") {
+            if data.count < 4000 { return nil }
+            let w = img.size.width * (img.scale > 0 ? img.scale : 1)
+            let h = img.size.height * (img.scale > 0 ? img.scale : 1)
+            if w <= 220 && h <= 220 { return nil }
+        }
         cache.setObject(img, forKey: key, cost: data.count)
         return img
     }
@@ -33,19 +40,26 @@ private final class CoverImageCache {
 struct BookCoverView: View {
     let book: Book
     var size: CGFloat = 80
+    /// When set, tapping the cover calls this (e.g. to open book profile).
+    var onTap: (() -> Void)? = nil
 
-    /// All URLs to try in order: primary (high-res) then fallbacks.
+    /// All URLs to try in order: primary (multiple zoom levels), then each fallback (multiple zoom levels), then ID-based Google URLs. Cycles until one returns a valid cover (no "image not available").
     private var urlsToTry: [URL] {
-        let primary = Book.highResCoverURLString(book.coverURL)
-        guard let u = URL(string: primary), !book.coverURL.isEmpty else { return [] }
-        var list = [u]
+        var list: [String] = []
+        let primaryVariants = Book.coverURLsToTry(from: book.coverURL)
+        list.append(contentsOf: primaryVariants)
         for s in book.fallbackCoverURLs ?? [] {
             let normalized = Book.highResCoverURLString(s)
-            if let url = URL(string: normalized), !list.contains(where: { $0.absoluteString == normalized }) {
-                list.append(url)
+            let variants = Book.coverURLsToTry(from: normalized)
+            for v in variants where !list.contains(v) {
+                list.append(v)
             }
         }
-        return list
+        let idBased = Book.coverURLsFromBookId(book.id)
+        for v in idBased where !list.contains(v) {
+            list.append(v)
+        }
+        return list.compactMap { URL(string: $0) }.filter { !$0.absoluteString.isEmpty }
     }
 
     var body: some View {
@@ -59,6 +73,7 @@ struct BookCoverView: View {
         .frame(width: size, height: size * 1.5)
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
+        .modifier(CoverTapModifier(onTap: onTap))
     }
 
     private var placeholder: some View {
@@ -67,6 +82,17 @@ struct BookCoverView: View {
             Image(systemName: "book.closed")
                 .font(.system(size: size * 0.4))
                 .foregroundStyle(Theme.textTertiary)
+        }
+    }
+}
+
+private struct CoverTapModifier: ViewModifier {
+    let onTap: (() -> Void)?
+    func body(content: Content) -> some View {
+        if let onTap = onTap {
+            content.contentShape(Rectangle()).onTapGesture(perform: onTap)
+        } else {
+            content
         }
     }
 }

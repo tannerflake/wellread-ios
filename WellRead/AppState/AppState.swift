@@ -14,12 +14,21 @@ final class AppState: ObservableObject {
     @Published var currentUser: User?
     @Published var userBooks: [UserBook] = []
     @Published var feedPosts: [Post] = []
+    @Published var dismissedBookIds: Set<String> = []
+    @Published var discoverCurrentSuggestion: Book?
+    @Published var discoverSuggestionQueue: [Book] = []
+    @Published var isLoadingDiscoverSuggestions = false
+    @Published var likedPostIds: Set<String> = []
 
     private let userBookRepo = UserBookRepository()
     private let postRepo = PostRepository()
+    private let dismissedRepo = DismissedSuggestionsRepository()
     private var userBooksListener: ListenerRegistration?
     private var feedListener: ListenerRegistration?
     private var currentUserId: String?
+
+    /// Firebase Auth uid for the current user (use for Firestore writes).
+    var authUserId: String? { currentUserId }
 
     init() {}
 
@@ -47,6 +56,17 @@ final class AppState: ObservableObject {
         feedListener = postRepo.listenFeed { [weak self] list in
             self?.feedPosts = list
         }
+
+        Task { [weak self] in
+            guard let self = self, let uid = self.currentUserId else { return }
+            let ids = await self.dismissedRepo.fetchDismissedBookIds(userId: uid)
+            await MainActor.run { self.dismissedBookIds = Set(ids) }
+        }
+        Task { [weak self] in
+            guard let self = self, let uid = self.currentUserId else { return }
+            let liked = await self.postRepo.fetchLikedPostIds(userId: uid)
+            await MainActor.run { self.likedPostIds = liked }
+        }
     }
 
     /// Call when user signs out to stop listeners and clear state.
@@ -64,6 +84,10 @@ final class AppState: ObservableObject {
         isAuthenticated = false
         userBooks = []
         feedPosts = []
+        dismissedBookIds = []
+        discoverCurrentSuggestion = nil
+        discoverSuggestionQueue = []
+        likedPostIds = []
         BookRepository.shared.clearCache()
     }
 
@@ -156,5 +180,99 @@ final class AppState: ObservableObject {
 
     var wantToRead: [UserBook] {
         userBooks.filter { $0.status == .wantToRead }
+    }
+
+    /// Mark a book as "not interested" so we never suggest it again.
+    func addDismissedBookId(_ bookId: String) {
+        dismissedBookIds.insert(bookId)
+        guard let uid = currentUserId else { return }
+        Task {
+            try? await dismissedRepo.addDismissed(userId: uid, bookId: bookId)
+        }
+    }
+
+    /// Add a book to Want to Read. Firestore listener will update userBooks.
+    func addToWantToRead(book: Book) {
+        guard let uid = currentUserId else { return }
+        Task {
+            _ = try? await userBookRepo.addUserBook(userId: uid, book: book, status: .wantToRead, rating: nil, reviewText: nil, dateStarted: nil, dateFinished: nil)
+        }
+    }
+
+    /// Add a book as Read (dateFinished = now). Firestore listener will update userBooks.
+    func addAsRead(book: Book) {
+        guard let uid = currentUserId else { return }
+        Task {
+            _ = try? await userBookRepo.addUserBook(userId: uid, book: book, status: .read, rating: nil, reviewText: nil, dateStarted: nil, dateFinished: Date())
+        }
+    }
+
+    // MARK: - Discover suggestions (prefetch so suggestions are ready when user taps Discover)
+
+    /// Call when app/tab bar appears to load first suggestion in background. No-op if already have a suggestion or are loading.
+    func loadDiscoverSuggestionsIfNeeded() {
+        guard discoverCurrentSuggestion == nil, discoverSuggestionQueue.isEmpty, !isLoadingDiscoverSuggestions else { return }
+        isLoadingDiscoverSuggestions = true
+        Task { [weak self] in
+            guard let self = self else { return }
+            let batch = await DiscoverSuggestionsService.fetchBatch(readBooks: self.readBooks, dismissedBookIds: self.dismissedBookIds)
+            await MainActor.run {
+                self.isLoadingDiscoverSuggestions = false
+                self.discoverSuggestionQueue.append(contentsOf: batch)
+                if !self.discoverSuggestionQueue.isEmpty {
+                    self.discoverCurrentSuggestion = self.discoverSuggestionQueue.first
+                    self.discoverSuggestionQueue = Array(self.discoverSuggestionQueue.dropFirst())
+                    if self.discoverSuggestionQueue.isEmpty {
+                        self.fetchMoreDiscoverSuggestionsInBackground()
+                    }
+                }
+            }
+        }
+    }
+
+    /// Advance to next suggestion (e.g. after Pass / Want to read / Read). Fetches more in background if queue is empty.
+    func advanceDiscoverSuggestion() {
+        if discoverSuggestionQueue.isEmpty {
+            discoverCurrentSuggestion = nil
+            loadDiscoverSuggestionsIfNeeded()
+            return
+        }
+        discoverCurrentSuggestion = discoverSuggestionQueue.first
+        discoverSuggestionQueue = Array(discoverSuggestionQueue.dropFirst())
+        if discoverSuggestionQueue.isEmpty {
+            fetchMoreDiscoverSuggestionsInBackground()
+        }
+    }
+
+    private func fetchMoreDiscoverSuggestionsInBackground() {
+        Task { [weak self] in
+            guard let self = self else { return }
+            let batch = await DiscoverSuggestionsService.fetchBatch(readBooks: self.readBooks, dismissedBookIds: self.dismissedBookIds)
+            await MainActor.run {
+                self.discoverSuggestionQueue.append(contentsOf: batch)
+            }
+        }
+    }
+
+    /// Toggle like on a post. Updates Firestore and local state (likedPostIds and feedPosts likeCount).
+    func togglePostLike(postId: String, liked: Bool) {
+        guard let uid = currentUserId else { return }
+        if liked {
+            likedPostIds.insert(postId)
+            if let idx = feedPosts.firstIndex(where: { $0.id.uuidString == postId }) {
+                feedPosts[idx].likeCount += 1
+            }
+            Task {
+                try? await postRepo.addLike(postId: postId, userId: uid)
+            }
+        } else {
+            likedPostIds.remove(postId)
+            if let idx = feedPosts.firstIndex(where: { $0.id.uuidString == postId }) {
+                feedPosts[idx].likeCount = max(0, feedPosts[idx].likeCount - 1)
+            }
+            Task {
+                try? await postRepo.removeLike(postId: postId, userId: uid)
+            }
+        }
     }
 }

@@ -2,158 +2,139 @@
 //  DiscoverView.swift
 //  WellRead
 //
-//  AI suggestions + Trending (most added, finished, highly rated).
+//  Full-screen Hinge-style discovery: one book at a time with three actions.
+//  Suggestions are prefetched when the tab bar appears so the first suggestion is ready when user taps Discover.
 //
 
 import SwiftUI
 
 struct DiscoverView: View {
     @EnvironmentObject var appState: AppState
-    @State private var aiSuggestions: [Book] = []
-    @State private var isLoadingAI = false
-    
+    @State private var selectedBookForProfile: Book?
+
     var body: some View {
         NavigationStack {
             ZStack {
                 Theme.background.ignoresSafeArea()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 28) {
-                        aiSection
-                        trendingSection
+                VStack(spacing: 0) {
+                    Group {
+                        if appState.isLoadingDiscoverSuggestions && appState.discoverCurrentSuggestion == nil {
+                            loadingView
+                        } else if let book = appState.discoverCurrentSuggestion {
+                            suggestionCardFullScreen(book: book)
+                        } else {
+                            emptyStateView
+                        }
                     }
-                    .padding(.bottom, 100)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
             .navigationTitle("Discover")
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(Theme.background, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .navigationDestination(item: $selectedBookForProfile) { book in
+                BookProfileView(
+                    book: book,
+                    readBooksForSimilar: appState.readBooks,
+                    onNotInterested: { selectedBookForProfile = nil },
+                    onWantToRead: { appState.addToWantToRead(book: book); selectedBookForProfile = nil },
+                    onHaveRead: { appState.addAsRead(book: book); selectedBookForProfile = nil }
+                )
+            }
+            .onAppear {
+                if appState.discoverCurrentSuggestion == nil, !appState.discoverSuggestionQueue.isEmpty {
+                    appState.advanceDiscoverSuggestion()
+                } else if appState.discoverCurrentSuggestion == nil, appState.discoverSuggestionQueue.isEmpty, !appState.isLoadingDiscoverSuggestions {
+                    appState.loadDiscoverSuggestionsIfNeeded()
+                }
+            }
         }
     }
-    
-    private var aiSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("AI Suggestions")
+
+    private var loadingView: some View {
+        VStack(spacing: 20) {
+            ProgressView()
+                .scaleEffect(1.2)
+                .tint(Theme.accent)
+            Text("Finding your next read…")
                 .font(Theme.title2())
+                .foregroundStyle(Theme.textSecondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var emptyStateView: some View {
+        VStack(spacing: 24) {
+            Spacer(minLength: 0)
+            Image(systemName: "sparkles")
+                .font(.system(size: 56))
+                .foregroundStyle(Theme.accent)
+            Text("Find my next read")
+                .font(Theme.title())
                 .foregroundStyle(Theme.textPrimary)
+            Text("Get a personalized suggestion and swipe through your next favorite book.")
+                .font(Theme.body())
+                .foregroundStyle(Theme.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
             Button {
-                loadAISuggestions()
+                appState.loadDiscoverSuggestionsIfNeeded()
             } label: {
-                HStack {
-                    if isLoadingAI {
-                        ProgressView().tint(Theme.accent)
-                        Text("Generating…").font(Theme.headline()).foregroundStyle(Theme.textPrimary)
-                    } else {
-                        Image(systemName: "sparkles")
-                            .font(.title2)
-                            .foregroundStyle(Theme.accent)
-                        Text("Generate My Next 5 Reads")
-                            .font(Theme.headline())
-                            .foregroundStyle(Theme.textPrimary)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .wellReadCard()
+                Text("Start")
+                    .font(Theme.headline())
+                    .foregroundStyle(Theme.background)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(Theme.accent)
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
             }
             .buttonStyle(.plain)
-            .disabled(isLoadingAI)
-            
-            if !aiSuggestions.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        ForEach(aiSuggestions) { book in
-                            DiscoverBookCard(book: book) {
-                                // Add to Want to Read - would integrate with appState
-                            }
-                        }
-                    }
-                    .padding(.horizontal)
-                }
-            }
-        }
-        .padding(.horizontal)
-    }
-    
-    private func loadAISuggestions() {
-        isLoadingAI = true
-        aiSuggestions = []
-        Task {
-            if ApiKeys.claude != nil {
-                await loadAISuggestionsViaClaude()
-            } else {
-                await loadAISuggestionsViaGoogleOnly()
-            }
-            await MainActor.run { isLoadingAI = false }
+            .padding(.horizontal, 40)
+            .padding(.top, 8)
+            .disabled(appState.isLoadingDiscoverSuggestions)
+            Spacer(minLength: 0)
         }
     }
 
-    private func loadAISuggestionsViaClaude() async {
-        let readTitles = appState.readBooks.compactMap { $0.book?.title }
-        let context = readTitles.isEmpty
-            ? "The user hasn't finished any books yet."
-            : "Books the user has read: \(readTitles.prefix(10).joined(separator: ", "))."
-        let system = "You are a book recommendation assistant. Reply with exactly 5 book recommendations. Each line must be only the book title (and optionally ' by Author'). No numbering, no bullets, no extra text. One book per line."
-        let userMessage = "\(context) Suggest 5 books they might enjoy next. Reply with exactly 5 lines, each line one book title (optionally 'Title by Author')."
-        do {
-            let response = try await ClaudeService.shared.sendMessage(system: system, userMessage: userMessage)
-            let lines = response
-                .components(separatedBy: .newlines)
-                .map { $0.trimmingCharacters(in: .whitespaces) }
-                .filter { !$0.isEmpty }
-                .prefix(5)
-            var books: [Book] = []
-            for line in lines {
-                let query = line.replacingOccurrences(of: " by ", with: " ")
-                if let first = try? await GoogleBooksService.shared.search(query: String(query)).first {
-                    books.append(first)
-                }
-            }
-            await MainActor.run { aiSuggestions = Array(books) }
-        } catch {
-            let fallback = (try? await GoogleBooksService.shared.search(query: "popular books")).map { Array($0.prefix(5)) } ?? []
-            await MainActor.run { aiSuggestions = fallback }
-        }
+    private func suggestionCardFullScreen(book: Book) -> some View {
+        BookProfileView(
+            book: book,
+            readBooksForSimilar: appState.readBooks,
+            onNotInterested: { performNotInterested(book) },
+            onWantToRead: { performWantToRead(book) },
+            onHaveRead: { performHaveRead(book) }
+        )
+        .padding(.horizontal)
+        .padding(.bottom, 24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .id(book.id)
     }
 
-    private func loadAISuggestionsViaGoogleOnly() async {
-        try? await Task.sleep(nanoseconds: 800_000_000)
-        let readTitles = appState.readBooks.compactMap { $0.book?.title }
-        let query = !readTitles.isEmpty ? readTitles.prefix(2).joined(separator: " ") : "popular books"
-        let books = (try? await GoogleBooksService.shared.search(query: query)) ?? []
-        await MainActor.run { aiSuggestions = Array(books.prefix(5)) }
+    private func performNotInterested(_ book: Book) {
+        appState.addDismissedBookId(book.id)
+        appState.advanceDiscoverSuggestion()
     }
-    
-    private var trendingSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Trending")
-                .font(Theme.title2())
-                .foregroundStyle(Theme.textPrimary)
-            Text("Most finished this week")
-                .font(Theme.caption())
-                .foregroundStyle(Theme.textSecondary)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(appState.readBooks.prefix(5)) { ub in
-                        if let book = ub.book {
-                            DiscoverBookCard(book: book) {}
-                        }
-                    }
-                }
-                .padding(.horizontal)
-            }
-        }
-        .padding(.horizontal)
+
+    private func performWantToRead(_ book: Book) {
+        appState.addToWantToRead(book: book)
+        appState.advanceDiscoverSuggestion()
+    }
+
+    private func performHaveRead(_ book: Book) {
+        appState.addAsRead(book: book)
+        appState.advanceDiscoverSuggestion()
     }
 }
 
 struct DiscoverBookCard: View {
     let book: Book
+    var onCoverTap: (() -> Void)? = nil
     let onAdd: () -> Void
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            BookCoverView(book: book, size: 100)
+            BookCoverView(book: book, size: 100, onTap: onCoverTap)
             Text(book.title)
                 .font(Theme.caption())
                 .foregroundStyle(Theme.textPrimary)

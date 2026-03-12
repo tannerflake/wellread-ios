@@ -9,7 +9,9 @@ import SwiftUI
 
 struct FeedView: View {
     @EnvironmentObject var appState: AppState
-    
+    @State private var selectedBookForProfile: Book? = nil
+    @State private var postForComments: Post? = nil
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -17,7 +19,13 @@ struct FeedView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(appState.feedPosts) { post in
-                            FeedPostRow(post: post)
+                            FeedPostRow(
+                                post: post,
+                                isLiked: appState.likedPostIds.contains(post.id.uuidString),
+                                onBookTap: { selectedBookForProfile = $0 },
+                                onCommentTap: { postForComments = post },
+                                onLikeToggle: { appState.togglePostLike(postId: post.id.uuidString, liked: $0) }
+                            )
                         }
                     }
                     .padding(.bottom, 100)
@@ -27,15 +35,30 @@ struct FeedView: View {
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(Theme.background, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .navigationDestination(item: $selectedBookForProfile) { book in
+                BookProfileView(
+                    book: book,
+                    readBooksForSimilar: appState.readBooks,
+                    onNotInterested: { selectedBookForProfile = nil },
+                    onWantToRead: { appState.addToWantToRead(book: book); selectedBookForProfile = nil },
+                    onHaveRead: { appState.addAsRead(book: book); selectedBookForProfile = nil }
+                )
+            }
+            .sheet(item: $postForComments) { post in
+                CommentsView(post: post)
+                    .environmentObject(appState)
+            }
         }
     }
 }
 
 struct FeedPostRow: View {
     let post: Post
-    @State private var liked = false
-    @State private var likeCount: Int = 0
-    
+    var isLiked: Bool = false
+    var onBookTap: ((Book) -> Void)? = nil
+    var onCommentTap: (() -> Void)? = nil
+    var onLikeToggle: ((Bool) -> Void)? = nil
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
@@ -61,7 +84,7 @@ struct FeedPostRow: View {
             
             if let book = post.book {
                 HStack(alignment: .top, spacing: 14) {
-                    BookCoverView(book: book, size: 80)
+                    BookCoverView(book: book, size: 80, onTap: onBookTap != nil ? { onBookTap?(book) } : nil)
                     VStack(alignment: .leading, spacing: 6) {
                         Text(book.title)
                             .font(Theme.headline())
@@ -84,26 +107,31 @@ struct FeedPostRow: View {
             
             HStack(spacing: 20) {
                 Button {
-                    liked.toggle()
-                    likeCount = post.likeCount + (liked ? 1 : -1)
+                    onLikeToggle?(!isLiked)
                 } label: {
-                    Image(systemName: liked ? "heart.fill" : "heart")
-                        .foregroundStyle(liked ? Theme.accent : Theme.textSecondary)
+                    Image(systemName: isLiked ? "heart.fill" : "heart")
+                        .foregroundStyle(isLiked ? Theme.accent : Theme.textSecondary)
                 }
-                Text("\(likeCount)")
+                Text("\(post.likeCount)")
                     .font(Theme.caption())
                     .foregroundStyle(Theme.textSecondary)
-                Image(systemName: "bubble.right")
-                    .foregroundStyle(Theme.textSecondary)
-                Text("\(post.commentCount)")
-                    .font(Theme.caption())
-                    .foregroundStyle(Theme.textSecondary)
+                Button {
+                    onCommentTap?()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "bubble.right")
+                            .foregroundStyle(Theme.textSecondary)
+                        Text("\(post.commentCount)")
+                            .font(Theme.caption())
+                            .foregroundStyle(Theme.textSecondary)
+                    }
+                }
+                .buttonStyle(.plain)
                 Spacer()
             }
             .padding(.horizontal)
             .padding(.bottom, 16)
         }
         .padding(.top, 12)
-        .onAppear { likeCount = post.likeCount }
     }
 }

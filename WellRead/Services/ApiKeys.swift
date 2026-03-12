@@ -8,9 +8,10 @@
 import Foundation
 
 enum ApiKeys {
-    /// Claude (Anthropic) API key for AI features. From Secrets.plist "CLAUDE_API_KEY" or Info.plist.
+    /// Claude (Anthropic) API key for AI features. From Secrets.plist "CLAUDE_API_KEY" or "ANTHROPIC_API_KEY", or Info.plist.
     static var claude: String? {
         if let key = keyFromPlist(named: "Secrets", key: "CLAUDE_API_KEY"), !key.isEmpty { return key }
+        if let key = keyFromPlist(named: "Secrets", key: "ANTHROPIC_API_KEY"), !key.isEmpty { return key }
         if let key = keyFromPlist(named: "Info", key: "CLAUDE_API_KEY"), !key.isEmpty { return key }
         return nil
     }

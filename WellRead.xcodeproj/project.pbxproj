@@ -12,6 +12,7 @@
 		8BB4CBC32F4E9F2B0068B4B6 /* WellRead Firebase Service Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 8BB4CBC22F4E9F2B0068B4B6 /* WellRead Firebase Service Info.plist */; };
 		8BB4CBC62F4E9AEF0068B4B6 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 8BE1FABF2F4E8A70006ED44D /* FirebaseAuth */; };
 		8BB4CBC72F4E9AEF0068B4B6 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 8BE1FAC32F4E8A70006ED44D /* FirebaseFirestore */; };
+		8BB4CBC92F4E9AEF0068B4B6 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = 8BE1FAC42F4E8A70006ED44D /* FirebaseStorage */; };
 		8BB4CBC82F4E8B00006ED44D /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 8BE1FAC22F4E8B00006ED44D /* GoogleSignIn */; };
 		B0010001 /* WellReadApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010001 /* WellReadApp.swift */; };
 		B0010002 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010002 /* RootView.swift */; };
@@ -51,6 +52,11 @@
 		B0010028 /* ClaudeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010028 /* ClaudeService.swift */; };
 		B001002A /* LocalLibraryCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001002A /* LocalLibraryCache.swift */; };
 		B001002B /* BookProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001002B /* BookProfileView.swift */; };
+		B001002C /* BookProfileService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001002C /* BookProfileService.swift */; };
+		B001002D /* DismissedSuggestionsRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001002D /* DismissedSuggestionsRepository.swift */; };
+		B001002E /* DiscoverSuggestionsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001002E /* DiscoverSuggestionsService.swift */; };
+		B001002F /* ProfilePhotoService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001002F /* ProfilePhotoService.swift */; };
+		B0010030 /* CommentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010030 /* CommentsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -96,6 +102,11 @@
 		F0010028 /* ClaudeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeService.swift; sourceTree = "<group>"; };
 		F001002A /* LocalLibraryCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLibraryCache.swift; sourceTree = "<group>"; };
 		F001002B /* BookProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookProfileView.swift; sourceTree = "<group>"; };
+		F001002C /* BookProfileService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookProfileService.swift; sourceTree = "<group>"; };
+		F001002D /* DismissedSuggestionsRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DismissedSuggestionsRepository.swift; sourceTree = "<group>"; };
+		F001002E /* DiscoverSuggestionsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoverSuggestionsService.swift; sourceTree = "<group>"; };
+		F001002F /* ProfilePhotoService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfilePhotoService.swift; sourceTree = "<group>"; };
+		F0010030 /* CommentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommentsView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -106,6 +117,7 @@
 				8BB4CBC02F4E9AEF0068B4B6 /* FirebaseCore in Frameworks */,
 				8BB4CBC62F4E9AEF0068B4B6 /* FirebaseAuth in Frameworks */,
 				8BB4CBC72F4E9AEF0068B4B6 /* FirebaseFirestore in Frameworks */,
+				8BB4CBC92F4E9AEF0068B4B6 /* FirebaseStorage in Frameworks */,
 				8BB4CBC82F4E8B00006ED44D /* GoogleSignIn in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -199,6 +211,10 @@
 				F0010025 /* PostRepository.swift */,
 				F0010026 /* CommentRepository.swift */,
 				F001002A /* LocalLibraryCache.swift */,
+				F001002C /* BookProfileService.swift */,
+				F001002D /* DismissedSuggestionsRepository.swift */,
+				F001002E /* DiscoverSuggestionsService.swift */,
+				F001002F /* ProfilePhotoService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -257,6 +273,7 @@
 			isa = PBXGroup;
 			children = (
 				F0010010 /* FeedView.swift */,
+				F0010030 /* CommentsView.swift */,
 			);
 			path = Feed;
 			sourceTree = "<group>";
@@ -317,6 +334,7 @@
 				8BE1FABE2F4E8A70006ED44D /* FirebaseCore */,
 				8BE1FABF2F4E8A70006ED44D /* FirebaseAuth */,
 				8BE1FAC32F4E8A70006ED44D /* FirebaseFirestore */,
+				8BE1FAC42F4E8A70006ED44D /* FirebaseStorage */,
 				8BE1FAC22F4E8B00006ED44D /* GoogleSignIn */,
 			);
 			productName = WellRead;
@@ -409,7 +427,13 @@
 				B0010027 /* ApiKeys.swift in Sources */,
 				B0010028 /* ClaudeService.swift in Sources */,
 				B001002A /* LocalLibraryCache.swift in Sources */,
+				B001002C /* BookProfileService.swift in Sources */,
 				B001002B /* BookProfileView.swift in Sources */,
+				B001002C /* BookProfileService.swift in Sources */,
+				B001002D /* DismissedSuggestionsRepository.swift in Sources */,
+				B001002E /* DiscoverSuggestionsService.swift in Sources */,
+				B001002F /* ProfilePhotoService.swift in Sources */,
+				B0010030 /* CommentsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -575,6 +599,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 8BE1FABD2F4E8A70006ED44D /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseFirestore;
+		};
+		8BE1FAC42F4E8A70006ED44D /* FirebaseStorage */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8BE1FABD2F4E8A70006ED44D /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseStorage;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

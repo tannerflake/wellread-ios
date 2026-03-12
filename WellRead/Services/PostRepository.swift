@@ -80,6 +80,49 @@ final class PostRepository {
         return post
     }
 
+    /// Record that the user liked the post. Idempotent. Increments post's likeCount.
+    func addLike(postId: String, userId: String) async throws {
+        let docId = "\(userId)_\(postId)"
+        let likeRef = db.collection("postLikes").document(docId)
+        let postRef = db.collection(posts).document(postId)
+        let snapshot = try await likeRef.getDocument()
+        guard !snapshot.exists else { return }
+        try await likeRef.setData([
+            "userId": userId,
+            "postId": postId,
+            "createdAt": Timestamp(date: Date()),
+        ])
+        try await postRef.updateData([
+            "likeCount": FieldValue.increment(Int64(1)),
+        ])
+    }
+
+    /// Remove the user's like. Idempotent. Decrements post's likeCount.
+    func removeLike(postId: String, userId: String) async throws {
+        let docId = "\(userId)_\(postId)"
+        let likeRef = db.collection("postLikes").document(docId)
+        let postRef = db.collection(posts).document(postId)
+        let snapshot = try await likeRef.getDocument()
+        guard snapshot.exists else { return }
+        try await likeRef.delete()
+        try await postRef.updateData([
+            "likeCount": FieldValue.increment(Int64(-1)),
+        ])
+    }
+
+    /// Fetches the set of post IDs the user has liked (for showing heart state in feed).
+    func fetchLikedPostIds(userId: String) async -> Set<String> {
+        do {
+            let snapshot = try await db.collection("postLikes")
+                .whereField("userId", isEqualTo: userId)
+                .getDocuments()
+            let ids = snapshot.documents.compactMap { $0.data()["postId"] as? String }
+            return Set(ids)
+        } catch {
+            return []
+        }
+    }
+
     private func post(from data: [String: Any], docId: String) async -> Post? {
         guard let userId = data["userId"] as? String,
               let typeRaw = data["type"] as? String,

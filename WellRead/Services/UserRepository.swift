@@ -61,6 +61,13 @@ final class UserRepository {
         try await ref.updateData(data)
     }
 
+    /// Update the user's profile image URL in Firestore.
+    func updateProfileImageURL(uid: String, url: String) async throws {
+        try await db.collection(users).document(uid).updateData([
+            "profileImageURL": url,
+        ])
+    }
+
     /// Increment totalBooksRead by 1.
     func incrementTotalBooksRead(uid: String) async throws {
         try await db.collection(users).document(uid).updateData([

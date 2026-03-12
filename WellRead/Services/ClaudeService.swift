@@ -63,13 +63,31 @@ final class ClaudeService {
         guard let key = ApiKeys.claude, !key.isEmpty else {
             throw NSError(domain: "ClaudeService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Claude API key not configured. Add CLAUDE_API_KEY to Secrets.plist."])
         }
+        let modelsToTry = ["claude-3-5-sonnet-latest", "claude-3-5-sonnet-20241022", "claude-sonnet-4-20250514"]
+        var lastError: Error?
+        for model in modelsToTry {
+            do {
+                return try await sendMessage(model: model, key: key, system: system, userMessage: userMessage)
+            } catch {
+                lastError = error
+                let ns = error as NSError
+                if ns.domain == "ClaudeService", (ns.code == 404 || ns.code == 400) {
+                    continue
+                }
+                throw error
+            }
+        }
+        throw lastError ?? NSError(domain: "ClaudeService", code: -2, userInfo: [NSLocalizedDescriptionKey: "No model available."])
+    }
+
+    private func sendMessage(model: String, key: String, system: String?, userMessage: String) async throws -> String {
         var request = URLRequest(url: messagesURL)
         request.httpMethod = "POST"
         request.setValue(key, forHTTPHeaderField: "x-api-key")
         request.setValue(apiVersion, forHTTPHeaderField: "anthropic-version")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         var body: [String: Any] = [
-            "model": "claude-3-5-sonnet-20241022",
+            "model": model,
             "max_tokens": 1024,
             "messages": [["role": "user", "content": userMessage]]
         ]

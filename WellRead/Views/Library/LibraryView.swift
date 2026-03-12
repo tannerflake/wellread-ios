@@ -2,10 +2,11 @@
 //  LibraryView.swift
 //  WellRead
 //
-//  Library-only tab (labeled "Profile" in tab bar): "Your Library" with Read | Want to Read. View toggle: Grid | Tier List. Optional filter by year read (Read segment).
+//  Library-only tab (labeled "Profile" in tab bar): "Your Library". Profile photo in top-right toolbar.
 //
 
 import SwiftUI
+import PhotosUI
 
 // MARK: - Library (Profile tab content)
 
@@ -15,6 +16,10 @@ struct ProfileLibraryView: View {
     @State private var segment: LibrarySegment = .read
     @State private var viewMode: LibraryViewMode = .tierList
     @State private var selectedYear: Int? = nil
+    @State private var selectedBookForProfile: Book? = nil
+    @State private var selectedPhotoItem: PhotosPickerItem? = nil
+    @State private var isUploadingPhoto = false
+    @State private var photoUploadError: String? = nil
 
     enum LibrarySegment: String, CaseIterable {
         case read = "Read"
@@ -65,6 +70,15 @@ struct ProfileLibraryView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Theme.background, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .navigationDestination(item: $selectedBookForProfile) { book in
+                BookProfileView(
+                    book: book,
+                    readBooksForSimilar: appState.readBooks,
+                    onNotInterested: { selectedBookForProfile = nil },
+                    onWantToRead: { appState.addToWantToRead(book: book); selectedBookForProfile = nil },
+                    onHaveRead: { appState.addAsRead(book: book); selectedBookForProfile = nil }
+                )
+            }
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Text("Your Library")
@@ -72,23 +86,117 @@ struct ProfileLibraryView: View {
                         .foregroundStyle(Theme.textPrimary)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        ForEach(LibraryViewMode.allCases, id: \.self) { mode in
-                            Button {
-                                viewMode = mode
-                            } label: {
-                                Label(mode.label, systemImage: mode.icon)
-                            }
-                        }
-                        Divider()
-                        Button("Sign out", role: .destructive) {
-                            authService.signOut()
-                        }
+                    toolbarProfilePhoto
+                }
+            }
+            .onChange(of: selectedPhotoItem) { _, newItem in
+                guard let item = newItem else { return }
+                Task { await uploadSelectedPhoto(item) }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var toolbarProfilePhoto: some View {
+        if let user = appState.currentUser, authService.firebaseUser?.uid != nil {
+            Menu {
+                PhotosPicker(selection: $selectedPhotoItem, matching: .images, photoLibrary: .shared()) {
+                    Text("Change photo")
+                }
+                .disabled(isUploadingPhoto)
+                ForEach(LibraryViewMode.allCases, id: \.self) { mode in
+                    Button {
+                        viewMode = mode
                     } label: {
-                        Image(systemName: "ellipsis.circle")
-                            .foregroundStyle(Theme.textSecondary)
+                        Label(mode.label, systemImage: mode.icon)
                     }
                 }
+                Divider()
+                Button("Sign out", role: .destructive) {
+                    authService.signOut()
+                }
+            } label: {
+                ZStack {
+                    if let urlString = user.profileImageURL, let url = URL(string: urlString) {
+                        AsyncImage(url: url) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                            case .failure, .empty:
+                                avatarPlaceholder(initial: String(user.displayName.prefix(1)), compact: true)
+                            @unknown default:
+                                avatarPlaceholder(initial: String(user.displayName.prefix(1)), compact: true)
+                            }
+                        }
+                    } else {
+                        avatarPlaceholder(initial: String(user.displayName.prefix(1)), compact: true)
+                    }
+                    if isUploadingPhoto {
+                        Color.black.opacity(0.4)
+                        ProgressView()
+                            .tint(.white)
+                            .scaleEffect(0.8)
+                    }
+                }
+                .frame(width: 36, height: 36)
+                .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+        } else {
+            Menu {
+                ForEach(LibraryViewMode.allCases, id: \.self) { mode in
+                    Button {
+                        viewMode = mode
+                    } label: {
+                        Label(mode.label, systemImage: mode.icon)
+                    }
+                }
+                Divider()
+                Button("Sign out", role: .destructive) {
+                    authService.signOut()
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .foregroundStyle(Theme.textSecondary)
+            }
+        }
+    }
+
+    private func avatarPlaceholder(initial: String, compact: Bool = false) -> some View {
+        Circle()
+            .fill(Theme.surface)
+            .overlay(
+                Text(initial)
+                    .font(compact ? Theme.headline() : Theme.largeTitle())
+                    .foregroundStyle(Theme.textSecondary)
+            )
+    }
+
+    private func uploadSelectedPhoto(_ item: PhotosPickerItem) async {
+        guard let uid = authService.firebaseUser?.uid else { return }
+        await MainActor.run { isUploadingPhoto = true; photoUploadError = nil }
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self),
+                  let image = UIImage(data: data) else {
+                await MainActor.run { photoUploadError = "Could not load image"; isUploadingPhoto = false }
+                return
+            }
+            let urlString = try await ProfilePhotoService.uploadProfilePhoto(uid: uid, image: image)
+            try await UserRepository().updateProfileImageURL(uid: uid, url: urlString)
+            await authService.refreshAppUser()
+            await MainActor.run {
+                appState.currentUser = authService.appUser
+                isUploadingPhoto = false
+                photoUploadError = nil
+                selectedPhotoItem = nil
+            }
+        } catch {
+            await MainActor.run {
+                photoUploadError = error.localizedDescription
+                isUploadingPhoto = false
+                selectedPhotoItem = nil
             }
         }
     }
@@ -128,11 +236,12 @@ struct ProfileLibraryView: View {
         if viewMode == .tierList && segment == .read {
             TierListView(userBooks: readBooksFilteredByYear, onUpdateTierAndOrder: { id, tier, order in
                 appState.setTierAndOrder(for: id, tier: tier, order: order)
-            })
+            }, onBookTap: { selectedBookForProfile = $0 })
         } else {
             GridLibraryView(
                 userBooks: filteredBooks,
-                onMoveToRead: segment == .wantToRead ? { appState.moveToRead($0) } : nil
+                onMoveToRead: segment == .wantToRead ? { appState.moveToRead($0) } : nil,
+                onBookTap: { selectedBookForProfile = $0 }
             )
         }
     }

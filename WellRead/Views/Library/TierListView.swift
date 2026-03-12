@@ -84,6 +84,8 @@ struct TierListView: View {
     let userBooks: [UserBook]
     /// (userBookId, tier, insertionIndex). Index 0 = first in row; nil = append at end.
     let onUpdateTierAndOrder: (UUID, String?, Int?) -> Void
+    /// When set, tapping a book cover opens the book profile.
+    var onBookTap: ((Book) -> Void)? = nil
 
     var body: some View {
         ScrollView {
@@ -92,13 +94,15 @@ struct TierListView: View {
                     TierRowView(
                         tier: tier,
                         books: sortedBooks(for: tier),
-                        onUpdateTierAndOrder: onUpdateTierAndOrder
+                        onUpdateTierAndOrder: onUpdateTierAndOrder,
+                        onBookTap: onBookTap
                     )
                 }
                 TierRowView(
                     tier: nil,
                     books: sortedBooks(for: nil),
-                    onUpdateTierAndOrder: onUpdateTierAndOrder
+                    onUpdateTierAndOrder: onUpdateTierAndOrder,
+                    onBookTap: onBookTap
                 )
             }
             .padding()
@@ -121,6 +125,7 @@ struct TierRowView: View {
     let tier: String?
     let books: [UserBook]
     let onUpdateTierAndOrder: (UUID, String?, Int?) -> Void
+    var onBookTap: ((Book) -> Void)? = nil
     @State private var isTargeted = false
 
     var header: String {
@@ -142,7 +147,7 @@ struct TierRowView: View {
                 HStack(spacing: 8) {
                     ForEach(books, id: \.id) { ub in
                         if ub.book != nil {
-                            TierBookCell(userBook: ub)
+                            TierBookCell(userBook: ub, onBookTap: onBookTap)
                         }
                     }
                 }
@@ -171,11 +176,12 @@ struct TierRowView: View {
 
 struct TierBookCell: View {
     let userBook: UserBook
+    var onBookTap: ((Book) -> Void)? = nil
 
     var body: some View {
         Group {
             if let book = userBook.book {
-                BookCoverView(book: book, size: 72)
+                BookCoverView(book: book, size: 72, onTap: onBookTap != nil ? { onBookTap?(book) } : nil)
                     .draggable(TierDragItem(userBookId: userBook.id))
                     .modifier(ShorterDragPressModifier(minimumDuration: 0.25))
             }
