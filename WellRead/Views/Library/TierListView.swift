@@ -61,13 +61,13 @@ private func tierColor(for tier: String?) -> Color {
     }
 }
 
-/// Invisible drop slot between or around books so the user can drop at a specific position (front, between, or back) in a tier. No visible UI—only hit area for drops.
+/// Invisible drop slot between or around books so the user can drop at a specific position (front, between, or back) in a tier. Generous hit area for easier drops.
 private struct TierRowDropSlot: View {
     let tier: String?
     let insertionIndex: Int
     let onUpdateTierAndOrder: (UUID, String?, Int?) -> Void
 
-    private let minWidth: CGFloat = 4
+    private let minWidth: CGFloat = 20
 
     var body: some View {
         Color.clear
@@ -107,9 +107,9 @@ struct TierListView: View {
     /// When set, tapping a book cover opens the book profile.
     var onBookTap: ((Book) -> Void)? = nil
 
-    /// Content area width for each row: list width minus horizontal padding (24×2) and tier label (44).
+    /// Content area width for each row: list width minus horizontal padding (8×2) and tier label (44).
     private static let tierLabelWidth: CGFloat = 44
-    private static let horizontalPadding: CGFloat = 24 * 2
+    private static let horizontalPadding: CGFloat = 8 * 2
 
     var body: some View {
         GeometryReader { geo in
@@ -135,7 +135,7 @@ struct TierListView: View {
                         onBookTap: onBookTap
                     )
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, 8)
                 .padding(.top, 16)
                 .padding(.bottom, 100)
             }
@@ -154,7 +154,7 @@ struct TierListView: View {
 }
 
 private let tierBookSize: CGFloat = 72
-private let tierSlotWidth: CGFloat = 4
+private let tierSlotWidth: CGFloat = 20
 private let tierRowPadding: CGFloat = 2
 
 struct TierRowView: View {
@@ -196,7 +196,8 @@ struct TierRowView: View {
         let w = contentWidth > 0 ? contentWidth : 280
         let safety: CGFloat = 6
         let available = w - tierRowPadding * 2 - tierSlotWidth - safety
-        let booksPerRow = max(1, Int(available / (tierBookSize + tierSlotWidth)))
+        let slotAndBook = tierBookSize + tierSlotWidth
+        let booksPerRow = max(1, Int((available - tierSlotWidth) / slotAndBook))
         let rows: [[UserBook]] = books.isEmpty
             ? []
             : stride(from: 0, to: books.count, by: booksPerRow).map { start in
@@ -238,7 +239,7 @@ struct TierBookCell: View {
             if let book = userBook.book {
                 BookCoverView(book: book, size: 72, onTap: onBookTap != nil ? { onBookTap?(book) } : nil)
                     .draggable(TierDragItem(userBookId: userBook.id))
-                    .modifier(ShorterDragPressModifier(minimumDuration: 0.25))
+                    .modifier(ShorterDragPressModifier(minimumDuration: 0.15))
             }
         }
     }

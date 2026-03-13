@@ -14,7 +14,7 @@ final class PostRepository {
     private let bookRepo = BookRepository.shared
     private let userRepo = UserRepository()
 
-    /// Listens to feed: posts ordered by createdAt (for now, all posts; later filter by following).
+    /// Listens to feed: all users see all posts (early-days behavior; switch to following-based feed later).
     func listenFeed(onUpdate: @escaping ([Post]) -> Void) -> ListenerRegistration {
         db.collection(posts)
             .order(by: "createdAt", descending: true)
@@ -32,7 +32,7 @@ final class PostRepository {
             }
     }
 
-    /// One-shot feed fetch.
+    /// One-shot feed fetch (same as listenFeed: all users see all posts).
     func fetchFeed() async -> [Post] {
         do {
             let snapshot = try await db.collection(posts)

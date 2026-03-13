@@ -66,7 +66,7 @@ struct ProfileLibraryView: View {
 
                     libraryContent
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, 8)
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Theme.background, for: .navigationBar)
