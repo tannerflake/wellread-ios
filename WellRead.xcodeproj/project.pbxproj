@@ -57,6 +57,7 @@
 		B001002E /* DiscoverSuggestionsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001002E /* DiscoverSuggestionsService.swift */; };
 		B001002F /* ProfilePhotoService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001002F /* ProfilePhotoService.swift */; };
 		B0010030 /* CommentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010030 /* CommentsView.swift */; };
+		B0010031 /* ProfilePhotoCropView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010031 /* ProfilePhotoCropView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -107,6 +108,7 @@
 		F001002E /* DiscoverSuggestionsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoverSuggestionsService.swift; sourceTree = "<group>"; };
 		F001002F /* ProfilePhotoService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfilePhotoService.swift; sourceTree = "<group>"; };
 		F0010030 /* CommentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommentsView.swift; sourceTree = "<group>"; };
+		F0010031 /* ProfilePhotoCropView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfilePhotoCropView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -294,6 +296,7 @@
 			isa = PBXGroup;
 			children = (
 				F0010017 /* ProfileView.swift */,
+				F0010031 /* ProfilePhotoCropView.swift */,
 			);
 			path = Profile;
 			sourceTree = "<group>";
@@ -434,6 +437,7 @@
 				B001002E /* DiscoverSuggestionsService.swift in Sources */,
 				B001002F /* ProfilePhotoService.swift in Sources */,
 				B0010030 /* CommentsView.swift in Sources */,
+				B0010031 /* ProfilePhotoCropView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

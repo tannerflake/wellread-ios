@@ -142,6 +142,12 @@ final class UserBookRepository {
         ])
     }
 
+    /// Deletes a userBook (e.g. remove from queue). Firestore listener will update userBooks.
+    func deleteUserBook(userId: String, userBookId: UUID) async throws {
+        let ref = db.collection(userBooks).document(userBookId.uuidString)
+        try await ref.delete()
+    }
+
     private func userBook(from data: [String: Any], docId: String) -> UserBook? {
         guard let userId = data["userId"] as? String,
               let bookId = data["bookId"] as? String,

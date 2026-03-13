@@ -18,6 +18,9 @@ struct ProfileLibraryView: View {
     @State private var selectedYear: Int? = nil
     @State private var selectedBookForProfile: Book? = nil
     @State private var selectedPhotoItem: PhotosPickerItem? = nil
+    @State private var showPhotoPicker = false
+    @State private var imageToCrop: UIImage? = nil
+    @State private var showCropSheet = false
     @State private var isUploadingPhoto = false
     @State private var photoUploadError: String? = nil
 
@@ -54,14 +57,16 @@ struct ProfileLibraryView: View {
             ZStack {
                 Theme.background.ignoresSafeArea()
                 VStack(spacing: 0) {
-                    if segment == .read && !availableYears.isEmpty {
-                        yearFilterBar
-                    }
+                    HStack(alignment: .center, spacing: 12) {
+                        Picker("", selection: $segment) {
+                            ForEach(LibrarySegment.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
 
-                    Picker("", selection: $segment) {
-                        ForEach(LibrarySegment.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                        if !availableYears.isEmpty {
+                            yearFilterInline
+                        }
                     }
-                    .pickerStyle(.segmented)
                     .padding(.vertical, 16)
 
                     libraryContent
@@ -77,9 +82,10 @@ struct ProfileLibraryView: View {
                     readBooksForSimilar: appState.readBooks,
                     onNotInterested: nil,
                     onWantToRead: { appState.addToWantToRead(book: book); selectedBookForProfile = nil },
-                    onHaveRead: { appState.addAsRead(book: book); selectedBookForProfile = nil },
+                    onConfirmRead: { date, rating, post, caption in appState.addAsRead(book: book, dateFinished: date, ratingPercent: rating, postToFeed: post, caption: caption); selectedBookForProfile = nil },
                     isOnReadList: appState.isBookOnReadList(bookId: book.id),
-                    isInQueue: appState.isBookInQueue(bookId: book.id)
+                    isInQueue: appState.isBookInQueue(bookId: book.id),
+                    onRemoveFromQueue: { appState.removeFromQueue(book: book); selectedBookForProfile = nil }
                 )
                 .padding(.horizontal)
                 .padding(.bottom, 24)
@@ -96,9 +102,43 @@ struct ProfileLibraryView: View {
                 }
             }
             .onChange(of: selectedPhotoItem) { _, newItem in
+                showPhotoPicker = false
                 guard let item = newItem else { return }
-                Task { await uploadSelectedPhoto(item) }
+                Task {
+                    guard let data = try? await item.loadTransferable(type: Data.self),
+                          let image = UIImage(data: data) else {
+                        await MainActor.run { photoUploadError = "Could not load image" }
+                        return
+                    }
+                    await MainActor.run {
+                        imageToCrop = image
+                        showCropSheet = true
+                    }
+                }
             }
+            .sheet(isPresented: $showCropSheet) {
+                if let image = imageToCrop {
+                    ProfilePhotoCropView(
+                        image: image,
+                        onUse: { cropped in
+                            Task {
+                                await uploadProfileImage(cropped)
+                                await MainActor.run {
+                                    showCropSheet = false
+                                    imageToCrop = nil
+                                    selectedPhotoItem = nil
+                                }
+                            }
+                        },
+                        onCancel: {
+                            showCropSheet = false
+                            imageToCrop = nil
+                            selectedPhotoItem = nil
+                        }
+                    )
+                }
+            }
+            .photosPicker(isPresented: $showPhotoPicker, selection: $selectedPhotoItem, matching: .images, photoLibrary: .shared())
         }
     }
 
@@ -106,7 +146,9 @@ struct ProfileLibraryView: View {
     private var toolbarProfilePhoto: some View {
         if let user = appState.currentUser, authService.firebaseUser?.uid != nil {
             Menu {
-                PhotosPicker(selection: $selectedPhotoItem, matching: .images, photoLibrary: .shared()) {
+                Button {
+                    showPhotoPicker = true
+                } label: {
                     Text("Change photo")
                 }
                 .disabled(isUploadingPhoto)
@@ -180,17 +222,13 @@ struct ProfileLibraryView: View {
             )
     }
 
-    private func uploadSelectedPhoto(_ item: PhotosPickerItem) async {
+    private func uploadProfileImage(_ image: UIImage) async {
         guard let uid = authService.firebaseUser?.uid else { return }
         await MainActor.run { isUploadingPhoto = true; photoUploadError = nil }
         do {
-            guard let data = try await item.loadTransferable(type: Data.self),
-                  let image = UIImage(data: data) else {
-                await MainActor.run { photoUploadError = "Could not load image"; isUploadingPhoto = false }
-                return
-            }
             let urlString = try await ProfilePhotoService.uploadProfilePhoto(uid: uid, image: image)
-            try await UserRepository().updateProfileImageURL(uid: uid, url: urlString)
+            let cacheBust = "\(urlString.contains("?") ? "&" : "?")t=\(Int(Date().timeIntervalSince1970))"
+            try await UserRepository().updateProfileImageURL(uid: uid, url: urlString + cacheBust)
             await authService.refreshAppUser()
             await MainActor.run {
                 appState.currentUser = authService.appUser
@@ -207,8 +245,9 @@ struct ProfileLibraryView: View {
         }
     }
 
-    private var yearFilterBar: some View {
-        HStack(spacing: 8) {
+    /// Year filter shown to the right of the Read/Queue segment control when in Read mode.
+    private var yearFilterInline: some View {
+        HStack(spacing: 6) {
             Text("Year:")
                 .font(Theme.caption())
                 .foregroundStyle(Theme.textSecondary)
@@ -226,15 +265,12 @@ struct ProfileLibraryView: View {
                         .font(.caption)
                         .foregroundStyle(Theme.textTertiary)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
                 .background(Theme.surface)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             }
-            Spacer()
         }
-        .padding(.top, 4)
-        .padding(.bottom, 8)
     }
 
     @ViewBuilder

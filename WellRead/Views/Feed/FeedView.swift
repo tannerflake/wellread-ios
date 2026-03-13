@@ -39,11 +39,12 @@ struct FeedView: View {
                 BookProfileView(
                     book: book,
                     readBooksForSimilar: appState.readBooks,
-                    onNotInterested: { selectedBookForProfile = nil },
+                    onNotInterested: nil,
                     onWantToRead: { appState.addToWantToRead(book: book); selectedBookForProfile = nil },
-                    onHaveRead: { appState.addAsRead(book: book); selectedBookForProfile = nil },
+                    onConfirmRead: { date, rating, post, caption in appState.addAsRead(book: book, dateFinished: date, ratingPercent: rating, postToFeed: post, caption: caption); selectedBookForProfile = nil },
                     isOnReadList: appState.isBookOnReadList(bookId: book.id),
-                    isInQueue: appState.isBookInQueue(bookId: book.id)
+                    isInQueue: appState.isBookInQueue(bookId: book.id),
+                    onRemoveFromQueue: { appState.removeFromQueue(book: book); selectedBookForProfile = nil }
                 )
             }
             .sheet(item: $postForComments) { post in
@@ -94,6 +95,20 @@ struct FeedPostRow: View {
                         Text(book.author)
                             .font(Theme.callout())
                             .foregroundStyle(Theme.textSecondary)
+                        if post.ratingPercent != nil || post.dateFinished != nil {
+                            HStack(spacing: 8) {
+                                if let pct = post.ratingPercent {
+                                    Text("\(pct)%")
+                                        .font(Theme.callout())
+                                        .foregroundStyle(Theme.textSecondary)
+                                }
+                                if let date = post.dateFinished {
+                                    Text(date, style: .date)
+                                        .font(.caption2)
+                                        .foregroundStyle(Theme.textTertiary)
+                                }
+                            }
+                        }
                     }
                     Spacer()
                 }

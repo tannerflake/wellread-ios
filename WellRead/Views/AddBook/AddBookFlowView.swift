@@ -60,11 +60,12 @@ struct AddBookFlowView: View {
                 BookProfileView(
                     book: book,
                     readBooksForSimilar: appState.readBooks,
-                    onNotInterested: { selectedBookForProfile = nil },
+                    onNotInterested: nil,
                     onWantToRead: { appState.addToWantToRead(book: book); selectedBookForProfile = nil },
-                    onHaveRead: { appState.addAsRead(book: book); selectedBookForProfile = nil },
+                    onConfirmRead: { date, rating, post, caption in appState.addAsRead(book: book, dateFinished: date, ratingPercent: rating, postToFeed: post, caption: caption); selectedBookForProfile = nil },
                     isOnReadList: appState.isBookOnReadList(bookId: book.id),
-                    isInQueue: appState.isBookInQueue(bookId: book.id)
+                    isInQueue: appState.isBookInQueue(bookId: book.id),
+                    onRemoveFromQueue: { appState.removeFromQueue(book: book); selectedBookForProfile = nil }
                 )
             }
         }

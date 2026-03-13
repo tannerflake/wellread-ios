@@ -50,6 +50,9 @@ final class AppState: ObservableObject {
         userBooksListener = userBookRepo.listenUserBooks(userId: uid) { [weak self] list in
             guard let self = self else { return }
             self.userBooks = list
+            Task { @MainActor in
+                self.dropExcludedFromDiscoverQueue()
+            }
             if let uid = self.currentUserId {
                 let copy = list
                 DispatchQueue.global(qos: .utility).async {
@@ -225,19 +228,33 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Add a book to Queue. Firestore listener will update userBooks.
+    /// Add a book to Queue. No-op if already in queue. Firestore listener will update userBooks.
     func addToWantToRead(book: Book) {
-        guard let uid = currentUserId else { return }
+        guard !isBookInQueue(bookId: book.id), let uid = currentUserId else { return }
         Task {
             _ = try? await userBookRepo.addUserBook(userId: uid, book: book, status: .wantToRead, rating: nil, reviewText: nil, dateStarted: nil, dateFinished: nil)
         }
     }
 
-    /// Add a book as Read (dateFinished = now). Firestore listener will update userBooks.
-    func addAsRead(book: Book) {
+    /// Remove a book from the queue. No-op if not in queue.
+    func removeFromQueue(book: Book) {
         guard let uid = currentUserId else { return }
+        guard let userBook = userBooks.first(where: { $0.bookId == book.id && $0.status == .wantToRead }) else { return }
         Task {
-            _ = try? await userBookRepo.addUserBook(userId: uid, book: book, status: .read, rating: nil, reviewText: nil, dateStarted: nil, dateFinished: Date())
+            try? await userBookRepo.deleteUserBook(userId: uid, userBookId: userBook.id)
+        }
+    }
+
+    /// Add a book as Read. ratingPercent 1–100 (stored as 1–10). If postToFeed, creates a finishedBook post with caption (thoughts), rating, and dateFinished.
+    func addAsRead(book: Book, dateFinished: Date, ratingPercent: Int?, postToFeed: Bool, caption: String? = nil) {
+        guard let uid = currentUserId else { return }
+        let rating1to10: Int? = ratingPercent.map { max(1, min(10, ($0 + 9) / 10)) }
+        Task {
+            _ = try? await userBookRepo.addUserBook(userId: uid, book: book, status: .read, rating: rating1to10, reviewText: nil, dateStarted: nil, dateFinished: dateFinished)
+            if postToFeed {
+                let thoughts = (caption?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
+                _ = try? await postRepo.createPost(userId: uid, type: .finishedBook, bookId: book.id, caption: thoughts, ratingPercent: ratingPercent, dateFinished: dateFinished)
+            }
         }
     }
 
@@ -250,26 +267,53 @@ final class AppState: ObservableObject {
         isLoadingDiscoverSuggestions = true
         Task { [weak self] in
             guard let self = self else { return }
-            let batch = await DiscoverSuggestionsService.fetchBatch(readBooks: self.readBooks, dismissedBookIds: self.dismissedBookIds)
+            let batch = await DiscoverSuggestionsService.fetchBatch(readBooks: self.readBooks, queueBookIds: self.queueBookIds, dismissedBookIds: self.dismissedBookIds)
             await MainActor.run {
                 self.isLoadingDiscoverSuggestions = false
-                self.discoverSuggestionQueue.append(contentsOf: batch)
-                if !self.discoverSuggestionQueue.isEmpty {
-                    self.discoverCurrentSuggestion = self.discoverSuggestionQueue.first
-                    self.discoverSuggestionQueue = Array(self.discoverSuggestionQueue.dropFirst())
-                    if self.discoverSuggestionQueue.isEmpty {
-                        self.fetchMoreDiscoverSuggestionsInBackground()
-                    }
-                }
+                let filtered = batch.filter { !self.shouldExcludeFromDiscover(bookId: $0.id) }
+                self.discoverSuggestionQueue.append(contentsOf: filtered)
+                self.popNextDiscoverSuggestion()
             }
         }
     }
 
     /// Advance to next suggestion (e.g. after Pass / Queue / Read). Fetches more in background if queue is empty.
     func advanceDiscoverSuggestion() {
+        dropExcludedFromDiscoverQueue()
         if discoverSuggestionQueue.isEmpty {
             discoverCurrentSuggestion = nil
             loadDiscoverSuggestionsIfNeeded()
+            return
+        }
+        popNextDiscoverSuggestion()
+    }
+
+    /// Book IDs in the user's queue (want to read).
+    private var queueBookIds: Set<String> {
+        Set(userBooks.filter { $0.status == .wantToRead }.map(\.bookId))
+    }
+
+    /// True if this book should never be shown in Discover (read, queue, or passed).
+    private func shouldExcludeFromDiscover(bookId: String) -> Bool {
+        isBookOnReadList(bookId: bookId) || isBookInQueue(bookId: bookId) || dismissedBookIds.contains(bookId)
+    }
+
+    /// Remove any books from current suggestion and queue that are now read, queued, or dismissed.
+    private func dropExcludedFromDiscoverQueue() {
+        if let current = discoverCurrentSuggestion, shouldExcludeFromDiscover(bookId: current.id) {
+            discoverCurrentSuggestion = nil
+        }
+        discoverSuggestionQueue.removeAll { shouldExcludeFromDiscover(bookId: $0.id) }
+    }
+
+    /// Set current suggestion to first in queue and remove it; trigger background fetch if queue empty.
+    private func popNextDiscoverSuggestion() {
+        while let first = discoverSuggestionQueue.first, shouldExcludeFromDiscover(bookId: first.id) {
+            discoverSuggestionQueue.removeFirst()
+        }
+        if discoverSuggestionQueue.isEmpty {
+            discoverCurrentSuggestion = nil
+            fetchMoreDiscoverSuggestionsInBackground()
             return
         }
         discoverCurrentSuggestion = discoverSuggestionQueue.first
@@ -282,9 +326,10 @@ final class AppState: ObservableObject {
     private func fetchMoreDiscoverSuggestionsInBackground() {
         Task { [weak self] in
             guard let self = self else { return }
-            let batch = await DiscoverSuggestionsService.fetchBatch(readBooks: self.readBooks, dismissedBookIds: self.dismissedBookIds)
+            let batch = await DiscoverSuggestionsService.fetchBatch(readBooks: self.readBooks, queueBookIds: self.queueBookIds, dismissedBookIds: self.dismissedBookIds)
             await MainActor.run {
-                self.discoverSuggestionQueue.append(contentsOf: batch)
+                let filtered = batch.filter { !self.shouldExcludeFromDiscover(bookId: $0.id) }
+                self.discoverSuggestionQueue.append(contentsOf: filtered)
             }
         }
     }

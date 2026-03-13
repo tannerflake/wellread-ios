@@ -8,10 +8,10 @@
 import Foundation
 
 enum DiscoverSuggestionsService {
-    /// Fetches up to 5 suggested books, excluding read and dismissed. Call from background; updates go to caller via callback/state.
-    static func fetchBatch(readBooks: [UserBook], dismissedBookIds: Set<String>) async -> [Book] {
+    /// Fetches up to 5 suggested books, excluding read, queue, and dismissed. Call from background; updates go to caller via callback/state.
+    static func fetchBatch(readBooks: [UserBook], queueBookIds: Set<String>, dismissedBookIds: Set<String>) async -> [Book] {
         let readBookIds = Set(readBooks.map(\.bookId))
-        let excludedIds = readBookIds.union(dismissedBookIds)
+        let excludedIds = readBookIds.union(queueBookIds).union(dismissedBookIds)
         let excludedTitles = readBooks.compactMap { $0.book?.title }
         if ApiKeys.claude != nil {
             return await fetchBatchViaClaude(excludedTitles: Array(excludedTitles), excludedIds: excludedIds)

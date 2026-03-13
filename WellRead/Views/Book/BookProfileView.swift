@@ -14,13 +14,16 @@ struct BookProfileView: View {
     var readBooksForSimilar: [UserBook]? = nil
     var onNotInterested: (() -> Void)? = nil
     var onWantToRead: (() -> Void)? = nil
-    var onHaveRead: (() -> Void)? = nil
+    /// Called when user confirms "Mark as Read" with (dateFinished, ratingPercent 1–100, postToFeed, thoughtsCaption). When set, tapping Read shows the inline modal instead of firing immediately.
+    var onConfirmRead: ((Date, Int?, Bool, String?) -> Void)? = nil
     /// When set, tapping a similar book opens that book (e.g. sets navigation selection). Used from Discover.
     var onBookTap: ((Book) -> Void)? = nil
     /// True when this book is already on the user's read list (affects Read button appearance).
     var isOnReadList: Bool = false
     /// True when this book is already in the user's queue (affects Queue button appearance).
     var isInQueue: Bool = false
+    /// When set (e.g. from Library/Add/Feed), shows "Remove from queue" when isInQueue; when nil (e.g. Discover), Queue button is disabled when isInQueue.
+    var onRemoveFromQueue: (() -> Void)? = nil
 
     @State private var summary: String?
     @State private var notableQuote: String?
@@ -28,9 +31,14 @@ struct BookProfileView: View {
     @State private var summaryLoading = false
     @State private var quoteLoading = false
     @State private var similarLoading = false
+    @State private var showMarkAsReadModal = false
+    @State private var markAsReadDate = Date()
+    @State private var markAsReadRating: Double = 50
+    @State private var markAsReadPostToFeed = true
+    @State private var markAsReadThoughts = ""
 
     private var showActionBar: Bool {
-        onNotInterested != nil || onWantToRead != nil || onHaveRead != nil
+        onNotInterested != nil || onWantToRead != nil || onConfirmRead != nil || onRemoveFromQueue != nil
     }
 
     private let actionBarHeight: CGFloat = 76
@@ -161,6 +169,7 @@ struct BookProfileView: View {
                 actionBar
             }
         }
+        .overlay { markAsReadOverlay }
         .navigationBarTitleDisplayMode(.inline)
         .task(id: book.id) {
             summaryLoading = true
@@ -179,6 +188,83 @@ struct BookProfileView: View {
         }
     }
 
+    @ViewBuilder
+    private var markAsReadOverlay: some View {
+        if showMarkAsReadModal {
+            Color.black.opacity(0.45)
+                .ignoresSafeArea()
+                .onTapGesture { withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { showMarkAsReadModal = false } }
+                .overlay(alignment: .bottom) {
+                    markAsReadCard
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 100)
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .move(edge: .bottom)).combined(with: .scale(scale: 0.92)),
+                            removal: .opacity.combined(with: .move(edge: .bottom))
+                        ))
+                }
+                .animation(.spring(response: 0.35, dampingFraction: 0.82), value: showMarkAsReadModal)
+        }
+    }
+
+    private var markAsReadCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Mark as read")
+                .font(Theme.title2())
+                .foregroundStyle(Theme.textPrimary)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("When did you finish?")
+                    .font(Theme.caption())
+                    .foregroundStyle(Theme.textSecondary)
+                DatePicker("", selection: $markAsReadDate, displayedComponents: .date)
+                    .datePickerStyle(.compact)
+                    .labelsHidden()
+                    .tint(Theme.accent)
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Rating: \(Int(markAsReadRating))%")
+                    .font(Theme.caption())
+                    .foregroundStyle(Theme.textSecondary)
+                Slider(value: $markAsReadRating, in: 1...100, step: 1)
+                    .tint(Theme.accent)
+            }
+            TextField("Thoughts on this book...", text: $markAsReadThoughts, axis: .vertical)
+                .font(Theme.body())
+                .foregroundStyle(Theme.textPrimary)
+                .lineLimit(3...6)
+                .padding(12)
+                .background(Theme.background.opacity(0.6))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            Toggle(isOn: $markAsReadPostToFeed) {
+                Text("Post to feed")
+                    .font(Theme.callout())
+                    .foregroundStyle(Theme.textPrimary)
+            }
+            .tint(Theme.accent)
+            Button {
+                let date = markAsReadDate
+                let rating = Int(markAsReadRating)
+                let post = markAsReadPostToFeed
+                let thoughts = markAsReadThoughts.trimmingCharacters(in: .whitespacesAndNewlines)
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { showMarkAsReadModal = false }
+                onConfirmRead?(date, rating, post, thoughts.isEmpty ? nil : thoughts)
+            } label: {
+                Text("Mark as read")
+                    .font(Theme.headline())
+                    .foregroundStyle(Theme.background)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Theme.accent)
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(20)
+        .background(Theme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+        .shadow(color: .black.opacity(0.25), radius: 20, y: 8)
+    }
+
     private var actionBar: some View {
         HStack(spacing: 12) {
             if onNotInterested != nil {
@@ -193,8 +279,15 @@ struct BookProfileView: View {
                 }
                 .buttonStyle(.plain)
             }
-            if onHaveRead != nil {
-                Button(action: { onHaveRead?() }) {
+            if onConfirmRead != nil {
+                Button(action: {
+                    if isOnReadList { return }
+                    markAsReadDate = Date()
+                    markAsReadRating = 50
+                    markAsReadPostToFeed = true
+                    markAsReadThoughts = ""
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showMarkAsReadModal = true }
+                }) {
                     Label(isOnReadList ? "On read list" : "Read", systemImage: "checkmark.circle.fill")
                         .font(Theme.headline())
                         .foregroundStyle(isOnReadList ? Theme.background : Theme.accent)
@@ -204,18 +297,46 @@ struct BookProfileView: View {
                         .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
                 }
                 .buttonStyle(.plain)
+                .disabled(isOnReadList)
             }
-            if onWantToRead != nil {
-                Button(action: { onWantToRead?() }) {
-                    Label(isInQueue ? "In queue" : "Queue", systemImage: "book.circle.fill")
-                        .font(Theme.headline())
-                        .foregroundStyle(Theme.background)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(Theme.accent)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+            if onWantToRead != nil || onRemoveFromQueue != nil {
+                Group {
+                    if isInQueue && onRemoveFromQueue != nil {
+                        Button(action: { onRemoveFromQueue?() }) {
+                            Label("Remove from queue", systemImage: "book.circle.fill")
+                                .font(Theme.headline())
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(Color(red: 0.95, green: 0.4, blue: 0.4))
+                                .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+                        }
+                        .buttonStyle(.plain)
+                    } else if isInQueue {
+                        Button {} label: {
+                            Label("In queue", systemImage: "book.circle.fill")
+                                .font(Theme.headline())
+                                .foregroundStyle(Theme.textTertiary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(Theme.surface)
+                                .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(true)
+                    } else {
+                        Button(action: { onWantToRead?() }) {
+                            Label("Queue", systemImage: "book.circle.fill")
+                                .font(Theme.headline())
+                                .foregroundStyle(Theme.background)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(Theme.accent)
+                                .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
-                .buttonStyle(.plain)
             }
         }
         .padding(.horizontal)

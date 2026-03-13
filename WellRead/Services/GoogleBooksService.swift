@@ -159,9 +159,10 @@ final class GoogleBooksService {
         return books
     }
 
-    /// Use imageLinks in documented size order (best available first). No book is returned if no image at all.
+    /// Use imageLinks in documented size order (best available first). No book is returned if no image at all. Excludes summary/study-guide entries (title contains "Summary").
     private func mapToBook(item: GoogleBooksItem) -> Book? {
         guard let info = item.volumeInfo, let title = info.title, !title.isEmpty else { return nil }
+        if title.range(of: "Summary", options: .caseInsensitive) != nil { return nil }
         let links = info.imageLinks
         let rawOrder: [String?] = [
             links?.extraLarge,

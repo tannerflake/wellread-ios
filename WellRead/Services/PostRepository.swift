@@ -51,10 +51,10 @@ final class PostRepository {
     }
 
     /// Creates a post (e.g. when user finishes a book or writes a review).
-    func createPost(userId: String, type: PostType, bookId: String?, caption: String?) async throws -> Post {
+    func createPost(userId: String, type: PostType, bookId: String?, caption: String?, ratingPercent: Int? = nil, dateFinished: Date? = nil) async throws -> Post {
         let id = UUID()
         let ref = db.collection(posts).document(id.uuidString)
-        try await ref.setData([
+        var data: [String: Any] = [
             "userId": userId,
             "type": type.rawValue,
             "bookId": bookId as Any,
@@ -62,7 +62,10 @@ final class PostRepository {
             "createdAt": Timestamp(date: Date()),
             "likeCount": 0,
             "commentCount": 0,
-        ])
+        ]
+        if let pct = ratingPercent { data["ratingPercent"] = pct }
+        if let d = dateFinished { data["dateFinished"] = Timestamp(date: d) }
+        try await ref.setData(data)
         var post = Post(
             id: id,
             userId: userId,
@@ -73,7 +76,9 @@ final class PostRepository {
             createdAt: Date(),
             likeCount: 0,
             commentCount: 0,
-            user: nil
+            user: nil,
+            ratingPercent: ratingPercent,
+            dateFinished: dateFinished
         )
         if let bid = bookId { post.book = await bookRepo.getBook(id: bid) }
         post.user = await userRepo.getUser(uid: userId)
@@ -132,6 +137,8 @@ final class PostRepository {
         let bookId = data["bookId"] as? String
         let likeCount = data["likeCount"] as? Int ?? 0
         let commentCount = data["commentCount"] as? Int ?? 0
+        let ratingPercent = data["ratingPercent"] as? Int
+        let dateFinished = (data["dateFinished"] as? Timestamp)?.dateValue()
         var post = Post(
             id: id,
             userId: userId,
@@ -142,7 +149,9 @@ final class PostRepository {
             createdAt: createdAt,
             likeCount: likeCount,
             commentCount: commentCount,
-            user: nil
+            user: nil,
+            ratingPercent: ratingPercent,
+            dateFinished: dateFinished
         )
         if let bid = bookId { post.book = await bookRepo.getBook(id: bid) }
         post.user = await userRepo.getUser(uid: userId)
