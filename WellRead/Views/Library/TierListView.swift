@@ -107,26 +107,38 @@ struct TierListView: View {
     /// When set, tapping a book cover opens the book profile.
     var onBookTap: ((Book) -> Void)? = nil
 
+    /// Content area width for each row: list width minus horizontal padding (24×2) and tier label (44).
+    private static let tierLabelWidth: CGFloat = 44
+    private static let horizontalPadding: CGFloat = 24 * 2
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                ForEach(tierLabels, id: \.self) { tier in
+        GeometryReader { geo in
+            let listWidth = geo.size.width
+            let contentAreaWidth = max(0, listWidth - Self.horizontalPadding - Self.tierLabelWidth)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    ForEach(tierLabels, id: \.self) { tier in
+                        TierRowView(
+                            tier: tier,
+                            books: sortedBooks(for: tier),
+                            contentAreaWidth: contentAreaWidth,
+                            onUpdateTierAndOrder: onUpdateTierAndOrder,
+                            onBookTap: onBookTap
+                        )
+                    }
                     TierRowView(
-                        tier: tier,
-                        books: sortedBooks(for: tier),
+                        tier: nil,
+                        books: sortedBooks(for: nil),
+                        contentAreaWidth: contentAreaWidth,
                         onUpdateTierAndOrder: onUpdateTierAndOrder,
                         onBookTap: onBookTap
                     )
                 }
-                TierRowView(
-                    tier: nil,
-                    books: sortedBooks(for: nil),
-                    onUpdateTierAndOrder: onUpdateTierAndOrder,
-                    onBookTap: onBookTap
-                )
+                .padding(.horizontal, 24)
+                .padding(.top, 16)
+                .padding(.bottom, 100)
             }
-            .padding()
-            .padding(.bottom, 100)
         }
     }
 
@@ -148,6 +160,8 @@ private let tierRowPadding: CGFloat = 2
 struct TierRowView: View {
     let tier: String?
     let books: [UserBook]
+    /// Passed from TierListView so books-per-row matches actual width and nothing clips.
+    var contentAreaWidth: CGFloat = 0
     let onUpdateTierAndOrder: (UUID, String?, Int?) -> Void
     var onBookTap: ((Book) -> Void)? = nil
 
@@ -166,47 +180,52 @@ struct TierRowView: View {
             .frame(minWidth: 44, maxWidth: 44, minHeight: 120)
             .frame(maxHeight: .infinity)
 
-            GeometryReader { geo in
-                let width = geo.size.width
-                let booksPerRow = max(1, Int((width - tierRowPadding * 2 - tierSlotWidth) / (tierBookSize + tierSlotWidth)))
-                let rows: [[UserBook]] = books.isEmpty
-                    ? []
-                    : stride(from: 0, to: books.count, by: booksPerRow).map { start in
-                        Array(books[start..<min(start + booksPerRow, books.count)])
-                    }
-                VStack(alignment: .leading, spacing: 4) {
-                    if rows.isEmpty {
-                        HStack(spacing: 0) {
-                            TierRowDropSlot(tier: tier, insertionIndex: 0, onUpdateTierAndOrder: onUpdateTierAndOrder)
-                        }
-                        .padding(.horizontal, 1)
-                    } else {
-                        ForEach(Array(rows.enumerated()), id: \.offset) { rowIndex, rowBooks in
-                            let startIndex = rowIndex * booksPerRow
-                            HStack(spacing: 0) {
-                                ForEach(Array(rowBooks.enumerated()), id: \.element.id) { i, ub in
-                                    TierRowDropSlot(tier: tier, insertionIndex: startIndex + i, onUpdateTierAndOrder: onUpdateTierAndOrder)
-                                    if ub.book != nil {
-                                        TierBookCell(userBook: ub, onBookTap: onBookTap)
-                                    }
-                                }
-                                TierRowDropSlot(tier: tier, insertionIndex: startIndex + rowBooks.count, onUpdateTierAndOrder: onUpdateTierAndOrder)
-                            }
-                            .padding(.horizontal, 1)
-                        }
-                    }
-                }
-                .animation(.easeInOut(duration: 0.3), value: books.map(\.id))
-                .padding(.vertical, 4)
+            tierContent(contentWidth: contentAreaWidth)
+                .frame(minHeight: 120)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .frame(minHeight: 120)
-            .background(
-                RoundedRectangle(cornerRadius: 0)
-                    .fill(Theme.surface.opacity(0.6))
-            )
+                .background(
+                    RoundedRectangle(cornerRadius: 0)
+                        .fill(Theme.surface.opacity(0.6))
+                )
         }
         .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+    }
+
+    @ViewBuilder
+    private func tierContent(contentWidth: CGFloat) -> some View {
+        let w = contentWidth > 0 ? contentWidth : 280
+        let safety: CGFloat = 6
+        let available = w - tierRowPadding * 2 - tierSlotWidth - safety
+        let booksPerRow = max(1, Int(available / (tierBookSize + tierSlotWidth)))
+        let rows: [[UserBook]] = books.isEmpty
+            ? []
+            : stride(from: 0, to: books.count, by: booksPerRow).map { start in
+                Array(books[start..<min(start + booksPerRow, books.count)])
+            }
+        VStack(alignment: .leading, spacing: 4) {
+            if rows.isEmpty {
+                HStack(spacing: 0) {
+                    TierRowDropSlot(tier: tier, insertionIndex: 0, onUpdateTierAndOrder: onUpdateTierAndOrder)
+                }
+                .padding(.horizontal, 1)
+            } else {
+                ForEach(Array(rows.enumerated()), id: \.offset) { rowIndex, rowBooks in
+                    let startIndex = rowIndex * booksPerRow
+                    HStack(spacing: 0) {
+                        ForEach(Array(rowBooks.enumerated()), id: \.element.id) { i, ub in
+                            TierRowDropSlot(tier: tier, insertionIndex: startIndex + i, onUpdateTierAndOrder: onUpdateTierAndOrder)
+                            if ub.book != nil {
+                                TierBookCell(userBook: ub, onBookTap: onBookTap)
+                            }
+                        }
+                        TierRowDropSlot(tier: tier, insertionIndex: startIndex + rowBooks.count, onUpdateTierAndOrder: onUpdateTierAndOrder)
+                    }
+                    .padding(.horizontal, 1)
+                }
+            }
+        }
+        .animation(.easeInOut(duration: 0.3), value: books.map(\.id))
+        .padding(.vertical, 4)
     }
 }
 

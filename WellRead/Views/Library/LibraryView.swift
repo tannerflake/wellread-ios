@@ -62,10 +62,11 @@ struct ProfileLibraryView: View {
                         ForEach(LibrarySegment.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                     }
                     .pickerStyle(.segmented)
-                    .padding()
+                    .padding(.vertical, 16)
 
                     libraryContent
                 }
+                .padding(.horizontal, 24)
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Theme.background, for: .navigationBar)
@@ -232,7 +233,6 @@ struct ProfileLibraryView: View {
             }
             Spacer()
         }
-        .padding(.horizontal)
         .padding(.top, 4)
         .padding(.bottom, 8)
     }
