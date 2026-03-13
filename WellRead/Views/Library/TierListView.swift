@@ -61,17 +61,20 @@ private func tierColor(for tier: String?) -> Color {
     }
 }
 
-/// Invisible drop slot between or around books so the user can drop at a specific position (front, between, or back) in a tier. Generous hit area for easier drops.
+/// Invisible drop slot between or around books so the user can drop at a specific position (front, between, or back) in a tier. Fixed width so rows stay left-aligned; use fillsRow: true for empty tiers so the whole row accepts drops.
 private struct TierRowDropSlot: View {
     let tier: String?
     let insertionIndex: Int
     let onUpdateTierAndOrder: (UUID, String?, Int?) -> Void
+    /// When true (e.g. empty tier), slot expands to fill the row so drops are easy to register.
+    var fillsRow: Bool = false
 
-    private let minWidth: CGFloat = 20
+    private let slotWidth: CGFloat = 12
 
     var body: some View {
         Color.clear
-            .frame(minWidth: minWidth, minHeight: 80)
+            .frame(minWidth: slotWidth, maxWidth: fillsRow ? .infinity : slotWidth)
+            .frame(minHeight: 80)
             .contentShape(Rectangle())
             .dropDestination(for: TierDragItem.self) { items, _ in
                 guard let payload = items.first else { return false }
@@ -154,7 +157,7 @@ struct TierListView: View {
 }
 
 private let tierBookSize: CGFloat = 72
-private let tierSlotWidth: CGFloat = 20
+private let tierSlotWidth: CGFloat = 12
 private let tierRowPadding: CGFloat = 2
 
 struct TierRowView: View {
@@ -206,7 +209,7 @@ struct TierRowView: View {
         VStack(alignment: .leading, spacing: 4) {
             if rows.isEmpty {
                 HStack(spacing: 0) {
-                    TierRowDropSlot(tier: tier, insertionIndex: 0, onUpdateTierAndOrder: onUpdateTierAndOrder)
+                    TierRowDropSlot(tier: tier, insertionIndex: 0, onUpdateTierAndOrder: onUpdateTierAndOrder, fillsRow: true)
                 }
                 .padding(.horizontal, 1)
             } else {
@@ -216,10 +219,10 @@ struct TierRowView: View {
                         ForEach(Array(rowBooks.enumerated()), id: \.element.id) { i, ub in
                             TierRowDropSlot(tier: tier, insertionIndex: startIndex + i, onUpdateTierAndOrder: onUpdateTierAndOrder)
                             if ub.book != nil {
-                                TierBookCell(userBook: ub, onBookTap: onBookTap)
+                                TierBookCell(userBook: ub, tier: tier, insertionIndex: startIndex + i, onUpdateTierAndOrder: onUpdateTierAndOrder, onBookTap: onBookTap)
                             }
                         }
-                        TierRowDropSlot(tier: tier, insertionIndex: startIndex + rowBooks.count, onUpdateTierAndOrder: onUpdateTierAndOrder)
+                        TierRowDropSlot(tier: tier, insertionIndex: startIndex + rowBooks.count, onUpdateTierAndOrder: onUpdateTierAndOrder, fillsRow: true)
                     }
                     .padding(.horizontal, 1)
                 }
@@ -230,8 +233,14 @@ struct TierRowView: View {
     }
 }
 
+/// Fraction of book width that acts as "insert before" (left) or "insert after" (right) drop zone when dragging between books.
+private let tierBookDropZoneFraction: CGFloat = 0.3
+
 struct TierBookCell: View {
     let userBook: UserBook
+    let tier: String?
+    let insertionIndex: Int
+    let onUpdateTierAndOrder: (UUID, String?, Int?) -> Void
     var onBookTap: ((Book) -> Void)? = nil
 
     var body: some View {
@@ -240,7 +249,29 @@ struct TierBookCell: View {
                 BookCoverView(book: book, size: 72, onTap: onBookTap != nil ? { onBookTap?(book) } : nil)
                     .draggable(TierDragItem(userBookId: userBook.id))
                     .modifier(ShorterDragPressModifier(minimumDuration: 0.15))
+                    .overlay(alignment: .leading) {
+                        HStack(spacing: 0) {
+                            dropZone(insertAt: insertionIndex)
+                                .frame(width: tierBookSize * tierBookDropZoneFraction)
+                            Color.clear
+                                .frame(maxWidth: .infinity)
+                                .allowsHitTesting(false)
+                            dropZone(insertAt: insertionIndex + 1)
+                                .frame(width: tierBookSize * tierBookDropZoneFraction)
+                        }
+                        .frame(height: tierBookSize * 1.5)
+                    }
             }
         }
+    }
+
+    private func dropZone(insertAt index: Int) -> some View {
+        Color.clear
+            .contentShape(Rectangle())
+            .dropDestination(for: TierDragItem.self) { items, _ in
+                guard let payload = items.first else { return false }
+                onUpdateTierAndOrder(payload.userBookId, tier, index)
+                return true
+            } isTargeted: { _ in }
     }
 }
