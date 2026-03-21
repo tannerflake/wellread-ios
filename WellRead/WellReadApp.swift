@@ -31,6 +31,10 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     }
 
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
+        if url.scheme == "wellread", url.host == "goodreads-import" {
+            NotificationCenter.default.post(name: .openGoodreadsImport, object: nil)
+            return true
+        }
         if GIDSignIn.sharedInstance.handle(url) {
             return true
         }
@@ -38,9 +42,14 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     }
 }
 
+extension Notification.Name {
+    static let openGoodreadsImport = Notification.Name("openGoodreadsImport")
+}
+
 @main
 struct WellReadApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var authService = AuthService()
     @StateObject private var appState = AppState()
 
@@ -51,8 +60,56 @@ struct WellReadApp: App {
                 .environmentObject(appState)
                 .preferredColorScheme(.dark)
                 .onOpenURL { url in
-                    GIDSignIn.sharedInstance.handle(url)
+                    if url.scheme == "wellread", url.host == "goodreads-import" {
+                        handleGoodreadsImportFromShare()
+                    } else if url.isFileURL {
+                        handleFileURLFromShare(url)
+                    } else {
+                        GIDSignIn.sharedInstance.handle(url)
+                    }
                 }
+                .onReceive(NotificationCenter.default.publisher(for: .openGoodreadsImport)) { _ in
+                    handleGoodreadsImportFromShare()
+                }
+                .onChange(of: scenePhase) { _, newValue in
+                    // Share extensions cannot open the containing app; when user manually switches to Spynes after sharing, we process the pending URL here.
+                    if newValue == .active {
+                        Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: 300_000_000) // 0.3s so UI is ready
+                            handleGoodreadsImportFromShare()
+                        }
+                    }
+                }
+        }
+    }
+
+    private func handleGoodreadsImportFromShare() {
+        if let data = GoodreadsShareHelper.consumePendingImport(), !data.isEmpty {
+            let parsed = GoodreadsCSVParser.parse(data: data)
+            if !parsed.isEmpty {
+                appState.pendingGoodreadsImportRows = parsed
+            }
+        }
+        if let message = GoodreadsShareHelper.consumePendingImportError() {
+            appState.pendingGoodreadsImportError = message
+        }
+        if let sharedURL = GoodreadsShareHelper.consumePendingImportURL() {
+            appState.pendingGoodreadsImportURL = sharedURL
+            Task { await appState.fetchGoodreadsImportFromURL(sharedURL) }
+        }
+    }
+
+    /// When the app is opened with a file URL (e.g. user tapped Spynes in share sheet and system opened app with the file).
+    private func handleFileURLFromShare(_ url: URL) {
+        guard url.isFileURL else { return }
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+        guard let data = try? Data(contentsOf: url), !data.isEmpty else { return }
+        let head = String(data: data.prefix(1024), encoding: .utf8) ?? ""
+        guard head.contains("Book Id") || head.contains("Title,") else { return }
+        let parsed = GoodreadsCSVParser.parse(data: data)
+        if !parsed.isEmpty {
+            appState.pendingGoodreadsImportRows = parsed
         }
     }
 }

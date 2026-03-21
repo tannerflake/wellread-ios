@@ -21,6 +21,16 @@
 		<dict>
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.wellread.app</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>wellread</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>com.googleusercontent.apps.913467023190-s9pq6sc8ou0mh70mbasvhsf0iqb5quju</string>

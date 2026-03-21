@@ -23,6 +23,9 @@ struct ProfileLibraryView: View {
     @State private var showCropSheet = false
     @State private var isUploadingPhoto = false
     @State private var photoUploadError: String? = nil
+    @State private var showGoodreadsImport = false
+    @State private var goodreadsImportInitialRows: [GoodreadsRow]? = nil
+    @State private var showGoodreadsImportErrorAlert = false
 
     enum LibrarySegment: String, CaseIterable {
         case read = "Read"
@@ -57,7 +60,7 @@ struct ProfileLibraryView: View {
             ZStack {
                 Theme.background.ignoresSafeArea()
                 VStack(spacing: 0) {
-                    HStack(alignment: .center, spacing: 12) {
+                    HStack(alignment: .center, spacing: 8) {
                         Picker("", selection: $segment) {
                             ForEach(LibrarySegment.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                         }
@@ -67,11 +70,11 @@ struct ProfileLibraryView: View {
                             yearFilterInline
                         }
                     }
-                    .padding(.vertical, 16)
+                    .padding(.vertical, 10)
 
                     libraryContent
                 }
-                .padding(.horizontal, 8)
+                .padding(.horizontal, 4)
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Theme.background, for: .navigationBar)
@@ -139,6 +142,54 @@ struct ProfileLibraryView: View {
                 }
             }
             .photosPicker(isPresented: $showPhotoPicker, selection: $selectedPhotoItem, matching: .images, photoLibrary: .shared())
+            .sheet(isPresented: $showGoodreadsImport) {
+                GoodreadsImportView(initialRows: goodreadsImportInitialRows)
+                    .environmentObject(appState)
+                    .onDisappear { goodreadsImportInitialRows = nil }
+            }
+            .overlay {
+                if appState.isFetchingGoodreadsFromURL {
+                    Theme.background.ignoresSafeArea()
+                    VStack(spacing: 16) {
+                        ProgressView()
+                            .tint(Theme.accent)
+                            .scaleEffect(1.2)
+                        Text("Loading Goodreads import…")
+                            .font(Theme.callout())
+                            .foregroundStyle(Theme.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .onAppear {
+                if let rows = appState.pendingGoodreadsImportRows, !rows.isEmpty {
+                    goodreadsImportInitialRows = rows
+                    showGoodreadsImport = true
+                    appState.pendingGoodreadsImportRows = nil
+                }
+                if appState.pendingGoodreadsImportError != nil {
+                    showGoodreadsImportErrorAlert = true
+                }
+            }
+            .onChange(of: appState.pendingGoodreadsImportRows) { _, rows in
+                if let r = rows, !r.isEmpty {
+                    goodreadsImportInitialRows = r
+                    showGoodreadsImport = true
+                    appState.pendingGoodreadsImportRows = nil
+                }
+            }
+            .onChange(of: appState.pendingGoodreadsImportError) { _, message in
+                showGoodreadsImportErrorAlert = (message != nil)
+            }
+            .alert("Import from Goodreads", isPresented: $showGoodreadsImportErrorAlert) {
+                Button("OK") {
+                    appState.pendingGoodreadsImportError = nil
+                }
+            } message: {
+                if let msg = appState.pendingGoodreadsImportError {
+                    Text(msg)
+                }
+            }
         }
     }
 
@@ -152,6 +203,11 @@ struct ProfileLibraryView: View {
                     Text("Change photo")
                 }
                 .disabled(isUploadingPhoto)
+                Button {
+                    showGoodreadsImport = true
+                } label: {
+                    Label("Import from Goodreads", systemImage: "square.and.arrow.down")
+                }
                 ForEach(LibraryViewMode.allCases, id: \.self) { mode in
                     Button {
                         viewMode = mode

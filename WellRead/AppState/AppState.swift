@@ -19,6 +19,13 @@ final class AppState: ObservableObject {
     @Published var discoverSuggestionQueue: [Book] = []
     @Published var isLoadingDiscoverSuggestions = false
     @Published var likedPostIds: Set<String> = []
+    /// Set when app is opened from Share Extension with a Goodreads CSV; LibraryView shows import sheet and clears this.
+    @Published var pendingGoodreadsImportRows: [GoodreadsRow]? = nil
+    /// Set when Share Extension opened the app but couldn't get CSV (e.g. user shared page URL); show alert and clear.
+    @Published var pendingGoodreadsImportError: String? = nil
+    /// Set when Share Extension passed a URL; app downloads in foreground then sets rows or error and clears this.
+    @Published var pendingGoodreadsImportURL: URL? = nil
+    @Published var isFetchingGoodreadsFromURL = false
 
     /// True only after we've loaded dismissed book IDs from Firestore, so discover suggestions exclude them from the first fetch.
     private var dismissedBookIdsLoaded = false
@@ -254,6 +261,55 @@ final class AppState: ObservableObject {
             if postToFeed {
                 let thoughts = (caption?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
                 _ = try? await postRepo.createPost(userId: uid, type: .finishedBook, bookId: book.id, caption: thoughts, ratingPercent: ratingPercent, dateFinished: dateFinished)
+            }
+        }
+    }
+
+    // MARK: - Goodreads import
+
+    /// Import Goodreads-matched items. Skips duplicates when skipDuplicates is true. Calls progress?(importedCount, totalCount) on the main actor after each book.
+    func importFromGoodreads(items: [GoodreadsMatchedItem], skipDuplicates: Bool, importRatings: Bool, importReviews: Bool, progress: (@Sendable (Int, Int) -> Void)? = nil) async {
+        guard let uid = currentUserId else { return }
+        var existingIds = Set(userBooks.map(\.bookId))
+        let total = items.count
+        var imported = 0
+        for item in items {
+            guard let book = item.book else { continue }
+            if skipDuplicates && existingIds.contains(book.id) { continue }
+            let status = GoodreadsImportService.status(for: item.row.exclusiveShelf)
+            let rating = importRatings ? GoodreadsImportService.rating1to10(from: item.row.myRating) : nil
+            let review = importReviews ? item.row.myReview : nil
+            let dateFinished = status == .read ? item.row.dateRead : nil
+            do {
+                _ = try await userBookRepo.addUserBook(userId: uid, book: book, status: status, rating: rating, reviewText: review, dateStarted: nil, dateFinished: dateFinished)
+                existingIds.insert(book.id)
+                imported += 1
+                progress?(imported, total)
+            } catch { }
+        }
+    }
+
+    /// Download shared URL (from Share Extension), parse as CSV if possible, and set pendingGoodreadsImportRows or pendingGoodreadsImportError. Call from main app when pendingGoodreadsImportURL is set.
+    func fetchGoodreadsImportFromURL(_ url: URL) async {
+        await MainActor.run { isFetchingGoodreadsFromURL = true }
+        defer { Task { @MainActor in isFetchingGoodreadsFromURL = false; pendingGoodreadsImportURL = nil } }
+        guard let (data, _) = try? await URLSession.shared.data(from: url), !data.isEmpty else {
+            await MainActor.run {
+                pendingGoodreadsImportError = GoodreadsImportCopy.couldNotFetchExportMessage
+            }
+            return
+        }
+        let head = String(data: data.prefix(500), encoding: .utf8) ?? ""
+        let isCSV = head.contains("Book Id") || head.contains("Title,")
+        await MainActor.run {
+            if isCSV {
+                let parsed = GoodreadsCSVParser.parse(data: data)
+                pendingGoodreadsImportRows = parsed.isEmpty ? nil : parsed
+                if parsed.isEmpty {
+                    pendingGoodreadsImportError = "No book data was found at that link."
+                }
+            } else {
+                pendingGoodreadsImportError = GoodreadsImportCopy.couldNotFetchExportMessage
             }
         }
     }

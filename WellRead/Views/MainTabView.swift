@@ -37,6 +37,18 @@ struct MainTabView: View {
         .sheet(isPresented: $showAddBook) { AddBookFlowView() }
         .onAppear {
             appState.loadDiscoverSuggestionsIfNeeded()
+            if appState.pendingGoodreadsImportRows != nil || appState.pendingGoodreadsImportError != nil || appState.pendingGoodreadsImportURL != nil {
+                selectedTab = .profile
+            }
+        }
+        .onChange(of: appState.pendingGoodreadsImportRows) { _, rows in
+            if rows != nil { selectedTab = .profile }
+        }
+        .onChange(of: appState.pendingGoodreadsImportError) { _, message in
+            if message != nil { selectedTab = .profile }
+        }
+        .onChange(of: appState.pendingGoodreadsImportURL) { _, u in
+            if u != nil { selectedTab = .profile }
         }
     }
     

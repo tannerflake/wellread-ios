@@ -27,6 +27,17 @@ struct RootView: View {
         .animation(.easeInOut(duration: 0.25), value: authService.isLoading)
         .animation(.easeInOut(duration: 0.25), value: authService.firebaseUser?.uid)
         .animation(.easeInOut(duration: 0.25), value: authService.appUser?.id)
+        .onAppear {
+            if let data = GoodreadsShareHelper.consumePendingImport(), !data.isEmpty {
+                let parsed = GoodreadsCSVParser.parse(data: data)
+                if !parsed.isEmpty {
+                    appState.pendingGoodreadsImportRows = parsed
+                }
+            }
+            if let message = GoodreadsShareHelper.consumePendingImportError() {
+                appState.pendingGoodreadsImportError = message
+            }
+        }
         .onChange(of: authService.appUser) { _, newUser in
             if let user = newUser {
                 appState.currentUser = user
