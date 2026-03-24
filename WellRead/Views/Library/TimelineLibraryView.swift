@@ -42,7 +42,7 @@ struct TimelineLibraryView: View {
                                         if let r = ub.rating {
                                             HStack(spacing: 2) {
                                                 Image(systemName: "star.fill").font(.caption2).foregroundStyle(Theme.accent)
-                                                Text("\(r)/10").font(Theme.caption()).foregroundStyle(Theme.textSecondary)
+                                                Text("\(Theme.formatRatingOutOfTen(r))/10").font(Theme.caption()).foregroundStyle(Theme.textSecondary)
                                             }
                                         }
                                         if let snippet = ub.reviewText, !snippet.isEmpty {

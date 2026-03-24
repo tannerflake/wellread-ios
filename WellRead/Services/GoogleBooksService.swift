@@ -22,6 +22,11 @@ struct GoogleBooksItem: Codable {
     let volumeInfo: VolumeInfo?
 }
 
+struct IndustryIdentifier: Codable {
+    let type: String?
+    let identifier: String?
+}
+
 struct VolumeInfo: Codable {
     let title: String?
     let authors: [String]?
@@ -30,6 +35,7 @@ struct VolumeInfo: Codable {
     let publishedDate: String?
     let description: String?
     let categories: [String]?
+    let industryIdentifiers: [IndustryIdentifier]?
 }
 
 struct ImageLinks: Codable {
@@ -159,27 +165,62 @@ final class GoogleBooksService {
         return books
     }
 
-    /// Use imageLinks in documented size order (best available first). No book is returned if no image at all. Excludes summary/study-guide entries (title contains "Summary").
+    /// Fetches a single volume by Google Books volume ID (same `Book.id` from search). Used to fill categories when the stored book has no genres.
+    func fetchVolume(id: String) async throws -> Book? {
+        let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        guard let encoded = trimmed.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) else { return nil }
+        var comp = URLComponents(string: "\(baseURL)/\(encoded)")!
+        var queryItems: [URLQueryItem] = []
+        if let key = apiKey {
+            queryItems.append(URLQueryItem(name: "key", value: key))
+        }
+        comp.queryItems = queryItems.isEmpty ? nil : queryItems
+        guard let url = comp.url else { return nil }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            throw NSError(domain: "GoogleBooks", code: -2, userInfo: [NSLocalizedDescriptionKey: "Can't reach Google Books."])
+        }
+        guard let http = response as? HTTPURLResponse else { return nil }
+        guard http.statusCode == 200 else { return nil }
+        let item: GoogleBooksItem
+        do {
+            item = try JSONDecoder().decode(GoogleBooksItem.self, from: data)
+        } catch {
+            return nil
+        }
+        return mapToBook(item: item)
+    }
+
+    /// Use imageLinks in documented size order (best available first). Books without covers still map (empty coverURL — UI uses title placeholder / Open Library). Excludes obvious summary/study-guide entries.
     private func mapToBook(item: GoogleBooksItem) -> Book? {
         guard let info = item.volumeInfo, let title = info.title, !title.isEmpty else { return nil }
         if title.range(of: "Summary", options: .caseInsensitive) != nil { return nil }
+        if isLikelyNonBookEdition(title: title) { return nil }
         let links = info.imageLinks
+        // Prefer thumbnail → medium before extraLarge: very large assets are sometimes interior scans or preview pages, not the marketing cover.
         let rawOrder: [String?] = [
-            links?.extraLarge,
-            links?.large,
-            links?.medium,
-            links?.small,
             links?.thumbnail,
-            links?.smallThumbnail
+            links?.smallThumbnail,
+            links?.small,
+            links?.medium,
+            links?.large,
+            links?.extraLarge
         ]
         var seen = Set<String>()
         let allURLs: [String] = rawOrder
             .compactMap { $0 }
             .map { $0.hasPrefix("http://") ? "https" + $0.dropFirst(4) : $0 }
+            .map { Book.sanitizeGoogleBooksCoverURL($0) }
             .filter { !$0.isEmpty && seen.insert($0).inserted }
-        guard let primary = allURLs.first else { return nil }
+        let primary = allURLs.first ?? ""
         let fallbacks = Array(allURLs.dropFirst())
         let author = info.authors?.joined(separator: ", ") ?? "Unknown"
+        let isbnDigits = Self.normalizedISBNDigits(from: info.industryIdentifiers)
         return Book(
             id: item.id,
             title: title,
@@ -189,7 +230,28 @@ final class GoogleBooksService {
             publishedDate: parsePublishedDate(info.publishedDate),
             description: info.description,
             genres: info.categories ?? [],
+            isbn: isbnDigits,
             fallbackCoverURLs: fallbacks.isEmpty ? nil : fallbacks
         )
+    }
+
+    /// Filters junk editions that often appear in broad search (not used for strict ISBN queries).
+    private func isLikelyNonBookEdition(title: String) -> Bool {
+        let t = title.lowercased()
+        let junk = ["summary", "study guide", "sparknotes", "cliffsnotes", "book review", "analysis of", "reading guide"]
+        return junk.contains { t.contains($0) }
+    }
+
+    /// Prefer ISBN-13, then ISBN-10 (digits only).
+    private static func normalizedISBNDigits(from identifiers: [IndustryIdentifier]?) -> String? {
+        guard let ids = identifiers, !ids.isEmpty else { return nil }
+        let upper = ids.map { ($0.type?.uppercased() ?? "", $0.identifier ?? "") }
+        let isbn13 = upper.first { $0.0.contains("ISBN_13") || $0.0 == "ISBN13" }?.1
+            ?? upper.first { $0.1.filter(\.isNumber).count == 13 }?.1
+        let isbn10 = upper.first { $0.0.contains("ISBN_10") || $0.0 == "ISBN10" }?.1
+            ?? upper.first { $0.1.filter(\.isNumber).count == 10 }?.1
+        let digits = (isbn13 ?? isbn10)?.filter(\.isNumber) ?? ""
+        guard digits.count == 10 || digits.count == 13 else { return nil }
+        return digits
     }
 }

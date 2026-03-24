@@ -51,7 +51,7 @@ final class PostRepository {
     }
 
     /// Creates a post (e.g. when user finishes a book or writes a review).
-    func createPost(userId: String, type: PostType, bookId: String?, caption: String?, ratingPercent: Int? = nil, dateFinished: Date? = nil) async throws -> Post {
+    func createPost(userId: String, type: PostType, bookId: String?, caption: String?, rating: Double? = nil, dateFinished: Date? = nil) async throws -> Post {
         let id = UUID()
         let ref = db.collection(posts).document(id.uuidString)
         var data: [String: Any] = [
@@ -63,7 +63,7 @@ final class PostRepository {
             "likeCount": 0,
             "commentCount": 0,
         ]
-        if let pct = ratingPercent { data["ratingPercent"] = pct }
+        if let r = rating { data["rating"] = Theme.normalizeRatingOutOfTen(r) }
         if let d = dateFinished { data["dateFinished"] = Timestamp(date: d) }
         try await ref.setData(data)
         var post = Post(
@@ -77,7 +77,7 @@ final class PostRepository {
             likeCount: 0,
             commentCount: 0,
             user: nil,
-            ratingPercent: ratingPercent,
+            rating: rating.map { Theme.normalizeRatingOutOfTen($0) },
             dateFinished: dateFinished
         )
         if let bid = bookId { post.book = await bookRepo.getBook(id: bid) }
@@ -137,7 +137,7 @@ final class PostRepository {
         let bookId = data["bookId"] as? String
         let likeCount = data["likeCount"] as? Int ?? 0
         let commentCount = data["commentCount"] as? Int ?? 0
-        let ratingPercent = data["ratingPercent"] as? Int
+        let rating = decodePostRating(from: data)
         let dateFinished = (data["dateFinished"] as? Timestamp)?.dateValue()
         var post = Post(
             id: id,
@@ -150,11 +150,39 @@ final class PostRepository {
             likeCount: likeCount,
             commentCount: commentCount,
             user: nil,
-            ratingPercent: ratingPercent,
+            rating: rating,
             dateFinished: dateFinished
         )
         if let bid = bookId { post.book = await bookRepo.getBook(id: bid) }
         post.user = await userRepo.getUser(uid: userId)
         return post
+    }
+
+    /// Prefers `rating` (0–10); migrates legacy `ratingPercent` (1–100) → ÷10.
+    private func decodePostRating(from data: [String: Any]) -> Double? {
+        if let r = decodeNumericRating(data["rating"]) {
+            return r
+        }
+        if let pct = data["ratingPercent"] as? Int {
+            return Theme.normalizeRatingOutOfTen(Double(pct) / 10.0)
+        }
+        if let pct = data["ratingPercent"] as? Int64 {
+            return Theme.normalizeRatingOutOfTen(Double(pct) / 10.0)
+        }
+        if let n = data["ratingPercent"] as? NSNumber {
+            return Theme.normalizeRatingOutOfTen(Double(truncating: n) / 10.0)
+        }
+        return nil
+    }
+
+    private func decodeNumericRating(_ value: Any?) -> Double? {
+        switch value {
+        case nil: return nil
+        case let d as Double: return Theme.normalizeRatingOutOfTen(d)
+        case let i as Int: return Theme.normalizeRatingOutOfTen(Double(i))
+        case let i64 as Int64: return Theme.normalizeRatingOutOfTen(Double(i64))
+        case let n as NSNumber: return Theme.normalizeRatingOutOfTen(Double(truncating: n))
+        default: return nil
+        }
     }
 }

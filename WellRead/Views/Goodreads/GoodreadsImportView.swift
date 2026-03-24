@@ -11,6 +11,7 @@ import UIKit
 
 struct GoodreadsImportView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject var appState: AppState
 
@@ -150,84 +151,115 @@ struct GoodreadsImportView: View {
     }
 
     private var explainerContent: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                Text("Bring your Goodreads library into Spynes.")
-                    .font(Theme.body())
-                    .foregroundStyle(Theme.textSecondary)
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("How to Import:")
+                            .font(Theme.headline())
+                            .foregroundStyle(Theme.textPrimary)
 
-                Text("Easiest: copy your Goodreads export, then open Spynes and tap below.")
-                    .font(Theme.callout())
-                    .foregroundStyle(Theme.textSecondary)
-                    .padding(8)
-                    .background(Theme.surface.opacity(0.6))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-
-                VStack(alignment: .leading, spacing: 12) {
-                    stepRow(number: 1, text: "In Goodreads, open your library export (e.g. goodreads_library_export.csv) and select all the text, then copy.")
-                    stepRow(number: 2, text: "Open Spynes and go to Profile → Import from Goodreads.")
-                    stepRow(number: 3, text: "Tap \"I copied my Goodreads data\" below. We'll read from your clipboard and show a preview to import.")
-                }
-
-                if hasClipboardCSV {
-                    Button {
-                        importFromClipboard()
-                    } label: {
-                        HStack {
-                            if isImportingFromClipboard {
-                                ProgressView()
-                                    .tint(Theme.background)
-                            } else {
-                                Image(systemName: "doc.on.clipboard")
-                                Text("I copied my Goodreads data")
+                        Grid(alignment: .topLeading, horizontalSpacing: 12, verticalSpacing: 12) {
+                            GridRow {
+                                goodreadsStepNumberBadge(1)
+                                goodreadsStepBody("In Goodreads, open your library export (e.g. goodreads_library_export.csv) and highlight all the text, then copy.")
+                            }
+                            GridRow {
+                                goodreadsStepNumberBadge(2)
+                                goodreadsStepBody("Come back to Spynes and tap \"Allow Paste\".")
+                            }
+                            GridRow {
+                                goodreadsStepNumberBadge(3)
+                                goodreadsStepBody("Tap \"I copied my Goodreads data\" below.")
                             }
                         }
-                        .font(Theme.headline())
-                        .foregroundStyle(Theme.background)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(Theme.accent)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
                     }
-                    .disabled(isImportingFromClipboard)
-                    .padding(.top, 16)
-                    if let err = clipboardError {
-                        Text(err)
-                            .font(Theme.caption())
-                            .foregroundStyle(Theme.textTertiary)
-                            .padding(.top, 4)
-                    }
-                } else {
-                    Text("Copy your Goodreads export first, then come back here—the button will appear.")
-                        .font(Theme.caption())
-                        .foregroundStyle(Theme.textTertiary)
-                        .padding(.top, 8)
-                }
 
-                Text("Other options")
-                    .font(Theme.callout())
-                    .foregroundStyle(Theme.textSecondary)
+                    if hasClipboardCSV {
+                        Button {
+                            importFromClipboard()
+                        } label: {
+                            HStack {
+                                if isImportingFromClipboard {
+                                    ProgressView()
+                                        .tint(Theme.background)
+                                } else {
+                                    Image(systemName: "doc.on.clipboard")
+                                    Text("I copied my Goodreads data")
+                                }
+                            }
+                            .font(Theme.headline())
+                            .foregroundStyle(Theme.background)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(Theme.accent)
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+                        }
+                        .disabled(isImportingFromClipboard)
+                        .padding(.top, 16)
+                        if let err = clipboardError {
+                            Text(err)
+                                .font(Theme.caption())
+                                .foregroundStyle(Theme.textTertiary)
+                                .padding(.top, 4)
+                        }
+                    }
+
+                    Button {
+                        if let url = URL(string: "https://www.goodreads.com/review/import") {
+                            openURL(url)
+                        }
+                    } label: {
+                        Text("Sign into Goodreads")
+                            .font(Theme.headline())
+                            .foregroundStyle(Theme.background)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(Theme.accent)
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+                    }
+                    .buttonStyle(.plain)
                     .padding(.top, 24)
 
-                Link("Open Goodreads export page", destination: URL(string: "https://www.goodreads.com/review/import")!)
-                    .font(Theme.callout())
-                    .foregroundStyle(Theme.accent)
-                    .padding(.top, 4)
-
-                Button {
-                    showFileImporter = true
-                } label: {
-                    Text("Choose CSV file instead")
-                        .font(Theme.headline())
-                        .foregroundStyle(Theme.background)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(Theme.accent)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+                    GoodreadsImportTutorialEmbed()
+                        .padding(.top, 20)
                 }
-                .padding(.top, 12)
+                .padding(Theme.cardPadding)
+                .padding(.bottom, 8)
             }
-            .padding(Theme.cardPadding)
+
+            VStack(spacing: 0) {
+                Rectangle()
+                    .fill(Theme.textTertiary.opacity(0.25))
+                    .frame(height: 0.5)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("More advanced:")
+                        .font(Theme.callout())
+                        .foregroundStyle(Theme.textSecondary)
+
+                    Button {
+                        showFileImporter = true
+                    } label: {
+                        Text("Choose CSV file")
+                            .font(Theme.callout())
+                            .fontWeight(.medium)
+                            .foregroundStyle(Theme.textSecondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Theme.surface)
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
+                                    .strokeBorder(Theme.textTertiary.opacity(0.35), lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, Theme.cardPadding)
+                .padding(.vertical, 12)
+                .background(Theme.background.opacity(0.98))
+            }
         }
     }
 
@@ -260,18 +292,22 @@ struct GoodreadsImportView: View {
         }
     }
 
-    private func stepRow(number: Int, text: String) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Text("\(number)")
-                .font(Theme.headline())
-                .foregroundStyle(Theme.background)
-                .frame(width: 28, height: 28)
-                .background(Theme.accent)
-                .clipShape(Circle())
-            Text(text)
-                .font(Theme.callout())
-                .foregroundStyle(Theme.textSecondary)
-        }
+    private func goodreadsStepNumberBadge(_ number: Int) -> some View {
+        Text("\(number)")
+            .font(Theme.headline())
+            .foregroundStyle(Theme.background)
+            .frame(width: 28, height: 28)
+            .background(Theme.accent)
+            .clipShape(Circle())
+    }
+
+    private func goodreadsStepBody(_ text: String) -> some View {
+        Text(text)
+            .font(Theme.callout())
+            .foregroundStyle(Theme.textSecondary)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private func previewContent(_ preview: GoodreadsImportPreview) -> some View {
@@ -293,7 +329,7 @@ struct GoodreadsImportView: View {
                     .tint(Theme.accent)
 
                 if !preview.unmatched.isEmpty {
-                    Text("\(preview.unmatched.count) book(s) couldn't be matched and will be skipped.")
+                    Text("\(preview.unmatched.count) book(s) couldn't be matched (missing ISBN in your export, or no exact ISBN match in our catalog) and will be skipped.")
                         .font(Theme.caption())
                         .foregroundStyle(Theme.textTertiary)
                 }

@@ -22,11 +22,50 @@ enum Theme {
     static func largeTitle() -> Font { .system(size: 28, weight: .bold, design: .default) }
     static func title() -> Font { .system(size: 22, weight: .bold, design: .default) }
     static func title2() -> Font { .system(size: 18, weight: .semibold, design: .default) }
+    /// Feed screen section labels (“Your friends”, “Feed”) — same size, between old large nav title and headline.
+    static func feedSectionHeader() -> Font { .system(size: 17, weight: .semibold, design: .default) }
     static func headline() -> Font { .system(size: 16, weight: .semibold, design: .default) }
+    /// Section titles on book profile (Summary, Notable quote, etc.) — ~2× headline for emphasis.
+    static func profileSectionHeader() -> Font { .system(size: 32, weight: .bold, design: .default) }
     static func body() -> Font { .system(size: 16, weight: .regular, design: .default) }
     static func callout() -> Font { .system(size: 14, weight: .regular, design: .default) }
     static func caption() -> Font { .system(size: 12, weight: .regular, design: .default) }
     
+    // MARK: - Ratings (out of 10, one decimal — e.g. 8.8)
+    static func formatRatingOutOfTen(_ value: Double) -> String {
+        String(format: "%.1f", value)
+    }
+
+    /// Slider / form input → stored value (1.0…10.0, one decimal).
+    static func normalizeRatingOutOfTen(_ value: Double) -> Double {
+        let clamped = min(10, max(0, value))
+        return (clamped * 10).rounded() / 10
+    }
+
+    /// "Jordan's Library" / "James' Library" from a person's display name.
+    static func possessiveLibraryTitle(displayName: String) -> String {
+        let trimmed = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "Library" }
+        if trimmed.lowercased().hasSuffix("s") {
+            return "\(trimmed)' Library"
+        }
+        return "\(trimmed)'s Library"
+    }
+
+    /// Same possessive rules, but uses first name only (`User.firstName`, else first word of `displayName`).
+    static func possessiveLibraryTitleFirstNameOnly(user: User) -> String {
+        let first: String
+        if let fn = user.firstName?.trimmingCharacters(in: .whitespacesAndNewlines), !fn.isEmpty {
+            first = fn
+        } else {
+            let trimmed = user.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let parts = trimmed.split(separator: " ").map(String.init)
+            first = parts.first ?? trimmed
+        }
+        guard !first.isEmpty else { return "Library" }
+        return possessiveLibraryTitle(displayName: first)
+    }
+
     // MARK: - Layout
     static let cardCornerRadius: CGFloat = 14
     static let cardPadding: CGFloat = 16

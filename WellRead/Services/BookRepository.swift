@@ -51,7 +51,7 @@ final class BookRepository {
         let ref = db.collection(books).document(book.id)
         let snapshot = try await ref.getDocument()
         guard !snapshot.exists else { return }
-        try await ref.setData([
+        var data: [String: Any] = [
             "title": book.title,
             "author": book.author,
             "coverURL": book.coverURL,
@@ -59,7 +59,9 @@ final class BookRepository {
             "publishedDate": book.publishedDate.map { Timestamp(date: $0) } as Any,
             "description": book.description as Any,
             "genres": book.genres,
-        ])
+        ]
+        if let isbn = book.isbn { data["isbn"] = isbn }
+        try await ref.setData(data)
     }
 }
 
@@ -81,7 +83,8 @@ extension BookRepository {
             pageCount: pageCount,
             publishedDate: publishedDate,
             description: data["description"] as? String,
-            genres: data["genres"] as? [String] ?? []
+            genres: data["genres"] as? [String] ?? [],
+            isbn: data["isbn"] as? String
         )
     }
 }

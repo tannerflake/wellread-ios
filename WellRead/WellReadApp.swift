@@ -10,13 +10,39 @@ import FirebaseCore
 import GoogleSignIn
 import FirebaseFirestore
 
-/// Use the same Firestore database everywhere. Set databaseID to your named database (e.g. "wellread") or nil for (default).
+/// Use the same Firestore database everywhere.
+/// - `Info.plist` key `FirestoreDatabaseID`: **empty** or omit → `(default)` database (Firebase Console “default” rules apply).
+/// - Non-empty (e.g. `wellread`) → named database; you **must** publish `firestore.rules` to that exact database in Console.
 enum FirestoreDatabase {
-    static let databaseID: String? = "wellread"
+    static let databaseID: String? = {
+        #if DEBUG
+        guard let raw = Bundle.main.object(forInfoDictionaryKey: "FirestoreDatabaseID") as? String else {
+            print("FirestoreDatabaseID raw value: nil (key missing)")
+            return nil
+        }
+        let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        print("FirestoreDatabaseID raw value: [\(raw)]")
+        print("FirestoreDatabaseID trimmed value: [\(t)]")
+        return t.isEmpty ? nil : t
+        #else
+        guard let raw = Bundle.main.object(forInfoDictionaryKey: "FirestoreDatabaseID") as? String else {
+            return nil
+        }
+        let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? nil : t
+        #endif
+    }()
+
     static var firestore: Firestore {
         if let id = databaseID {
+            #if DEBUG
+            print("Firestore: using named database [\(id)]")
+            #endif
             return Firestore.firestore(database: id)
         }
+        #if DEBUG
+        print("Firestore: using (default) database")
+        #endif
         return Firestore.firestore()
     }
 }
@@ -52,12 +78,14 @@ struct WellReadApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var authService = AuthService()
     @StateObject private var appState = AppState()
+    @StateObject private var queueDragCoordinator = QueueBookDragCoordinator()
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environmentObject(authService)
                 .environmentObject(appState)
+                .environmentObject(queueDragCoordinator)
                 .preferredColorScheme(.dark)
                 .onOpenURL { url in
                     if url.scheme == "wellread", url.host == "goodreads-import" {

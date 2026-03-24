@@ -2,7 +2,7 @@
 //  BookProfileView.swift
 //  WellRead
 //
-//  Default book profile (Hinge-style): hero cover, title, author, summary, notable quote,
+//  Default book profile (Hinge-style): hero cover, title, author, summary + tags, notable quote,
 //  optional "Similar to" row, and three actions (Pass, Read, Queue).
 //
 
@@ -14,16 +14,20 @@ struct BookProfileView: View {
     var readBooksForSimilar: [UserBook]? = nil
     var onNotInterested: (() -> Void)? = nil
     var onWantToRead: (() -> Void)? = nil
-    /// Called when user confirms "Mark as Read" with (dateFinished, ratingPercent 1–100, postToFeed, thoughtsCaption). When set, tapping Read shows the inline modal instead of firing immediately.
-    var onConfirmRead: ((Date, Int?, Bool, String?) -> Void)? = nil
+    /// Called when user confirms "Mark as Read" with (dateFinished, rating out of 10 e.g. 8.8, postToFeed, thoughtsCaption). When set, tapping Read shows the inline modal instead of firing immediately.
+    var onConfirmRead: ((Date, Double?, Bool, String?) -> Void)? = nil
     /// When set, tapping a similar book opens that book (e.g. sets navigation selection). Used from Discover.
     var onBookTap: ((Book) -> Void)? = nil
     /// True when this book is already on the user's read list (affects Read button appearance).
     var isOnReadList: Bool = false
     /// True when this book is already in the user's queue (affects Queue button appearance).
     var isInQueue: Bool = false
-    /// When set (e.g. from Library/Add/Feed), shows "Remove from queue" when isInQueue; when nil (e.g. Discover), Queue button is disabled when isInQueue.
+    /// When set (e.g. from Library/Add/Feed), shows "Remove" when isInQueue; when nil (e.g. Discover), Queue button is disabled when isInQueue.
     var onRemoveFromQueue: (() -> Void)? = nil
+    /// When set and the entry has review text and/or a rating, shows the first card section (e.g. current user's read row).
+    var readEntryForReview: UserBook? = nil
+    /// Section title for that card (`"Your review"` vs `"Review"` on someone else's profile).
+    var reviewSectionHeading: String = "Your review"
 
     @State private var summary: String?
     @State private var notableQuote: String?
@@ -33,12 +37,40 @@ struct BookProfileView: View {
     @State private var similarLoading = false
     @State private var showMarkAsReadModal = false
     @State private var markAsReadDate = Date()
-    @State private var markAsReadRating: Double = 50
+    /// Visual middle of 1…10; label shows "—" until the user moves the slider.
+    @State private var markAsReadSliderValue: Double = 5.5
+    @State private var hasExplicitMarkReadRating = false
     @State private var markAsReadPostToFeed = true
     @State private var markAsReadThoughts = ""
+    @State private var profileTags: [String] = []
+    @State private var tagsLoading = false
+
+    private var markAsReadRatingSliderBinding: Binding<Double> {
+        Binding(
+            get: { markAsReadSliderValue },
+            set: { newValue in
+                markAsReadSliderValue = newValue
+                hasExplicitMarkReadRating = true
+            }
+        )
+    }
+
+    private var markAsReadRatingLabel: String {
+        hasExplicitMarkReadRating ? Theme.formatRatingOutOfTen(markAsReadSliderValue) : "—"
+    }
 
     private var showActionBar: Bool {
         onNotInterested != nil || onWantToRead != nil || onConfirmRead != nil || onRemoveFromQueue != nil
+    }
+
+    /// Show review card when this read row has review text and/or a rating.
+    private var showReviewSection: Bool {
+        guard let ub = readEntryForReview else { return false }
+        guard ub.status == .read else { return false }
+        let trimmed = ub.reviewText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let hasText = !trimmed.isEmpty
+        let hasRating = ub.rating != nil
+        return hasText || hasRating
     }
 
     private let actionBarHeight: CGFloat = 76
@@ -66,10 +98,43 @@ struct BookProfileView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, 16)
 
+                    // Your review (first card section when present)
+                    if showReviewSection, let ub = readEntryForReview {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack(alignment: .center, spacing: 12) {
+                                Text(reviewSectionHeading)
+                                    .font(Theme.profileSectionHeader())
+                                    .foregroundStyle(Theme.textSecondary)
+                                    .multilineTextAlignment(.leading)
+                                Spacer(minLength: 8)
+                                if let r = ub.rating {
+                                    Text("\(Theme.formatRatingOutOfTen(r))/10")
+                                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                        .foregroundStyle(Theme.background)
+                                        .padding(.horizontal, 11)
+                                        .padding(.vertical, 6)
+                                        .background(Theme.accent)
+                                        .clipShape(Capsule())
+                                }
+                            }
+                            if let text = ub.reviewText?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+                                Text(text)
+                                    .font(Theme.body())
+                                    .foregroundStyle(Theme.textPrimary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Theme.surface)
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+                        .padding(.horizontal)
+                    }
+
                     // Summary
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 12) {
                         Text("Summary")
-                            .font(Theme.headline())
+                            .font(Theme.profileSectionHeader())
                             .foregroundStyle(Theme.textSecondary)
                         if summaryLoading {
                             ProgressView()
@@ -85,6 +150,29 @@ struct BookProfileView: View {
                                 .font(Theme.callout())
                                 .foregroundStyle(Theme.textTertiary)
                         }
+
+                        if tagsLoading {
+                            ProgressView()
+                                .controlSize(.small)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.top, 4)
+                        } else if !profileTags.isEmpty {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 5) {
+                                    ForEach(profileTags, id: \.self) { tag in
+                                        Text(tag)
+                                            .font(.caption2)
+                                            .fontWeight(.medium)
+                                            .foregroundStyle(Theme.textSecondary)
+                                            .padding(.horizontal, 7)
+                                            .padding(.vertical, 3)
+                                            .background(Theme.textTertiary.opacity(0.12))
+                                            .clipShape(Capsule())
+                                    }
+                                }
+                            }
+                            .padding(.top, 8)
+                        }
                     }
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -94,9 +182,9 @@ struct BookProfileView: View {
 
                     // Similar to — cute little icons (only when we have similar books)
                     if !readBooksForSimilar.isEmptyOrNil && (similarLoading || !similarBooks.isEmpty) {
-                        VStack(alignment: .leading, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 12) {
                             Text("Similar to books you've read")
-                                .font(Theme.headline())
+                                .font(Theme.profileSectionHeader())
                                 .foregroundStyle(Theme.textSecondary)
                             if similarLoading {
                                 HStack(spacing: 12) {
@@ -135,9 +223,9 @@ struct BookProfileView: View {
                     }
 
                     // Notable quote
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 12) {
                         Text("Notable quote")
-                            .font(Theme.headline())
+                            .font(Theme.profileSectionHeader())
                             .foregroundStyle(Theme.textSecondary)
                         if quoteLoading {
                             ProgressView()
@@ -172,12 +260,21 @@ struct BookProfileView: View {
         .overlay { markAsReadOverlay }
         .navigationBarTitleDisplayMode(.inline)
         .task(id: book.id) {
+            profileTags = []
+            tagsLoading = true
             summaryLoading = true
-            summary = await BookProfileService.shared.twoSentenceSummary(for: book)
-            summaryLoading = false
-
             quoteLoading = true
-            notableQuote = await BookProfileService.shared.notableQuote(for: book)
+
+            async let tagsTask = BookProfileService.shared.profileTags(for: book)
+            async let summaryTask = BookProfileService.shared.twoSentenceSummary(for: book)
+            async let quoteTask = BookProfileService.shared.notableQuote(for: book)
+
+            let (tags, sum, quote) = await (tagsTask, summaryTask, quoteTask)
+            profileTags = tags
+            tagsLoading = false
+            summary = sum
+            summaryLoading = false
+            notableQuote = quote
             quoteLoading = false
 
             if let read = readBooksForSimilar, !read.isEmpty {
@@ -222,10 +319,10 @@ struct BookProfileView: View {
                     .tint(Theme.accent)
             }
             VStack(alignment: .leading, spacing: 6) {
-                Text("Rating: \(Int(markAsReadRating))%")
+                Text("Rating: \(markAsReadRatingLabel) / 10")
                     .font(Theme.caption())
                     .foregroundStyle(Theme.textSecondary)
-                Slider(value: $markAsReadRating, in: 1...100, step: 1)
+                Slider(value: markAsReadRatingSliderBinding, in: 1...10, step: 0.1)
                     .tint(Theme.accent)
             }
             TextField("Thoughts on this book...", text: $markAsReadThoughts, axis: .vertical)
@@ -243,7 +340,9 @@ struct BookProfileView: View {
             .tint(Theme.accent)
             Button {
                 let date = markAsReadDate
-                let rating = Int(markAsReadRating)
+                let rating: Double? = hasExplicitMarkReadRating
+                    ? Theme.normalizeRatingOutOfTen(markAsReadSliderValue)
+                    : nil
                 let post = markAsReadPostToFeed
                 let thoughts = markAsReadThoughts.trimmingCharacters(in: .whitespacesAndNewlines)
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { showMarkAsReadModal = false }
@@ -283,7 +382,8 @@ struct BookProfileView: View {
                 Button(action: {
                     if isOnReadList { return }
                     markAsReadDate = Date()
-                    markAsReadRating = 50
+                    markAsReadSliderValue = 5.5
+                    hasExplicitMarkReadRating = false
                     markAsReadPostToFeed = true
                     markAsReadThoughts = ""
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showMarkAsReadModal = true }
@@ -303,7 +403,7 @@ struct BookProfileView: View {
                 Group {
                     if isInQueue && onRemoveFromQueue != nil {
                         Button(action: { onRemoveFromQueue?() }) {
-                            Label("Remove from queue", systemImage: "book.circle.fill")
+                            Label("Remove", systemImage: "book.circle.fill")
                                 .font(Theme.headline())
                                 .foregroundStyle(.white)
                                 .frame(maxWidth: .infinity)

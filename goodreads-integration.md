@@ -347,3 +347,9 @@ Once you send the screenshots, I can help you design:
 - **App Group** (`group.com.wellread.app`): Must be enabled for both the main app and the Share Extension in [Apple Developer → Identifiers](https://developer.apple.com/account/resources/identifiers/list). If the extension’s container is null, UserDefaults/app-group file won’t be shared.
 - **Keychain Sharing**: Used as a fallback to pass the shared URL from the Share Extension to the main app when the App Group container is unavailable. Both targets have the same keychain access group (`$(AppIdentifierPrefix)com.wellread.app`) in their entitlements. If you archive or run on a real device and see a keychain entitlement error, add **Keychain Sharing** for both App IDs in the developer portal and regenerate provisioning profiles.
 - Share extensions cannot open the containing app via `extensionContext?.open(url)`; the main app consumes the pending URL when it becomes active (e.g. user switches to Spynes).
+
+## Book covers (Open Library + Google)
+
+- **Order**: For each book with a known ISBN (digits from Goodreads export or Google Books `industryIdentifiers`), cover URLs are tried in order: **Open Library** (`covers.openlibrary.org/b/isbn/{ISBN}-L|M|S.jpg`), then **Google Books** (primary + zoom fallbacks + ID-based URLs).
+- **Storage**: `books/{id}` in Firestore may include optional `isbn` (digits only) so covers resolve after sync.
+- **Placeholders**: Tiny Open Library “missing” images are rejected so we fall through to Google; Google’s gray placeholders are already filtered in `CoverImageCache`.

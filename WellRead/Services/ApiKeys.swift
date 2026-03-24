@@ -16,6 +16,15 @@ enum ApiKeys {
         return nil
     }
 
+    /// Email/password for hidden test login (tap the welcome book icon 5×). Add `TEST_ACCOUNT_EMAIL` and `TEST_ACCOUNT_PASSWORD` to Secrets.plist; create the same user in Firebase Authentication (Email/Password).
+    static var testAccountCredentials: (email: String, password: String)? {
+        guard let email = keyFromPlist(named: "Secrets", key: "TEST_ACCOUNT_EMAIL"), !email.isEmpty,
+              let password = keyFromPlist(named: "Secrets", key: "TEST_ACCOUNT_PASSWORD"), !password.isEmpty else {
+            return nil
+        }
+        return (email, password)
+    }
+
     private static func keyFromPlist(named name: String, key: String) -> String? {
         guard let path = Bundle.main.path(forResource: name, ofType: "plist"),
               let plist = NSDictionary(contentsOfFile: path),

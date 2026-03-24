@@ -40,9 +40,10 @@ struct DiscoverView: View {
                     readBooksForSimilar: appState.readBooks,
                     onNotInterested: { selectedBookForProfile = nil },
                     onWantToRead: { appState.addToWantToRead(book: book); selectedBookForProfile = nil },
-                    onConfirmRead: { date, rating, post, caption in appState.addAsRead(book: book, dateFinished: date, ratingPercent: rating, postToFeed: post, caption: caption); selectedBookForProfile = nil },
+                    onConfirmRead: { date, rating, post, caption in appState.addAsRead(book: book, dateFinished: date, rating: rating, postToFeed: post, caption: caption); selectedBookForProfile = nil },
                     isOnReadList: appState.isBookOnReadList(bookId: book.id),
-                    isInQueue: appState.isBookInQueue(bookId: book.id)
+                    isInQueue: appState.isBookInQueue(bookId: book.id),
+                    readEntryForReview: appState.userReadBook(forBookId: book.id)
                 )
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -119,13 +120,14 @@ struct DiscoverView: View {
             readBooksForSimilar: appState.readBooks,
             onNotInterested: { performNotInterested(book) },
             onWantToRead: { performWantToRead(book) },
-            onConfirmRead: { date, rating, post, caption in performHaveRead(book, dateFinished: date, ratingPercent: rating, postToFeed: post, caption: caption) },
+            onConfirmRead: { date, rating, post, caption in performHaveRead(book, dateFinished: date, rating: rating, postToFeed: post, caption: caption) },
             onBookTap: { tappedBook in
                 bookWeCameFrom = appState.discoverCurrentSuggestion
                 selectedBookForProfile = tappedBook
             },
             isOnReadList: appState.isBookOnReadList(bookId: book.id),
-            isInQueue: appState.isBookInQueue(bookId: book.id)
+            isInQueue: appState.isBookInQueue(bookId: book.id),
+            readEntryForReview: appState.userReadBook(forBookId: book.id)
         )
         .padding(.horizontal)
         .padding(.bottom, 24)
@@ -143,8 +145,8 @@ struct DiscoverView: View {
         appState.advanceDiscoverSuggestion()
     }
 
-    private func performHaveRead(_ book: Book, dateFinished: Date, ratingPercent: Int?, postToFeed: Bool, caption: String?) {
-        appState.addAsRead(book: book, dateFinished: dateFinished, ratingPercent: ratingPercent, postToFeed: postToFeed, caption: caption)
+    private func performHaveRead(_ book: Book, dateFinished: Date, rating: Double?, postToFeed: Bool, caption: String?) {
+        appState.addAsRead(book: book, dateFinished: dateFinished, rating: rating, postToFeed: postToFeed, caption: caption)
         appState.advanceDiscoverSuggestion()
     }
 }

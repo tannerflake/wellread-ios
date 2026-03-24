@@ -23,15 +23,15 @@ struct Post: Identifiable, Codable {
     var likeCount: Int
     var commentCount: Int
     var user: User?
-    /// Rating 1–100 when posted from "Mark as read" (shown in feed).
-    var ratingPercent: Int?
+    /// Rating out of 10 (e.g. 8.8). Legacy `ratingPercent` 1–100 in Firestore is migrated to ÷10 when loading.
+    var rating: Double?
     /// Date the user finished the book (shown in feed with minimal weight).
     var dateFinished: Date?
     
     static let demoFeed: [Post] = {
         let b = Book(id: "1", title: "Atomic Habits", author: "James Clear", coverURL: "https://books.google.com/books/content?id=wRqtDwAAQBAJ&printsec=frontcover&img=1", pageCount: 320, publishedDate: nil, description: nil, genres: [])
         return [
-            Post(id: UUID(), userId: "demo-user-id", type: .finishedBook, bookId: b.id, book: b, caption: "Just finished. Highly recommend.", createdAt: Date(), likeCount: 4, commentCount: 1, user: .demo, ratingPercent: 85, dateFinished: Date())
+            Post(id: UUID(), userId: "demo-user-id", type: .finishedBook, bookId: b.id, book: b, caption: "Just finished. Highly recommend.", createdAt: Date(), likeCount: 4, commentCount: 1, user: .demo, rating: 8.5, dateFinished: Date())
         ]
     }()
 }

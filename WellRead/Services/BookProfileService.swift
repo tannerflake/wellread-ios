@@ -2,7 +2,7 @@
 //  BookProfileService.swift
 //  WellRead
 //
-//  Uses Claude to produce a two-sentence summary and a notable quote for a book. Caches by book.id.
+//  Uses Claude to produce a two-sentence summary, notable quote, and AI profile tags for a book. Caches by book.id.
 //
 
 import Foundation
@@ -11,6 +11,7 @@ final class BookProfileService {
     static let shared = BookProfileService()
     private var summaryCache: [String: String] = [:]
     private var quoteCache: [String: String] = [:]
+    private var tagsCache: [String: [String]] = [:]
     private let queue = DispatchQueue(label: "com.wellread.bookprofile.cache")
 
     private init() {}
@@ -67,6 +68,173 @@ final class BookProfileService {
         } catch {
             return nil
         }
+    }
+
+    /// Up to 5 tags from Claude, each chosen **only** from `Tags.csv` (see `WellReadTagCatalog`). Every book gets either Fiction or Non-Fiction. Cached by book.id.
+    func profileTags(for book: Book) async -> [String] {
+        let key = book.id
+        if let cached = queue.sync(execute: { tagsCache[key] }) { return cached }
+        let enriched = await mergeWithVolumeIfNeeded(book)
+        let allowed = WellReadTagCatalog.shared.allowedTagsPromptBlock()
+        let system = """
+        You assign book profile tags for a reading app. Reply with ONLY a JSON array of 1 to 5 tag strings. No markdown fences, no explanation, no keys—just the array.
+
+        CRITICAL: Every tag string MUST be copied **exactly** from the allowed list below (same spelling, spacing, capitalization, and punctuation). Do not invent new tags or paraphrase.
+
+        Rules:
+        - Include exactly ONE of: "\(WellReadTagCatalog.fictionTag)" or "\(WellReadTagCatalog.nonFictionTag)" (from the Format category).
+        - Add up to four more tags from other categories that best fit the book (Genre, Story Type, Tone / Vibe, Setting / World, Character / Dynamics, Pacing / Style, Themes, Nonfiction Topics, Reading Experience—only where relevant).
+        - At most 5 tags total. Do not repeat tags.
+        - Prefer a mix of categories when useful (e.g. Genre + Tone + one Theme), not five from the same line.
+
+        Allowed tags (exact strings only):
+        \(allowed)
+        """
+        var metadata = "Title: \(enriched.title)\nAuthor: \(enriched.author)\n"
+        if let d = enriched.description, !d.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            metadata += "\nDescription:\n\(d)\n"
+        } else {
+            metadata += "\nDescription: (not available)\n"
+        }
+        if !enriched.genres.isEmpty {
+            metadata += "\nPublisher / store categories (hints only; do not copy verbatim as the only tags):\n\(enriched.genres.joined(separator: ", "))\n"
+        }
+        if let p = enriched.pageCount, p > 0 {
+            metadata += "\nPage count: \(p)"
+            let approxWords = p * 250
+            metadata += "\nApproximate word count (rough estimate from pages): ~\(approxWords)"
+        } else {
+            metadata += "\nPage count: unknown"
+        }
+        if let pub = enriched.publishedDate {
+            let f = DateFormatter()
+            f.dateStyle = .medium
+            metadata += "\nPublished: \(f.string(from: pub))"
+        }
+        let userMessage = "Assign tags for this book.\n\n\(metadata)"
+        do {
+            let response = try await ClaudeService.shared.sendMessage(system: system, userMessage: userMessage)
+            let parsed = parseTagsFromResponse(response) ?? []
+            let normalized = normalizeProfileTags(parsed, book: enriched)
+            queue.sync { tagsCache[key] = normalized }
+            return normalized
+        } catch {
+            let fallback = fallbackProfileTags(for: enriched)
+            queue.sync { tagsCache[key] = fallback }
+            return fallback
+        }
+    }
+
+    /// Merges Google Books volume data when local metadata is thin (for AI context only).
+    private func mergeWithVolumeIfNeeded(_ book: Book) async -> Book {
+        let needs = (book.description?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+            || book.genres.isEmpty
+            || book.pageCount == nil
+        guard needs else { return book }
+        guard let fetched = try? await GoogleBooksService.shared.fetchVolume(id: book.id) else { return book }
+        var merged = book
+        if merged.description == nil || merged.description?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true {
+            merged.description = fetched.description
+        }
+        if merged.genres.isEmpty { merged.genres = fetched.genres }
+        if merged.pageCount == nil { merged.pageCount = fetched.pageCount }
+        if merged.publishedDate == nil { merged.publishedDate = fetched.publishedDate }
+        return merged
+    }
+
+    private func parseTagsFromResponse(_ text: String) -> [String]? {
+        var t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.hasPrefix("```") {
+            t = String(t.dropFirst(3)).trimmingCharacters(in: .whitespacesAndNewlines)
+            if t.lowercased().hasPrefix("json") {
+                t = String(t.dropFirst(4)).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            if let endRange = t.range(of: "```") {
+                t = String(t[..<endRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        if let data = t.data(using: .utf8),
+           let arr = try? JSONDecoder().decode([String].self, from: data) {
+            return arr
+        }
+        // Fallback: non-JSON lines
+        let lines = t
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "[]\"'")) }
+            .filter { !$0.isEmpty && !$0.hasPrefix("{") }
+        return lines.isEmpty ? nil : lines
+    }
+
+    private func normalizeProfileTags(_ raw: [String], book: Book) -> [String] {
+        let catalog = WellReadTagCatalog.shared
+        var tags = raw
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        var seen = Set<String>()
+        tags = tags.filter { tag in
+            let key = tag.lowercased()
+            if seen.contains(key) { return false }
+            seen.insert(key)
+            return true
+        }
+        tags = catalog.whitelist(tags)
+        tags = resolveFictionNonFictionConflict(tags, book: book)
+        let fic = WellReadTagCatalog.fictionTag
+        let nf = WellReadTagCatalog.nonFictionTag
+        if !tags.contains(fic), !tags.contains(nf) {
+            tags.insert(inferFictionNonFiction(book: book), at: 0)
+        } else if let idx = tags.firstIndex(where: { $0 == fic || $0 == nf }), idx != 0 {
+            let t = tags.remove(at: idx)
+            tags.insert(t, at: 0)
+        }
+        return Array(tags.prefix(5))
+    }
+
+    /// If both Format tags appear after whitelisting, keep one using book hints.
+    private func resolveFictionNonFictionConflict(_ tags: [String], book: Book) -> [String] {
+        let fic = WellReadTagCatalog.fictionTag
+        let nf = WellReadTagCatalog.nonFictionTag
+        guard tags.contains(fic), tags.contains(nf) else { return tags }
+        let want = inferFictionNonFiction(book: book)
+        let remove = want == fic ? nf : fic
+        return tags.filter { $0 != remove }
+    }
+
+    private func inferFictionNonFiction(book: Book) -> String {
+        let fic = WellReadTagCatalog.fictionTag
+        let nf = WellReadTagCatalog.nonFictionTag
+        let blob = (book.genres.joined(separator: " ") + " " + (book.description ?? "")).lowercased()
+        if blob.contains("non-fiction") || blob.contains("nonfiction") { return nf }
+        let strongFiction = ["science fiction", "sci-fi", "scifi", "fantasy", "romance", "thriller", "mystery", "horror", "graphic novel", "literary fiction", "short stories", "historical fiction", "young adult", "ya fiction"]
+        if strongFiction.contains(where: { blob.contains($0) }) { return fic }
+        let nfHints = ["biography", "autobiography", "memoir", "self-help", "business", "travel guide", "cookbook", "true crime", "philosophy", "religion", "politics", "essay", "reference", "textbook"]
+        if nfHints.contains(where: { blob.contains($0) }) { return nf }
+        let ficHints = ["fiction", "novel", "novella", "story collection"]
+        if ficHints.contains(where: { blob.contains($0) }) { return fic }
+        if blob.contains("history") && !blob.contains("historical fiction") { return nf }
+        if blob.contains("science") { return nf }
+        return fic
+    }
+
+    /// Uses only `WellReadTagCatalog` tags; prefers substrings of description/genres against catalog labels.
+    private func fallbackProfileTags(for book: Book) -> [String] {
+        let catalog = WellReadTagCatalog.shared
+        let root = inferFictionNonFiction(book: book)
+        let blob = (book.genres.joined(separator: " ") + " " + (book.description ?? "")).lowercased()
+        var extra: [String] = []
+        var seen = Set<String>()
+        for tag in catalog.allTags where tag != WellReadTagCatalog.fictionTag && tag != WellReadTagCatalog.nonFictionTag {
+            let tl = tag.lowercased()
+            guard tl.count >= 4 else { continue }
+            guard !seen.contains(tl) else { continue }
+            if blob.contains(tl) {
+                seen.insert(tl)
+                extra.append(tag)
+            }
+            if extra.count >= 4 { break }
+        }
+        return [root] + extra
     }
 
     /// Books from the user's read list that are most similar to this book. Returns 2–3 books for "Similar to" section. Uses Claude to pick by title/author; empty if read list is empty or Claude returns nothing.

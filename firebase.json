@@ -1,0 +1,8 @@
+{
+  "firestore": [
+    {
+      "database": "wellread",
+      "rules": "firestore.rules"
+    }
+  ]
+}

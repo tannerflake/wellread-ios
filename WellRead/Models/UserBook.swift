@@ -29,13 +29,20 @@ enum ReadingStatus: String, Codable, CaseIterable {
     }
 }
 
+/// Sub-queue within "Want to read": only **Up next** is explicit; everything else is **Backlog** (default).
+enum QueueShelf: String, Codable, CaseIterable {
+    case upNext
+    case backlog
+}
+
 struct UserBook: Identifiable, Codable, Equatable {
     var id: UUID
     var userId: String  // Firebase Auth uid (for Firestore query)
     var bookId: String
     var book: Book?
     var status: ReadingStatus
-    var rating: Int?  // 1–10
+    /// User rating out of 10 (e.g. 8.8). Legacy Firestore ints 1–10 are read as 8.0, etc.
+    var rating: Double?
     var reviewText: String?
     var dateStarted: Date?
     var dateFinished: Date?
@@ -44,6 +51,10 @@ struct UserBook: Identifiable, Codable, Equatable {
     var recommendedTo: [UUID]
     var tier: String?  // S, A, B, C, D for tier list
     var tierOrder: Int?  // order within tier (0-based); nil = end
+    /// Only for `status == .wantToRead`. `nil` means backlog (legacy / default).
+    var queueShelf: QueueShelf?
+    /// Order within the shelf (0 = first / top-left). `nil` only for legacy backlog rows before migration.
+    var queueOrder: Int?
 
     static let demoList: [UserBook] = {
         let b1 = Book(id: "1", title: "Atomic Habits", author: "James Clear", coverURL: "https://books.google.com/books/content?id=wRqtDwAAQBAJ&printsec=frontcover&img=1", pageCount: 320, publishedDate: nil, description: nil, genres: ["Self-Help"])
@@ -52,9 +63,9 @@ struct UserBook: Identifiable, Codable, Equatable {
         let now = Date()
         let demoUserId = "demo-user-id"
         return [
-            UserBook(id: UUID(), userId: demoUserId, bookId: b1.id, book: b1, status: .read, rating: 9, reviewText: "Life-changing.", dateStarted: now.addingTimeInterval(-86400*30), dateFinished: now.addingTimeInterval(-86400*7), createdAt: now, updatedAt: now, recommendedTo: [], tier: "S", tierOrder: 0),
-            UserBook(id: UUID(), userId: demoUserId, bookId: b2.id, book: b2, status: .read, rating: 8, reviewText: "Essential for focus.", dateStarted: now.addingTimeInterval(-86400*60), dateFinished: now.addingTimeInterval(-86400*35), createdAt: now, updatedAt: now, recommendedTo: [], tier: "A", tierOrder: 0),
-            UserBook(id: UUID(), userId: demoUserId, bookId: b3.id, book: b3, status: .currentlyReading, rating: nil, reviewText: nil, dateStarted: now.addingTimeInterval(-86400*3), dateFinished: nil, createdAt: now, updatedAt: now, recommendedTo: [], tier: nil, tierOrder: nil)
+            UserBook(id: UUID(), userId: demoUserId, bookId: b1.id, book: b1, status: .read, rating: 9.0, reviewText: "Life-changing.", dateStarted: now.addingTimeInterval(-86400*30), dateFinished: now.addingTimeInterval(-86400*7), createdAt: now, updatedAt: now, recommendedTo: [], tier: "S", tierOrder: 0, queueShelf: nil, queueOrder: nil),
+            UserBook(id: UUID(), userId: demoUserId, bookId: b2.id, book: b2, status: .read, rating: 8.4, reviewText: "Essential for focus.", dateStarted: now.addingTimeInterval(-86400*60), dateFinished: now.addingTimeInterval(-86400*35), createdAt: now, updatedAt: now, recommendedTo: [], tier: "A", tierOrder: 0, queueShelf: nil, queueOrder: nil),
+            UserBook(id: UUID(), userId: demoUserId, bookId: b3.id, book: b3, status: .currentlyReading, rating: nil, reviewText: nil, dateStarted: now.addingTimeInterval(-86400*3), dateFinished: nil, createdAt: now, updatedAt: now, recommendedTo: [], tier: nil, tierOrder: nil, queueShelf: nil, queueOrder: nil)
         ]
     }()
 }

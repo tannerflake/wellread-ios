@@ -1,0 +1,23 @@
+---
+description: Keep personal and friend library UIs aligned
+globs:
+  - WellRead/Views/Library/**/*.swift
+---
+
+# Personal vs friend library parity
+
+`ProfileLibraryView` (your library tab) and `UserLibraryDetailView` (a friend’s library from Feed) should look and behave the **same** for shared UI:
+
+- Read / Queue segment control — styling lives in `LibraryReadQueueSegmentShared.swift` (`LibraryReadQueueSegmentControlReadOnly` for friends; your library adds drag-and-drop on top of the same visual language).
+- Year filter chip, spacing in the top bar, tier list + queue layouts.
+
+**Only differences** should be intentional:
+
+- **Editable** actions (reorder, drag queue → read, import, change photo, sign out) only on your library.
+- **Copy / title** that clarifies it’s **their** library (e.g. possessive title + their avatar).
+
+When changing layout, typography, colors, springs, or haptics on one screen, **update the other** (and shared helpers) in the same change unless the difference is editability or ownership.
+
+## Feed “Your friends” strip
+
+Exclusions for test / review accounts live in `UserRepository` (`OtherReadersExclusion`). If you add similar UI elsewhere, reuse the same rules or call `fetchAllReaderProfiles` so behavior stays consistent.

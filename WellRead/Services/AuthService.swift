@@ -54,6 +54,9 @@ final class AuthService: ObservableObject {
             id: UUID(),
             username: user.email?.components(separatedBy: "@").first ?? "user_\(String(uid.prefix(8)))",
             displayName: user.displayName?.isEmpty == false ? user.displayName! : (user.email ?? "User"),
+            firstName: nil,
+            lastName: nil,
+            profileSetupCompleted: false,
             bio: nil,
             profileImageURL: user.photoURL?.absoluteString,
             joinedAt: Date(),
@@ -92,6 +95,29 @@ final class AuthService: ObservableObject {
         }
     }
 
+    /// Whether a handle is free for the current account (excluding their own doc).
+    func isUsernameAvailable(_ handle: String) async -> Bool {
+        guard let uid = firebaseUser?.uid else { return false }
+        return await userRepo.isUsernameAvailable(handle, excludingUid: uid)
+    }
+
+    /// Detailed outcome for UI (don’t show “taken” on permission errors).
+    func checkUsernameAvailability(_ handle: String) async -> HandleAvailabilityCheck {
+        guard let uid = firebaseUser?.uid else {
+            return .failed(underlying: NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Not signed in."]))
+        }
+        return await userRepo.checkUsernameAvailability(handle, excludingUid: uid)
+    }
+
+    /// Saves first name, last name, handle, and optional yearly book count after SSO (or from Edit profile); marks profile setup complete.
+    func completeProfileSetup(firstName: String, lastName: String, handle: String, readingGoal: Int?) async throws {
+        guard let uid = firebaseUser?.uid else {
+            throw NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Not signed in."])
+        }
+        try await userRepo.completeProfileSetup(uid: uid, firstName: firstName, lastName: lastName, handle: handle, readingGoal: readingGoal)
+        await refreshAppUser()
+    }
+
     // MARK: - Apple Sign-In (nonce required)
 
     /// Call from SignInWithAppleButton onRequest: configures nonce and scopes on the request.
@@ -121,6 +147,9 @@ final class AuthService: ObservableObject {
             )
             do {
                 _ = try await Auth.auth().signIn(with: credential)
+                if let u = Auth.auth().currentUser {
+                    await loadOrCreateAppUser(firebaseUser: u)
+                }
             } catch {
                 authError = error.localizedDescription
             }
@@ -152,17 +181,37 @@ final class AuthService: ObservableObject {
             let accessToken = result.user.accessToken.tokenString
             let credential = GoogleAuthProvider.credential(withIDToken: idToken, accessToken: accessToken)
             _ = try await Auth.auth().signIn(with: credential)
+            if let u = Auth.auth().currentUser {
+                await loadOrCreateAppUser(firebaseUser: u)
+            }
         } catch {
             authError = error.localizedDescription
         }
     }
 
     // MARK: - Reviewer (Email/Password) Sign-In
-    /// Hidden path for App Review. Uses Firebase Email/Password; same auth state listener runs so Firestore user is created and app routes as with Apple/Google.
+    /// Hidden path for App Review. Loads Firestore user immediately so profile completion runs (same as Apple/Google).
 
     func signInWithEmail(_ email: String, password: String) async throws {
         authError = nil
         _ = try await Auth.auth().signIn(withEmail: email.trimmingCharacters(in: .whitespacesAndNewlines), password: password)
+        if let u = Auth.auth().currentUser {
+            await loadOrCreateAppUser(firebaseUser: u)
+        }
+    }
+
+    /// Hidden welcome-screen login: tap book icon 5×. Uses `TEST_ACCOUNT_EMAIL` / `TEST_ACCOUNT_PASSWORD` from Secrets.plist.
+    func signInWithConfiguredTestAccount() async {
+        authError = nil
+        guard let creds = ApiKeys.testAccountCredentials else {
+            authError = "Test account not configured. Add TEST_ACCOUNT_EMAIL and TEST_ACCOUNT_PASSWORD to Secrets.plist (see Secrets.example.plist)."
+            return
+        }
+        do {
+            try await signInWithEmail(creds.email, password: creds.password)
+        } catch {
+            authError = error.localizedDescription
+        }
     }
 
     // MARK: - Sign Out

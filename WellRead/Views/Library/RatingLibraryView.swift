@@ -22,10 +22,10 @@ struct RatingLibraryView: View {
                 ForEach(sorted) { ub in
                     if let book = ub.book, let r = ub.rating {
                         HStack(spacing: 14) {
-                            Text("\(r)")
+                            Text(Theme.formatRatingOutOfTen(r))
                                 .font(Theme.title2())
                                 .foregroundStyle(Theme.accent)
-                                .frame(width: 28, alignment: .leading)
+                                .frame(minWidth: 36, alignment: .leading)
                             BookCoverView(book: book, size: 56)
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(book.title).font(Theme.headline()).foregroundStyle(Theme.textPrimary)

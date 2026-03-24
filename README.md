@@ -13,6 +13,14 @@ A modern, minimal book tracking app — dark-first, SwiftUI, designed to replace
 2. In **Signing & Capabilities**, select your **Team** (required for running on device/simulator).
 3. Choose a simulator or device and press **Run** (⌘R).
 
+### Secrets & test account (optional)
+
+- Copy `WellRead/Secrets.example.plist` to `WellRead/Secrets.plist` (same folder; `Secrets.plist` is gitignored).
+- Add API keys and, for a **dev-only test login**, create an **Email/Password** user in Firebase Authentication with your chosen email and password, then set:
+  - `TEST_ACCOUNT_EMAIL`
+  - `TEST_ACCOUNT_PASSWORD`
+- On the **login / welcome** screen, tap the **book icon 5 times** to sign in with that account (no sheet). Long-press the book (2s) still opens the reviewer email/password sheet.
+
 ## MVP Features
 
 - **Onboarding** — Welcome → username → reading goal (demo mode skips to main app).

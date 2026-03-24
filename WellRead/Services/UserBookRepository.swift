@@ -81,16 +81,16 @@ final class UserBookRepository {
     }
 
     /// Adds a userBook (and ensures the book exists). Returns the created UserBook with its id.
-    func addUserBook(userId: String, book: Book, status: ReadingStatus, rating: Int?, reviewText: String?, dateStarted: Date?, dateFinished: Date?) async throws -> UserBook {
+    func addUserBook(userId: String, book: Book, status: ReadingStatus, rating: Double?, reviewText: String?, dateStarted: Date?, dateFinished: Date?) async throws -> UserBook {
         try await bookRepo.ensureBook(book)
         let id = UUID()
         let now = Date()
         let ref = db.collection(userBooks).document(id.uuidString)
-        try await ref.setData([
+        var data: [String: Any] = [
             "userId": userId,
             "bookId": book.id,
             "status": status.rawValue,
-            "rating": rating as Any,
+            "rating": rating.map { Theme.normalizeRatingOutOfTen($0) } as Any,
             "reviewText": reviewText as Any,
             "dateStarted": dateStarted.map { Timestamp(date: $0) } as Any,
             "dateFinished": dateFinished.map { Timestamp(date: $0) } as Any,
@@ -99,7 +99,36 @@ final class UserBookRepository {
             "recommendedTo": [] as [String],
             "tier": NSNull(),
             "tierOrder": NSNull(),
-        ])
+        ]
+        var queueShelf: QueueShelf?
+        var queueOrder: Int?
+        if status == .wantToRead {
+            queueShelf = .backlog
+            queueOrder = 0
+            data["queueShelf"] = QueueShelf.backlog.rawValue
+            data["queueOrder"] = 0
+            let snapshot = try await db.collection(userBooks)
+                .whereField("userId", isEqualTo: userId)
+                .whereField("status", isEqualTo: status.rawValue)
+                .getDocuments()
+            let batch = db.batch()
+            for doc in snapshot.documents {
+                let d = doc.data()
+                let shelfRaw = d["queueShelf"] as? String
+                if shelfRaw == QueueShelf.upNext.rawValue { continue }
+                let ord = (d["queueOrder"] as? Int) ?? 1_000_000
+                batch.updateData([
+                    "queueOrder": ord + 1,
+                    "updatedAt": Timestamp(date: now),
+                ], forDocument: doc.reference)
+            }
+            batch.setData(data, forDocument: ref)
+            try await batch.commit()
+        } else {
+            data["queueShelf"] = NSNull()
+            data["queueOrder"] = NSNull()
+            try await ref.setData(data)
+        }
         return UserBook(
             id: id,
             userId: userId,
@@ -114,23 +143,36 @@ final class UserBookRepository {
             updatedAt: now,
             recommendedTo: [],
             tier: nil,
-            tierOrder: nil
+            tierOrder: nil,
+            queueShelf: queueShelf,
+            queueOrder: queueOrder
         )
     }
 
     /// Updates status, rating, review, dates, tier, tierOrder.
     func updateUserBook(_ userBook: UserBook) async throws {
         let ref = db.collection(userBooks).document(userBook.id.uuidString)
-        try await ref.updateData([
+        var fields: [String: Any] = [
             "status": userBook.status.rawValue,
-            "rating": userBook.rating as Any,
+            "rating": userBook.rating.map { Theme.normalizeRatingOutOfTen($0) } as Any,
             "reviewText": userBook.reviewText as Any,
             "dateStarted": userBook.dateStarted.map { Timestamp(date: $0) } as Any,
             "dateFinished": userBook.dateFinished.map { Timestamp(date: $0) } as Any,
             "updatedAt": Timestamp(date: userBook.updatedAt),
             "tier": userBook.tier as Any,
             "tierOrder": userBook.tierOrder as Any,
-        ])
+        ]
+        if let qs = userBook.queueShelf {
+            fields["queueShelf"] = qs.rawValue
+        } else {
+            fields["queueShelf"] = NSNull()
+        }
+        if let qo = userBook.queueOrder {
+            fields["queueOrder"] = qo
+        } else {
+            fields["queueOrder"] = NSNull()
+        }
+        try await ref.updateData(fields)
     }
 
     /// Updates tier for a userBook.
@@ -156,12 +198,15 @@ final class UserBookRepository {
               let createdAt = (data["createdAt"] as? Timestamp)?.dateValue(),
               let updatedAt = (data["updatedAt"] as? Timestamp)?.dateValue(),
               let id = UUID(uuidString: docId) else { return nil }
-        let rating = data["rating"] as? Int
+        let rating = Self.decodeRatingOutOfTen(from: data["rating"])
         let reviewText = data["reviewText"] as? String
         let dateStarted = (data["dateStarted"] as? Timestamp)?.dateValue()
         let dateFinished = (data["dateFinished"] as? Timestamp)?.dateValue()
         let tier = data["tier"] as? String
         let tierOrder = data["tierOrder"] as? Int
+        let queueShelfRaw = data["queueShelf"] as? String
+        let queueShelf = queueShelfRaw.flatMap { QueueShelf(rawValue: $0) }
+        let queueOrder = data["queueOrder"] as? Int
         return UserBook(
             id: id,
             userId: userId,
@@ -176,7 +221,27 @@ final class UserBookRepository {
             updatedAt: updatedAt,
             recommendedTo: [],
             tier: tier,
-            tierOrder: tierOrder
+            tierOrder: tierOrder,
+            queueShelf: queueShelf,
+            queueOrder: queueOrder
         )
+    }
+
+    /// Firestore may store `rating` as Double or legacy Int / Int64 (1–10).
+    private static func decodeRatingOutOfTen(from value: Any?) -> Double? {
+        switch value {
+        case nil:
+            return nil
+        case let d as Double:
+            return Theme.normalizeRatingOutOfTen(d)
+        case let i as Int:
+            return Theme.normalizeRatingOutOfTen(Double(i))
+        case let i64 as Int64:
+            return Theme.normalizeRatingOutOfTen(Double(i64))
+        case let n as NSNumber:
+            return Theme.normalizeRatingOutOfTen(Double(truncating: n))
+        default:
+            return nil
+        }
     }
 }

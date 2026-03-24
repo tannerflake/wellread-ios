@@ -22,7 +22,7 @@ struct AddBookFlowView: View {
     @State private var selectedBook: Book?
     @State private var selectedBookForProfile: Book?
     @State private var status: ReadingStatus = .read
-    @State private var rating: Double = 7
+    @State private var rating: Double = 7.0
     @State private var reviewText = ""
     @State private var step: Step = .search
     
@@ -62,10 +62,11 @@ struct AddBookFlowView: View {
                     readBooksForSimilar: appState.readBooks,
                     onNotInterested: nil,
                     onWantToRead: { appState.addToWantToRead(book: book); selectedBookForProfile = nil },
-                    onConfirmRead: { date, rating, post, caption in appState.addAsRead(book: book, dateFinished: date, ratingPercent: rating, postToFeed: post, caption: caption); selectedBookForProfile = nil },
+                    onConfirmRead: { date, rating, post, caption in appState.addAsRead(book: book, dateFinished: date, rating: rating, postToFeed: post, caption: caption); selectedBookForProfile = nil },
                     isOnReadList: appState.isBookOnReadList(bookId: book.id),
                     isInQueue: appState.isBookInQueue(bookId: book.id),
-                    onRemoveFromQueue: { appState.removeFromQueue(book: book); selectedBookForProfile = nil }
+                    onRemoveFromQueue: { appState.removeFromQueue(book: book); selectedBookForProfile = nil },
+                    readEntryForReview: appState.userReadBook(forBookId: book.id)
                 )
             }
         }
@@ -248,10 +249,10 @@ struct AddBookFlowView: View {
     
     private var ratingStep: some View {
         VStack(alignment: .leading, spacing: 24) {
-            Text("Rating: \(Int(rating))/10")
+            Text("Rating: \(Theme.formatRatingOutOfTen(rating)) / 10")
                 .font(Theme.title2())
                 .foregroundStyle(Theme.textPrimary)
-            Slider(value: $rating, in: 1...10, step: 1)
+            Slider(value: $rating, in: 1...10, step: 0.1)
                 .tint(Theme.accent)
                 .padding(.horizontal)
             Text("Review (optional)")
@@ -286,7 +287,7 @@ struct AddBookFlowView: View {
         guard let book = selectedBook, let uid = authService.firebaseUser?.uid else { dismiss(); return }
         let now = Date()
         let tempId = UUID()
-        let ratingValue = status == .read ? Int(rating) : nil
+        let ratingValue = status == .read ? Theme.normalizeRatingOutOfTen(rating) : nil
         let review = reviewText.isEmpty ? nil : reviewText
         let dateFinished = status == .read ? now : nil
         let dateStarted = status == .currentlyReading ? now : nil
@@ -304,7 +305,10 @@ struct AddBookFlowView: View {
             createdAt: now,
             updatedAt: now,
             recommendedTo: [],
-            tier: nil
+            tier: nil,
+            tierOrder: nil,
+            queueShelf: status == .wantToRead ? .backlog : nil,
+            queueOrder: status == .wantToRead ? 0 : nil
         )
         appState.addUserBook(optimistic)
         isSaving = true
@@ -327,7 +331,9 @@ struct AddBookFlowView: View {
                         userId: uid,
                         type: .finishedBook,
                         bookId: book.id,
-                        caption: review
+                        caption: review,
+                        rating: ratingValue,
+                        dateFinished: dateFinished
                     )
                 }
                 await MainActor.run { dismiss() }

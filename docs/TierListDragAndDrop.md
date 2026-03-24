@@ -111,7 +111,7 @@ This keeps the drag-and-drop interaction feeling smooth and avoids unnecessary n
 
 ## 7. Data Flow
 
-- **Drag source:** `TierBookCell` wraps `BookCoverView` with `.draggable(TierDragItem(userBookId: userBook.id))` and the shorter long-press modifier.
+- **Drag source:** `TierBookCell` uses `ReadListBookDragCover` (UIKit `UIDragInteraction`, same UUID payload as `TierDragItem`) so the Read tab can show remove chrome while dragging.
 - **Drop destination:** Each `TierRowView` applies `.dropDestination(for: TierDragItem.self)` to the row’s content area and calls `onUpdateTierAndOrder(payload.userBookId, tier, nil)` on successful drop (`nil` = append at end).
 - **App state:** `setTierAndOrder(for:tier:order:)` updates the in-memory `userBooks` (tier and `tierOrder`), then persists changed documents to Firestore. Order within a tier is determined by `tierOrder`; `nil` order means “append.”
 
@@ -123,7 +123,7 @@ This keeps the drag-and-drop interaction feeling smooth and avoids unnecessary n
 |----------------------|------------------------------------------|
 | Tier list UI & drop  | `WellRead/Views/Library/TierListView.swift` |
 | Transfer payload     | `TierListView.swift` (`TierDragItem`)    |
-| Shorter long-press   | `TierListView.swift` (`ShorterDragPressModifier`, `ShorterDragPressFinder`) |
+| Read drag cover      | `WellRead/Views/Library/QueueBookDragCover.swift` (`ReadListBookDragCover`) |
 | Cover image cache    | `WellRead/Views/Components/BookCoverView.swift` |
 | Tier/order updates   | `WellRead/AppState/AppState.swift` (`setTierAndOrder`) |
 
@@ -135,7 +135,7 @@ The tier list works well because:
 
 1. **Payload** is a simple plain-text UUID, so encode/decode is reliable.
 2. **Drop target** is the whole row, so hits are easy and predictable.
-3. **Drag start** is faster via a shortened system long-press.
+3. **Drag** uses UIKit’s drag interaction on the cover (consistent with queue cells).
 4. **Feedback** is immediate with row highlighting when targeted.
 5. **Covers** are cached so post-drop re-renders don’t refetch images.
 6. **Interaction** is drag-only, with no competing context menu.

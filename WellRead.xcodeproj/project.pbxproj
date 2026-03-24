@@ -27,6 +27,7 @@
 		B001000A /* GoogleBooksService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001000A /* GoogleBooksService.swift */; };
 		B001000B /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001000B /* MainTabView.swift */; };
 		B001000C /* OnboardingFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001000C /* OnboardingFlowView.swift */; };
+		B0010037 /* ProfileCompletionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010037 /* ProfileCompletionView.swift */; };
 		B001000D /* AddBookFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001000D /* AddBookFlowView.swift */; };
 		B001000E /* BookSearchRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001000E /* BookSearchRow.swift */; };
 		B001000F /* BookCoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001000F /* BookCoverView.swift */; };
@@ -34,6 +35,9 @@
 		B0010011 /* DiscoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010011 /* DiscoverView.swift */; };
 		B0010012 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010012 /* LibraryView.swift */; };
 		B0010013 /* GridLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010013 /* GridLibraryView.swift */; };
+		B0010036 /* QueueLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010036 /* QueueLibraryView.swift */; };
+		B001003B /* QueueBookDragCover.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001003B /* QueueBookDragCover.swift */; };
+		B001003F /* LibraryDragHaptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001003F /* LibraryDragHaptics.swift */; };
 		B0010014 /* RatingLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010014 /* RatingLibraryView.swift */; };
 		B0010015 /* TierListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010015 /* TierListView.swift */; };
 		B0010016 /* TimelineLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010016 /* TimelineLibraryView.swift */; };
@@ -63,6 +67,12 @@
 		B0010033 /* GoodreadsImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010033 /* GoodreadsImportService.swift */; };
 		B0010034 /* GoodreadsImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010034 /* GoodreadsImportView.swift */; };
 		B0010035 /* GoodreadsShareHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010035 /* GoodreadsShareHelper.swift */; };
+		B0010038 /* Tags.csv in Resources */ = {isa = PBXBuildFile; fileRef = F0010038 /* Tags.csv */; };
+		B0010039 /* WellReadTagCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010039 /* WellReadTagCatalog.swift */; };
+		B001003A /* UserLibraryDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001003A /* UserLibraryDetailView.swift */; };
+		B001003C /* LibraryReadQueueSegmentShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001003C /* LibraryReadQueueSegmentShared.swift */; };
+		B001003D /* WelcomeSpinesGoodreadsModal.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001003D /* WelcomeSpinesGoodreadsModal.swift */; };
+		B001003E /* GoodreadsImportTutorialEmbed.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001003E /* GoodreadsImportTutorialEmbed.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -108,6 +118,13 @@
 		F001000A /* GoogleBooksService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleBooksService.swift; sourceTree = "<group>"; };
 		F001000B /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
 		F001000C /* OnboardingFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowView.swift; sourceTree = "<group>"; };
+		F0010037 /* ProfileCompletionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileCompletionView.swift; sourceTree = "<group>"; };
+		F0010038 /* Tags.csv */ = {isa = PBXFileReference; lastKnownFileType = text; path = Tags.csv; sourceTree = "<group>"; };
+		F0010039 /* WellReadTagCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WellReadTagCatalog.swift; sourceTree = "<group>"; };
+		F001003A /* UserLibraryDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserLibraryDetailView.swift; sourceTree = "<group>"; };
+		F001003C /* LibraryReadQueueSegmentShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryReadQueueSegmentShared.swift; sourceTree = "<group>"; };
+		F001003D /* WelcomeSpinesGoodreadsModal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeSpinesGoodreadsModal.swift; sourceTree = "<group>"; };
+		F001003E /* GoodreadsImportTutorialEmbed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoodreadsImportTutorialEmbed.swift; sourceTree = "<group>"; };
 		F001000D /* AddBookFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddBookFlowView.swift; sourceTree = "<group>"; };
 		F001000E /* BookSearchRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookSearchRow.swift; sourceTree = "<group>"; };
 		F001000F /* BookCoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCoverView.swift; sourceTree = "<group>"; };
@@ -115,6 +132,9 @@
 		F0010011 /* DiscoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoverView.swift; sourceTree = "<group>"; };
 		F0010012 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
 		F0010013 /* GridLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GridLibraryView.swift; sourceTree = "<group>"; };
+		F0010036 /* QueueLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueueLibraryView.swift; sourceTree = "<group>"; };
+		F001003B /* QueueBookDragCover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueueBookDragCover.swift; sourceTree = "<group>"; };
+		F001003F /* LibraryDragHaptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryDragHaptics.swift; sourceTree = "<group>"; };
 		F0010014 /* RatingLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RatingLibraryView.swift; sourceTree = "<group>"; };
 		F0010015 /* TierListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TierListView.swift; sourceTree = "<group>"; };
 		F0010016 /* TimelineLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineLibraryView.swift; sourceTree = "<group>"; };
@@ -209,6 +229,7 @@
 				F0010002 /* RootView.swift */,
 				F0010018 /* Info.plist */,
 				F0010019 /* Assets.xcassets */,
+				F0010038 /* Tags.csv */,
 				G0010003 /* AppState */,
 				G0010004 /* Models */,
 				G0010005 /* Theme */,
@@ -271,6 +292,7 @@
 				F0010026 /* CommentRepository.swift */,
 				F001002A /* LocalLibraryCache.swift */,
 				F001002C /* BookProfileService.swift */,
+				F0010039 /* WellReadTagCatalog.swift */,
 				F001002D /* DismissedSuggestionsRepository.swift */,
 				F001002E /* DiscoverSuggestionsService.swift */,
 				F001002F /* ProfilePhotoService.swift */,
@@ -302,6 +324,8 @@
 			isa = PBXGroup;
 			children = (
 				F001000C /* OnboardingFlowView.swift */,
+				F0010037 /* ProfileCompletionView.swift */,
+				F001003D /* WelcomeSpinesGoodreadsModal.swift */,
 				F0010029 /* ReviewerLoginView.swift */,
 			);
 			path = Onboarding;
@@ -345,7 +369,12 @@
 			isa = PBXGroup;
 			children = (
 				F0010012 /* LibraryView.swift */,
+				F001003C /* LibraryReadQueueSegmentShared.swift */,
 				F0010013 /* GridLibraryView.swift */,
+				F0010036 /* QueueLibraryView.swift */,
+				F001003B /* QueueBookDragCover.swift */,
+				F001003F /* LibraryDragHaptics.swift */,
+				F001003A /* UserLibraryDetailView.swift */,
 				F0010016 /* TimelineLibraryView.swift */,
 				F0010014 /* RatingLibraryView.swift */,
 				F0010015 /* TierListView.swift */,
@@ -382,6 +411,7 @@
 			isa = PBXGroup;
 			children = (
 				F0010034 /* GoodreadsImportView.swift */,
+				F001003E /* GoodreadsImportTutorialEmbed.swift */,
 			);
 			path = Goodreads;
 			sourceTree = "<group>";
@@ -489,6 +519,7 @@
 			files = (
 				8B7B90EC2F54C77000B7FB0C /* Secrets.plist in Resources */,
 				B0010018 /* Assets.xcassets in Resources */,
+				B0010038 /* Tags.csv in Resources */,
 				B0010019 /* (null) in Resources */,
 				B001001A /* WellRead/GoogleService-Info.plist in Resources */,
 				8BB4CBC32F4E9F2B0068B4B6 /* WellRead Firebase Service Info.plist in Resources */,
@@ -521,6 +552,8 @@
 				B001000A /* GoogleBooksService.swift in Sources */,
 				B001000B /* MainTabView.swift in Sources */,
 				B001000C /* OnboardingFlowView.swift in Sources */,
+				B0010037 /* ProfileCompletionView.swift in Sources */,
+				B001003D /* WelcomeSpinesGoodreadsModal.swift in Sources */,
 				B0010029 /* ReviewerLoginView.swift in Sources */,
 				B001000D /* AddBookFlowView.swift in Sources */,
 				B001000E /* BookSearchRow.swift in Sources */,
@@ -528,7 +561,12 @@
 				B0010010 /* FeedView.swift in Sources */,
 				B0010011 /* DiscoverView.swift in Sources */,
 				B0010012 /* LibraryView.swift in Sources */,
+				B001003C /* LibraryReadQueueSegmentShared.swift in Sources */,
 				B0010013 /* GridLibraryView.swift in Sources */,
+				B001003A /* UserLibraryDetailView.swift in Sources */,
+				B0010036 /* QueueLibraryView.swift in Sources */,
+				B001003B /* QueueBookDragCover.swift in Sources */,
+				B001003F /* LibraryDragHaptics.swift in Sources */,
 				B0010014 /* RatingLibraryView.swift in Sources */,
 				B0010015 /* TierListView.swift in Sources */,
 				B0010016 /* TimelineLibraryView.swift in Sources */,
@@ -544,8 +582,8 @@
 				B0010028 /* ClaudeService.swift in Sources */,
 				B001002A /* LocalLibraryCache.swift in Sources */,
 				B001002C /* BookProfileService.swift in Sources */,
+				B0010039 /* WellReadTagCatalog.swift in Sources */,
 				B001002B /* BookProfileView.swift in Sources */,
-				B001002C /* BookProfileService.swift in Sources */,
 				B001002D /* DismissedSuggestionsRepository.swift in Sources */,
 				B001002E /* DiscoverSuggestionsService.swift in Sources */,
 				B001002F /* ProfilePhotoService.swift in Sources */,
@@ -554,6 +592,7 @@
 				B0010032 /* GoodreadsCSVParser.swift in Sources */,
 				B0010033 /* GoodreadsImportService.swift in Sources */,
 				B0010034 /* GoodreadsImportView.swift in Sources */,
+				B001003E /* GoodreadsImportTutorialEmbed.swift in Sources */,
 				B0010035 /* GoodreadsShareHelper.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

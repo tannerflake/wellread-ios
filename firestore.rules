@@ -2,9 +2,19 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Users: read/write own document only
+    // Users: any signed-in reader can read profiles (Other readers strip, feed, library). Write own doc only.
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // One doc per lowercase handle: { uid: "<firebase uid>" }.
+    // Public read: availability checks must not depend on auth token + rules being deployed per-database;
+    // writes are still protected. (Uid per handle is acceptable for a public @handle registry.)
+    match /handleClaims/{handle} {
+      allow read: if true;
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.uid == request.auth.uid;
     }
 
     // Books: read anyone; create/update when authenticated
@@ -14,9 +24,9 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // UserBooks: read/write only own (userId matches auth.uid)
+    // UserBooks: signed-in users can read anyone’s library (viewing tiers/queue). Write own rows only.
     match /userBooks/{userBookId} {
-      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow read: if request.auth != null;
       allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
       allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
     }

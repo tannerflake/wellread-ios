@@ -9,6 +9,11 @@ struct User: Identifiable, Codable, Equatable {
     var id: UUID
     var username: String
     var displayName: String
+    /// Set during post–sign-in onboarding; optional for legacy accounts.
+    var firstName: String?
+    var lastName: String?
+    /// When `false`, user must complete name + handle onboarding before the main app.
+    var profileSetupCompleted: Bool
     var bio: String?
     var profileImageURL: String?
     var joinedAt: Date
@@ -22,6 +27,9 @@ struct User: Identifiable, Codable, Equatable {
         id: UUID(),
         username: "tanner",
         displayName: "Tanner",
+        firstName: "Tanner",
+        lastName: nil,
+        profileSetupCompleted: true,
         bio: "Building WellRead.",
         profileImageURL: nil,
         joinedAt: Date(),

@@ -144,9 +144,28 @@ final class AppState: ObservableObject {
         var toPersist: [UserBook] = []
 
         // Target tier: current members (excluding moved), insert moved at order, then assign tierOrder 0,1,2,...
+        // Drop zones pass `order` = "insert before this slot" in the **full** tier list (including the moved book).
+        // `inTarget` excludes the moved book, so indices are off by one for slots after the moved book — fix below.
+        let fullTierBefore = userBooks.filter { sameTier($0.tier, tier) }
+            .sorted { ($0.tierOrder ?? 999) < ($1.tierOrder ?? 999) }
+        let movedIndexInFullTier = fullTierBefore.firstIndex(where: { $0.id == userBookId })
+
         var inTarget = userBooks.filter { sameTier($0.tier, tier) && $0.id != userBookId }
         inTarget.sort { ($0.tierOrder ?? 999) < ($1.tierOrder ?? 999) }
-        let insertAt = order.map { min($0, inTarget.count) } ?? inTarget.count
+
+        let insertAt: Int
+        if let raw = order {
+            let cap = fullTierBefore.count
+            let insertBeforeSlot = min(max(0, raw), cap)
+            if let m = movedIndexInFullTier, sameTier(sourceTier, tier) {
+                let converted = insertBeforeSlot <= m ? insertBeforeSlot : insertBeforeSlot - 1
+                insertAt = min(max(0, converted), inTarget.count)
+            } else {
+                insertAt = min(max(0, insertBeforeSlot), inTarget.count)
+            }
+        } else {
+            insertAt = inTarget.count
+        }
         inTarget.insert(moved, at: insertAt)
         var inSourceUpdates: [(Int, Int)] = []
         if !sameTier(sourceTier, tier) {
@@ -182,15 +201,128 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Move a book from Queue (or any status) to Read. Sets dateFinished to now and persists.
-    func moveToRead(_ userBook: UserBook) {
+    /// Updates the **existing** queue `userBook` document to Read with rating, optional thoughts as `reviewText`, and optional feed post. Does not create a duplicate row.
+    func promoteQueueEntryToRead(
+        userBook: UserBook,
+        dateFinished: Date,
+        rating: Double?,
+        postToFeed: Bool,
+        caption: String?
+    ) {
+        guard let uid = currentUserId, userBook.status == .wantToRead else { return }
+        let stored = rating.map { Theme.normalizeRatingOutOfTen($0) }
+        let thoughts = caption?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let review = thoughts.flatMap { $0.isEmpty ? nil : $0 }
         var updated = userBook
         updated.status = .read
-        updated.dateFinished = Date()
+        updated.dateFinished = dateFinished
+        updated.rating = stored
+        updated.reviewText = review
+        updated.queueShelf = nil
+        updated.queueOrder = nil
         updated.updatedAt = Date()
         updateUserBook(updated)
         Task {
             try? await userBookRepo.updateUserBook(updated)
+            if postToFeed {
+                _ = try? await postRepo.createPost(
+                    userId: uid,
+                    type: .finishedBook,
+                    bookId: userBook.bookId,
+                    caption: review,
+                    rating: stored,
+                    dateFinished: dateFinished
+                )
+            }
+        }
+    }
+
+    /// Drag-and-drop between **Up next** and **Backlog**, or reorder within a shelf. `insertionIndex` 0 = first cell (top-left).
+    func setQueueShelfAndOrder(for userBookId: UUID, shelf: QueueShelf, insertionIndex: Int?) {
+        guard let moveIndex = userBooks.firstIndex(where: { $0.id == userBookId }) else { return }
+        guard userBooks[moveIndex].status == .wantToRead else { return }
+        let now = Date()
+
+        func belongsToShelf(_ ub: UserBook, _ s: QueueShelf) -> Bool {
+            switch s {
+            case .upNext: return ub.queueShelf == .upNext
+            case .backlog: return ub.queueShelf == nil || ub.queueShelf == .backlog
+            }
+        }
+
+        var moved = userBooks[moveIndex]
+        let sourceShelf: QueueShelf = (moved.queueShelf == .upNext) ? .upNext : .backlog
+        moved.queueShelf = shelf
+        moved.updatedAt = now
+
+        // Same as tier list: UI passes insertion slot in the **full** shelf list (including the moved book).
+        let fullShelfBefore = Self.sortQueueMembers(
+            userBooks.filter { belongsToShelf($0, shelf) },
+            shelf: shelf
+        )
+        let movedIndexInFullShelf = fullShelfBefore.firstIndex(where: { $0.id == userBookId })
+
+        var inTarget = userBooks.filter { $0.id != userBookId && belongsToShelf($0, shelf) }
+        inTarget = Self.sortQueueMembers(inTarget, shelf: shelf)
+
+        let insertAt: Int
+        if let raw = insertionIndex {
+            let cap = fullShelfBefore.count
+            let insertBeforeSlot = min(max(0, raw), cap)
+            if let m = movedIndexInFullShelf, sourceShelf == shelf {
+                let converted = insertBeforeSlot <= m ? insertBeforeSlot : insertBeforeSlot - 1
+                insertAt = min(max(0, converted), inTarget.count)
+            } else {
+                insertAt = min(max(0, insertBeforeSlot), inTarget.count)
+            }
+        } else {
+            insertAt = inTarget.count
+        }
+        inTarget.insert(moved, at: insertAt)
+
+        var toPersist: [UserBook] = []
+
+        withAnimation(.easeInOut(duration: 0.3)) {
+            for (i, ub) in inTarget.enumerated() {
+                guard let idx = userBooks.firstIndex(where: { $0.id == ub.id }) else { continue }
+                let prev = userBooks[idx]
+                userBooks[idx].queueShelf = shelf
+                userBooks[idx].queueOrder = i
+                if ub.id == userBookId { userBooks[idx].updatedAt = now }
+                if prev.queueShelf != userBooks[idx].queueShelf || prev.queueOrder != userBooks[idx].queueOrder {
+                    toPersist.append(userBooks[idx])
+                }
+            }
+
+            if sourceShelf != shelf {
+                var inSource = userBooks.filter { $0.id != userBookId && belongsToShelf($0, sourceShelf) }
+                inSource = Self.sortQueueMembers(inSource, shelf: sourceShelf)
+                for (i, ub) in inSource.enumerated() {
+                    guard let idx = userBooks.firstIndex(where: { $0.id == ub.id }) else { continue }
+                    let prev = userBooks[idx]
+                    userBooks[idx].queueOrder = i
+                    userBooks[idx].queueShelf = sourceShelf
+                    userBooks[idx].updatedAt = now
+                    if prev.queueOrder != userBooks[idx].queueOrder || prev.queueShelf != userBooks[idx].queueShelf {
+                        toPersist.append(userBooks[idx])
+                    }
+                }
+            }
+        }
+
+        Task {
+            for ub in toPersist {
+                try? await userBookRepo.updateUserBook(ub)
+            }
+        }
+    }
+
+    private static func sortQueueMembers(_ books: [UserBook], shelf: QueueShelf) -> [UserBook] {
+        switch shelf {
+        case .upNext:
+            return books.sorted { ($0.queueOrder ?? 999) < ($1.queueOrder ?? 999) }
+        case .backlog:
+            return sortedBacklog(books)
         }
     }
 
@@ -206,9 +338,34 @@ final class AppState: ObservableObject {
         userBooks.filter { $0.status == .wantToRead }
     }
 
+    /// Queue → **Up next** (explicit shelf only).
+    var wantToReadUpNext: [UserBook] {
+        userBooks
+            .filter { $0.status == .wantToRead && $0.queueShelf == .upNext }
+            .sorted { ($0.queueOrder ?? 999) < ($1.queueOrder ?? 999) }
+    }
+
+    /// Queue → **Backlog** (default; includes legacy `queueShelf == nil`).
+    var wantToReadBacklog: [UserBook] {
+        let backlog = userBooks.filter { $0.status == .wantToRead && ($0.queueShelf == nil || $0.queueShelf == .backlog) }
+        return Self.sortedBacklog(backlog)
+    }
+
+    /// Explicit `queueOrder` first (0 = top), then legacy nil rows by `updatedAt` descending (newer near top).
+    private static func sortedBacklog(_ books: [UserBook]) -> [UserBook] {
+        let explicit = books.filter { $0.queueOrder != nil }.sorted { $0.queueOrder! < $1.queueOrder! }
+        let implicit = books.filter { $0.queueOrder == nil }.sorted { $0.updatedAt > $1.updatedAt }
+        return explicit + implicit
+    }
+
     /// True if the given book id is on the user's read list.
     func isBookOnReadList(bookId: String) -> Bool {
         userBooks.contains { $0.bookId == bookId && $0.status == .read }
+    }
+
+    /// The signed-in user's read `UserBook` for this book id, if any (e.g. book profile "Your review").
+    func userReadBook(forBookId bookId: String) -> UserBook? {
+        userBooks.first { $0.bookId == bookId && $0.status == .read }
     }
 
     /// True if the given book id is in the user's queue (want to read).
@@ -252,15 +409,24 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Add a book as Read. ratingPercent 1–100 (stored as 1–10). If postToFeed, creates a finishedBook post with caption (thoughts), rating, and dateFinished.
-    func addAsRead(book: Book, dateFinished: Date, ratingPercent: Int?, postToFeed: Bool, caption: String? = nil) {
+    /// Remove a book from the read shelf (tier list). No-op if not on read list.
+    func removeFromReadList(book: Book) {
         guard let uid = currentUserId else { return }
-        let rating1to10: Int? = ratingPercent.map { max(1, min(10, ($0 + 9) / 10)) }
+        guard let userBook = userBooks.first(where: { $0.bookId == book.id && $0.status == .read }) else { return }
         Task {
-            _ = try? await userBookRepo.addUserBook(userId: uid, book: book, status: .read, rating: rating1to10, reviewText: nil, dateStarted: nil, dateFinished: dateFinished)
+            try? await userBookRepo.deleteUserBook(userId: uid, userBookId: userBook.id)
+        }
+    }
+
+    /// Add a book as Read. `rating` is out of 10 with one decimal (e.g. 8.8). If postToFeed, creates a finishedBook post with caption (thoughts), rating, and dateFinished.
+    func addAsRead(book: Book, dateFinished: Date, rating: Double?, postToFeed: Bool, caption: String? = nil) {
+        guard let uid = currentUserId else { return }
+        let stored: Double? = rating.map { Theme.normalizeRatingOutOfTen($0) }
+        Task {
+            _ = try? await userBookRepo.addUserBook(userId: uid, book: book, status: .read, rating: stored, reviewText: nil, dateStarted: nil, dateFinished: dateFinished)
             if postToFeed {
                 let thoughts = (caption?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
-                _ = try? await postRepo.createPost(userId: uid, type: .finishedBook, bookId: book.id, caption: thoughts, ratingPercent: ratingPercent, dateFinished: dateFinished)
+                _ = try? await postRepo.createPost(userId: uid, type: .finishedBook, bookId: book.id, caption: thoughts, rating: stored, dateFinished: dateFinished)
             }
         }
     }
@@ -277,7 +443,7 @@ final class AppState: ObservableObject {
             guard let book = item.book else { continue }
             if skipDuplicates && existingIds.contains(book.id) { continue }
             let status = GoodreadsImportService.status(for: item.row.exclusiveShelf)
-            let rating = importRatings ? GoodreadsImportService.rating1to10(from: item.row.myRating) : nil
+            let rating = importRatings ? GoodreadsImportService.ratingOutOfTen(from: item.row.myRating) : nil
             let review = importReviews ? item.row.myReview : nil
             let dateFinished = status == .read ? item.row.dateRead : nil
             do {

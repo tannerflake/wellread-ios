@@ -50,6 +50,11 @@ struct OnboardingFlowView: View {
             Image(systemName: "book.closed.fill")
                 .font(.system(size: 64))
                 .foregroundStyle(Theme.accent)
+                .onTapGesture(count: 5) {
+                    Task {
+                        await authService.signInWithConfiguredTestAccount()
+                    }
+                }
                 .onLongPressGesture(minimumDuration: 2.0) {
                     showReviewerLogin = true
                 }

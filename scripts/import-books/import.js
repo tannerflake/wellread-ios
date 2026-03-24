@@ -1,7 +1,7 @@
 /**
  * One-time script: import books from books.json into Firestore (wellread database)
  * under the given user. Resolves each ISBN via Google Books API, then creates
- * book + userBook (status Read, rating 1-10).
+ * book + userBook (status Read, rating out of 10, e.g. 8.8).
  *
  * Prerequisites:
  *   1. Firebase service account key: Firebase Console → Project Settings → Service Accounts
@@ -99,7 +99,7 @@ async function addUserBook(book, rating) {
     userId: FIREBASE_UID,
     bookId: book.id,
     status: 'Read',
-    rating: Math.round(rating),
+    rating: Math.round(Number(rating) * 10) / 10,
     reviewText: null,
     dateStarted: null,
     dateFinished: Timestamp.fromDate(now),

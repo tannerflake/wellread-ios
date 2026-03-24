@@ -2,15 +2,13 @@
 //  GridLibraryView.swift
 //  WellRead
 //
-//  When onMoveToRead is set (e.g. Queue segment), long-press a cover to mark as Read.
+//  Adaptive grid of book covers (e.g. Read list when not using tier view).
 //
 
 import SwiftUI
 
 struct GridLibraryView: View {
     let userBooks: [UserBook]
-    /// When non-nil (e.g. on Queue), long-press a book to move it to Read.
-    var onMoveToRead: ((UserBook) -> Void)? = nil
     /// When set, tapping a book cover opens the book profile.
     var onBookTap: ((Book) -> Void)? = nil
 
@@ -25,18 +23,6 @@ struct GridLibraryView: View {
                     if let book = ub.book {
                         VStack(alignment: .leading, spacing: 6) {
                             BookCoverView(book: book, size: 100, onTap: onBookTap != nil ? { onBookTap?(book) } : nil)
-                                .onLongPressGesture(minimumDuration: 0.5) {
-                                    onMoveToRead?(ub)
-                                }
-                                .contextMenu {
-                                    if let onMoveToRead {
-                                        Button {
-                                            onMoveToRead(ub)
-                                        } label: {
-                                            Label("Mark as Read", systemImage: "checkmark.circle")
-                                        }
-                                    }
-                                }
                             Text(book.title)
                                 .font(Theme.caption())
                                 .foregroundStyle(Theme.textPrimary)
@@ -46,7 +32,7 @@ struct GridLibraryView: View {
                                     Image(systemName: "star.fill")
                                         .font(.caption2)
                                         .foregroundStyle(Theme.accent)
-                                    Text("\(r)").font(Theme.caption()).foregroundStyle(Theme.textSecondary)
+                                    Text(Theme.formatRatingOutOfTen(r)).font(Theme.caption()).foregroundStyle(Theme.textSecondary)
                                 }
                             }
                         }
