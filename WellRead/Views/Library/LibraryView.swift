@@ -2,20 +2,12 @@
 //  LibraryView.swift
 //  WellRead
 //
-//  Library-only tab (labeled "Profile" in tab bar): "Your Library". Profile photo in top-right toolbar.
+//  Library-only tab (labeled "Profile" in tab bar): "Your Library". Toolbar menu in top-right (incl. change photo).
 //
 
-import SwiftUI
 import PhotosUI
-
-// MARK: - Profile photo crop
-
-/// Bundles the picked image for `sheet(item:)` so the sheet never presents with empty content
-/// (using `sheet(isPresented:)` + optional `imageToCrop` can leave the sheet body empty — blank screen).
-private struct ProfileCropSheetItem: Identifiable {
-    let id = UUID()
-    let image: UIImage
-}
+import SwiftUI
+import UIKit
 
 // MARK: - Library (Profile tab content)
 
@@ -27,11 +19,10 @@ struct ProfileLibraryView: View {
     @State private var viewMode: LibraryViewMode = .tierList
     @State private var selectedYear: Int? = nil
     @State private var selectedBookForProfile: Book? = nil
-    @State private var selectedPhotoItem: PhotosPickerItem? = nil
+    @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var showPhotoPicker = false
-    @State private var profileCropSheetItem: ProfileCropSheetItem?
     @State private var isUploadingPhoto = false
-    @State private var photoUploadError: String? = nil
+    @State private var photoUploadError: String?
     @State private var showGoodreadsImport = false
     @State private var goodreadsImportInitialRows: [GoodreadsRow]? = nil
     @State private var showGoodreadsImportErrorAlert = false
@@ -139,34 +130,16 @@ struct ProfileLibraryView: View {
                 showPhotoPicker = false
                 guard let item = newItem else { return }
                 Task {
-                    let image = await Self.loadUIImageForCrop(from: item)
+                    let image = await Self.loadUIImage(from: item)
                     await MainActor.run {
-                        guard let image else {
-                            photoUploadError = "Could not load image. Try another photo."
-                            selectedPhotoItem = nil
-                            return
-                        }
-                        profileCropSheetItem = ProfileCropSheetItem(image: image)
-                    }
-                }
-            }
-            .sheet(item: $profileCropSheetItem) { cropItem in
-                ProfilePhotoCropView(
-                    image: cropItem.image,
-                    onUse: { cropped in
-                        Task {
-                            await uploadProfileImage(cropped)
-                            await MainActor.run {
-                                profileCropSheetItem = nil
-                                selectedPhotoItem = nil
-                            }
-                        }
-                    },
-                    onCancel: {
-                        profileCropSheetItem = nil
                         selectedPhotoItem = nil
                     }
-                )
+                    guard let image else {
+                        await MainActor.run { photoUploadError = "Could not load image. Try another photo." }
+                        return
+                    }
+                    await uploadProfileImage(image)
+                }
             }
             .photosPicker(isPresented: $showPhotoPicker, selection: $selectedPhotoItem, matching: .images, photoLibrary: .shared())
             .sheet(isPresented: $showEditProfile) {
@@ -596,8 +569,7 @@ struct ProfileLibraryView: View {
             )
     }
 
-    /// Loads a full image from the picker (JPEG/PNG/HEIC via `Data`, or file `URL` when needed).
-    private static func loadUIImageForCrop(from item: PhotosPickerItem) async -> UIImage? {
+    private static func loadUIImage(from item: PhotosPickerItem) async -> UIImage? {
         if let data = try? await item.loadTransferable(type: Data.self),
            let image = UIImage(data: data) {
             return image
@@ -616,7 +588,10 @@ struct ProfileLibraryView: View {
 
     private func uploadProfileImage(_ image: UIImage) async {
         guard let uid = authService.firebaseUser?.uid else { return }
-        await MainActor.run { isUploadingPhoto = true; photoUploadError = nil }
+        await MainActor.run {
+            isUploadingPhoto = true
+            photoUploadError = nil
+        }
         do {
             let urlString = try await ProfilePhotoService.uploadProfilePhoto(uid: uid, image: image)
             let cacheBust = "\(urlString.contains("?") ? "&" : "?")t=\(Int(Date().timeIntervalSince1970))"
@@ -626,13 +601,11 @@ struct ProfileLibraryView: View {
                 appState.currentUser = authService.appUser
                 isUploadingPhoto = false
                 photoUploadError = nil
-                selectedPhotoItem = nil
             }
         } catch {
             await MainActor.run {
                 photoUploadError = error.localizedDescription
                 isUploadingPhoto = false
-                selectedPhotoItem = nil
             }
         }
     }

@@ -10,7 +10,7 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
-// MARK: - Library scroll during drag (top edge only)
+// MARK: - Library scroll during drag (top edge + nav title boost)
 
 /// Drives `UIScrollView.contentOffset` while a `UIDragSession` is active.
 ///
@@ -19,6 +19,9 @@ import UniformTypeIdentifiers
 /// caused runaway `contentOffset` changes. **Upward** scroll at the top edge is reliable and keeps long lists usable
 /// when dragging near the top. To scroll down while dragging, scroll with another finger or move the drag away from
 /// the bottom and use the list normally.
+///
+/// **Separate** from that: holding the drag over the inline “Your Library” nav title (or status bar above it) uses a
+/// much higher speed so the list jumps to the top quickly. Does not change thresholds or speed for the normal top-edge band.
 private final class DragAutoScrollDriver: NSObject {
     weak var scrollView: UIScrollView?
     weak var session: UIDragSession?
@@ -30,6 +33,8 @@ private final class DragAutoScrollDriver: NSObject {
 
     /// Fixed scroll speed (points / second) while the finger is in an edge band — moderate, not “max at rim”.
     private let scrollSpeed: CGFloat = 420
+    /// Only while the drag is over the **navigation** “Your Library” chrome (window coords). Does not replace `scrollSpeed` elsewhere.
+    private let libraryNavigationTitleBoostSpeed: CGFloat = 2400
     /// Edge inset from top/bottom of the scroll view used for auto-scroll (capped so bands never overlap).
     private let edgeFraction: CGFloat = 0.10
     private let edgeMinPoints: CGFloat = 44
@@ -37,6 +42,17 @@ private final class DragAutoScrollDriver: NSObject {
     /// Brief delay after lift so the first noisy location frames don’t scroll.
     private let armDelaySeconds: CFTimeInterval = 0.12
     private let warmupFrames: Int = 1
+
+    /// Drag over the inline toolbar title / status bar (above the scroll view’s visible top), not the list’s top-edge band.
+    private func isDragOverLibraryNavigationChrome(session: UIDragSession, scrollView sv: UIScrollView) -> Bool {
+        guard let win = sv.window else {
+            return session.location(in: sv).y < 0
+        }
+        let windowY = session.location(in: win).y
+        // Inline nav + status bar; keep tight so the normal top-edge band (below the bar) is unchanged.
+        let threshold = win.safeAreaInsets.top + 56
+        return windowY < threshold
+    }
 
     func start() {
         guard displayLink == nil else { return }
@@ -94,7 +110,9 @@ private final class DragAutoScrollDriver: NSObject {
         let inTop = fingerY < rawZone
 
         var delta: CGFloat = 0
-        if inTop, y0 > minY + 0.5 {
+        if isDragOverLibraryNavigationChrome(session: session, scrollView: sv), y0 > minY + 0.5 {
+            delta = -libraryNavigationTitleBoostSpeed * dt
+        } else if inTop, y0 > minY + 0.5 {
             delta = -scrollSpeed * dt
         }
 
