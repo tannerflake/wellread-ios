@@ -418,16 +418,110 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Add a book as Read. `rating` is out of 10 with one decimal (e.g. 8.8). If postToFeed, creates a finishedBook post with caption (thoughts), rating, and dateFinished.
+    /// Add a book as Read. `rating` is out of 10 with one decimal (e.g. 8.8). `caption` is saved on the user’s `UserBook` as review text (book profile “Your review”) and, if `postToFeed`, on the finished-book feed post.
     func addAsRead(book: Book, dateFinished: Date, rating: Double?, postToFeed: Bool, caption: String? = nil) {
         guard let uid = currentUserId else { return }
         let stored: Double? = rating.map { Theme.normalizeRatingOutOfTen($0) }
+        let thoughts = (caption?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
         Task {
-            _ = try? await userBookRepo.addUserBook(userId: uid, book: book, status: .read, rating: stored, reviewText: nil, dateStarted: nil, dateFinished: dateFinished)
+            _ = try? await userBookRepo.addUserBook(userId: uid, book: book, status: .read, rating: stored, reviewText: thoughts, dateStarted: nil, dateFinished: dateFinished)
             if postToFeed {
-                let thoughts = (caption?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
                 _ = try? await postRepo.createPost(userId: uid, type: .finishedBook, bookId: book.id, caption: thoughts, rating: stored, dateFinished: dateFinished)
             }
+        }
+    }
+
+    /// Whether the current user has a `finishedBook` feed post for this book (for edit sheet “Show on feed”).
+    func hasFinishedBookPost(forBookId bookId: String) async -> Bool {
+        guard let uid = currentUserId else { return false }
+        let posts = await postRepo.fetchPostsForUserAndBook(userId: uid, bookId: bookId)
+        return posts.contains { $0.type == .finishedBook }
+    }
+
+    /// Text from the most recent finished-book post for this book (when `userBook.reviewText` is empty).
+    func finishedBookPostCaption(forBookId bookId: String) async -> String? {
+        guard let uid = currentUserId else { return nil }
+        let posts = await postRepo.fetchPostsForUserAndBook(userId: uid, bookId: bookId)
+        let finished = posts.filter { $0.type == .finishedBook }.sorted { $0.createdAt > $1.createdAt }
+        guard let raw = finished.first?.caption?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
+        return raw
+    }
+
+    /// Updates read `UserBook` and syncs or creates/removes the matching feed post. Returns an error message on failure.
+    func updateReadReview(
+        userBook: UserBook,
+        dateFinished: Date,
+        rating: Double?,
+        thoughts: String,
+        postToFeed: Bool
+    ) async -> String? {
+        guard let uid = currentUserId, userBook.userId == uid else { return "You’re not signed in." }
+        guard userBook.status == .read else { return "This isn’t a finished book entry." }
+        let trimmed = thoughts.trimmingCharacters(in: .whitespacesAndNewlines)
+        let reviewText = trimmed.isEmpty ? nil : trimmed
+        let storedRating = rating.map { Theme.normalizeRatingOutOfTen($0) }
+        var updated = userBook
+        updated.dateFinished = dateFinished
+        updated.rating = storedRating
+        updated.reviewText = reviewText
+        updated.updatedAt = Date()
+        do {
+            try await userBookRepo.updateUserBook(updated)
+            await MainActor.run { self.updateUserBook(updated) }
+            let posts = await postRepo.fetchPostsForUserAndBook(userId: uid, bookId: userBook.bookId)
+            let finished = posts.filter { $0.type == .finishedBook }.sorted { $0.createdAt > $1.createdAt }
+            if postToFeed {
+                if finished.isEmpty {
+                    _ = try await postRepo.createPost(
+                        userId: uid,
+                        type: .finishedBook,
+                        bookId: userBook.bookId,
+                        caption: reviewText,
+                        rating: storedRating,
+                        dateFinished: dateFinished
+                    )
+                } else {
+                    for p in finished {
+                        try await postRepo.updatePost(
+                            postId: p.id.uuidString,
+                            caption: reviewText,
+                            rating: storedRating,
+                            dateFinished: dateFinished
+                        )
+                    }
+                }
+            } else {
+                for p in finished {
+                    try await postRepo.deletePostCascade(postId: p.id.uuidString)
+                    await MainActor.run {
+                        likedPostIds.remove(p.id.uuidString)
+                        feedPosts.removeAll { $0.id == p.id }
+                    }
+                }
+            }
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    /// Removes the read entry and any matching finished-book feed posts for this book.
+    func deleteReadReview(userBook: UserBook) async -> String? {
+        guard let uid = currentUserId, userBook.userId == uid else { return "You’re not signed in." }
+        do {
+            let posts = await postRepo.fetchPostsForUserAndBook(userId: uid, bookId: userBook.bookId)
+            let finished = posts.filter { $0.type == .finishedBook }
+            for p in finished {
+                try await postRepo.deletePostCascade(postId: p.id.uuidString)
+                await MainActor.run {
+                    likedPostIds.remove(p.id.uuidString)
+                    feedPosts.removeAll { $0.id == p.id }
+                }
+            }
+            try await userBookRepo.deleteUserBook(userId: uid, userBookId: userBook.id)
+            return nil
+        } catch {
+            return error.localizedDescription
         }
     }
 

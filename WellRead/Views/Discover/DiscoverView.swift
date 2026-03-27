@@ -43,7 +43,8 @@ struct DiscoverView: View {
                     onConfirmRead: { date, rating, post, caption in appState.addAsRead(book: book, dateFinished: date, rating: rating, postToFeed: post, caption: caption); selectedBookForProfile = nil },
                     isOnReadList: appState.isBookOnReadList(bookId: book.id),
                     isInQueue: appState.isBookInQueue(bookId: book.id),
-                    readEntryForReview: appState.userReadBook(forBookId: book.id)
+                    readEntryForReview: appState.userReadBook(forBookId: book.id),
+                    canEditReadReview: true
                 )
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -127,7 +128,8 @@ struct DiscoverView: View {
             },
             isOnReadList: appState.isBookOnReadList(bookId: book.id),
             isInQueue: appState.isBookInQueue(bookId: book.id),
-            readEntryForReview: appState.userReadBook(forBookId: book.id)
+            readEntryForReview: appState.userReadBook(forBookId: book.id),
+            canEditReadReview: true
         )
         .padding(.horizontal)
         .padding(.bottom, 24)

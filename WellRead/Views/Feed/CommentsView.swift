@@ -12,6 +12,7 @@ struct CommentsView: View {
     let post: Post
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var appState: AppState
+    @EnvironmentObject var authService: AuthService
     @StateObject private var viewModel: CommentsViewModel
 
     init(post: Post) {
@@ -32,7 +33,10 @@ struct CommentsView: View {
                     } else {
                         List {
                             ForEach(viewModel.comments) { comment in
-                                CommentRow(comment: comment)
+                                CommentRow(
+                                    comment: comment,
+                                    profileImageURL: viewModel.profileImageURL(for: comment)
+                                )
                                     .listRowBackground(Theme.background)
                                     .listRowSeparatorTint(Theme.textTertiary.opacity(0.3))
                             }
@@ -48,12 +52,21 @@ struct CommentsView: View {
             .toolbarBackground(Theme.background, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
                         dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(Theme.textSecondary)
                     }
-                    .foregroundStyle(Theme.accent)
+                    .accessibilityLabel("Close")
                 }
+            }
+            .navigationDestination(for: String.self) { userId in
+                UserLibraryDetailView(userId: userId)
+                    .environmentObject(authService)
+                    .environmentObject(appState)
             }
         }
         .onAppear {
@@ -73,7 +86,13 @@ struct CommentsView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 20))
                 .lineLimit(1...4)
             Button {
-                Task { await viewModel.sendComment(userId: appState.authUserId, displayName: appState.currentUser?.displayName) }
+                Task {
+                    await viewModel.sendComment(
+                        userId: appState.authUserId,
+                        displayName: appState.currentUser?.displayName,
+                        profileImageURL: appState.currentUser?.profileImageURL
+                    )
+                }
             } label: {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.title2)
@@ -89,22 +108,64 @@ struct CommentsView: View {
 
 struct CommentRow: View {
     let comment: Comment
+    /// Resolved URL (from comment doc or fetched profile).
+    var profileImageURL: String?
+
+    private static let avatarSize: CGFloat = 36
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Text(comment.displayName ?? "User")
-                    .font(Theme.headline())
-                    .foregroundStyle(Theme.textPrimary)
-                Text(comment.createdAt, style: .relative)
-                    .font(Theme.caption())
-                    .foregroundStyle(Theme.textTertiary)
+            HStack(alignment: .top, spacing: 10) {
+                NavigationLink(value: comment.userId) {
+                    HStack(alignment: .top, spacing: 10) {
+                        commentAvatar
+                        HStack(spacing: 6) {
+                            Text(comment.displayName ?? "User")
+                                .font(Theme.headline())
+                                .foregroundStyle(Theme.textPrimary)
+                            TimelineView(.periodic(from: .now, by: 15)) { context in
+                                Text(Theme.commentRelativeTimestamp(comment.createdAt, now: context.date))
+                                    .font(Theme.caption())
+                                    .foregroundStyle(Theme.textTertiary)
+                            }
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+                Spacer(minLength: 0)
             }
             Text(comment.text)
                 .font(Theme.body())
                 .foregroundStyle(Theme.textPrimary)
+                .padding(.leading, Self.avatarSize + 10)
         }
         .padding(.vertical, 6)
+    }
+
+    private var commentAvatar: some View {
+        let initial = String((comment.displayName ?? "User").prefix(1))
+        return Group {
+            if let urlStr = profileImageURL, let url = URL(string: urlStr) {
+                CachedProfileImage(url: url, contentMode: .fill) {
+                    commentAvatarPlaceholder(initial: initial)
+                }
+                .frame(width: Self.avatarSize, height: Self.avatarSize)
+                .clipShape(Circle())
+            } else {
+                commentAvatarPlaceholder(initial: initial)
+            }
+        }
+    }
+
+    private func commentAvatarPlaceholder(initial: String) -> some View {
+        Circle()
+            .fill(Theme.surface)
+            .frame(width: Self.avatarSize, height: Self.avatarSize)
+            .overlay(
+                Text(initial)
+                    .font(Theme.headline())
+                    .foregroundStyle(Theme.textSecondary)
+            )
     }
 }
 
@@ -113,10 +174,19 @@ final class CommentsViewModel: ObservableObject {
     @Published var commentText: String = ""
     @Published var isSending: Bool = false
     @Published var isLoading: Bool = true
+    /// Cached `userId` → profile image URL (`""` = loaded, no image).
+    @Published private(set) var avatarURLByUserId: [String: String] = [:]
 
     private let postId: String
     private let commentRepo = CommentRepository()
+    private let userRepo = UserRepository()
     private var listener: ListenerRegistration?
+
+    func profileImageURL(for comment: Comment) -> String? {
+        if let u = comment.profileImageURL, !u.isEmpty { return u }
+        guard let cached = avatarURLByUserId[comment.userId] else { return nil }
+        return cached.isEmpty ? nil : cached
+    }
 
     var canSend: Bool {
         !commentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -131,8 +201,44 @@ final class CommentsViewModel: ObservableObject {
         isLoading = true
         listener = commentRepo.listenComments(postId: postId) { [weak self] list in
             Task { @MainActor in
-                self?.comments = list
-                self?.isLoading = false
+                self?.applyServerComments(list)
+            }
+        }
+    }
+
+    /// Merges Firestore snapshots with comments already shown. Stale snapshots (before the new doc appears)
+    /// would otherwise replace the list and hide a comment you just posted until reopening.
+    private func applyServerComments(_ serverList: [Comment]) {
+        var mergedById = [UUID: Comment]()
+        for c in serverList { mergedById[c.id] = c }
+        for c in comments where mergedById[c.id] == nil {
+            mergedById[c.id] = c
+        }
+        comments = mergedById.values.sorted { $0.createdAt < $1.createdAt }
+        isLoading = false
+        Task { await resolveMissingAvatars() }
+    }
+
+    private func resolveMissingAvatars() async {
+        let uidsNeedingFetch = Set(
+            comments
+                .filter { ($0.profileImageURL == nil || $0.profileImageURL?.isEmpty == true) && !avatarURLByUserId.keys.contains($0.userId) }
+                .map(\.userId)
+        )
+        for uid in uidsNeedingFetch {
+            guard let user = await userRepo.getUser(uid: uid) else {
+                await MainActor.run {
+                    var next = avatarURLByUserId
+                    next[uid] = ""
+                    avatarURLByUserId = next
+                }
+                continue
+            }
+            let url = user.profileImageURL ?? ""
+            await MainActor.run {
+                var next = avatarURLByUserId
+                next[uid] = url
+                avatarURLByUserId = next
             }
         }
     }
@@ -142,13 +248,25 @@ final class CommentsViewModel: ObservableObject {
         listener = nil
     }
 
-    func sendComment(userId: String?, displayName: String?) async {
+    func sendComment(userId: String?, displayName: String?, profileImageURL: String?) async {
         guard let uid = userId else { return }
         let text = commentText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         await MainActor.run { isSending = true; commentText = "" }
         do {
-            _ = try await commentRepo.addComment(postId: postId, userId: uid, text: text, displayName: displayName)
+            let new = try await commentRepo.addComment(
+                postId: postId,
+                userId: uid,
+                text: text,
+                displayName: displayName,
+                profileImageURL: profileImageURL
+            )
+            await MainActor.run {
+                if !comments.contains(where: { $0.id == new.id }) {
+                    comments.append(new)
+                    comments.sort { $0.createdAt < $1.createdAt }
+                }
+            }
         } catch {
             await MainActor.run { commentText = text }
         }

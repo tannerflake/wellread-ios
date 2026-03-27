@@ -12,6 +12,7 @@ struct FeedView: View {
     @EnvironmentObject var authService: AuthService
     @State private var selectedBookForProfile: Book? = nil
     @State private var postForComments: Post? = nil
+    @State private var editReviewFromFeed: EditReadReviewSheetPayload? = nil
     @State private var otherReaders: [(uid: String, user: User)] = []
     @State private var isLoadingOtherReaders = true
 
@@ -34,7 +35,14 @@ struct FeedView: View {
                                     isLiked: appState.likedPostIds.contains(post.id.uuidString),
                                     onBookTap: { selectedBookForProfile = $0 },
                                     onCommentTap: { postForComments = post },
-                                    onLikeToggle: { appState.togglePostLike(postId: post.id.uuidString, liked: $0) }
+                                    onLikeToggle: { appState.togglePostLike(postId: post.id.uuidString, liked: $0) },
+                                    onEditReviewTap: {
+                                        guard post.type == .finishedBook,
+                                              let bid = post.bookId,
+                                              post.userId == authService.firebaseUser?.uid,
+                                              let ub = appState.userReadBook(forBookId: bid) else { return }
+                                        editReviewFromFeed = EditReadReviewSheetPayload(userBook: ub, feedCaption: post.caption)
+                                    }
                                 )
                             }
                         }
@@ -64,12 +72,18 @@ struct FeedView: View {
                     isOnReadList: appState.isBookOnReadList(bookId: book.id),
                     isInQueue: appState.isBookInQueue(bookId: book.id),
                     onRemoveFromQueue: { appState.removeFromQueue(book: book); selectedBookForProfile = nil },
-                    readEntryForReview: appState.userReadBook(forBookId: book.id)
+                    readEntryForReview: appState.userReadBook(forBookId: book.id),
+                    canEditReadReview: true
                 )
+            }
+            .sheet(item: $editReviewFromFeed) { payload in
+                EditReadReviewSheet(userBook: payload.userBook, feedCaption: payload.feedCaption)
+                    .environmentObject(appState)
             }
             .sheet(item: $postForComments) { post in
                 CommentsView(post: post)
                     .environmentObject(appState)
+                    .environmentObject(authService)
             }
             .task {
                 await loadOtherReaders()
@@ -101,7 +115,7 @@ struct FeedView: View {
     private var feedSectionLabel: some View {
         HStack {
             Text("Feed")
-                .font(Theme.feedSectionHeader())
+                .font(Theme.feedBlockTitle())
                 .foregroundStyle(Theme.textPrimary)
             Spacer(minLength: 0)
         }
@@ -161,17 +175,8 @@ struct FeedView: View {
         let initial = String(user.displayName.prefix(1))
         return Group {
             if let urlStr = user.profileImageURL, let url = URL(string: urlStr) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    case .failure, .empty:
-                        otherReaderPlaceholder(initial: initial, size: size, corner: corner)
-                    @unknown default:
-                        otherReaderPlaceholder(initial: initial, size: size, corner: corner)
-                    }
+                CachedProfileImage(url: url, contentMode: .fill) {
+                    otherReaderPlaceholder(initial: initial, size: size, corner: corner)
                 }
             } else {
                 otherReaderPlaceholder(initial: initial, size: size, corner: corner)
@@ -198,58 +203,56 @@ struct FeedView: View {
 
 struct FeedPostRow: View {
     let post: Post
-    /// When set to the signed-in user's Firebase uid, the row header is not a navigation link (no self-profile push).
+    /// Signed-in user's Firebase uid (for edit pencil / like state).
     var currentUserFirebaseUid: String? = nil
     var isLiked: Bool = false
     var onBookTap: ((Book) -> Void)? = nil
     var onCommentTap: (() -> Void)? = nil
     var onLikeToggle: ((Bool) -> Void)? = nil
-
-    private var isOtherUser: Bool {
-        guard let current = currentUserFirebaseUid else { return true }
-        return post.userId != current
-    }
+    var onEditReviewTap: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Group {
-                if isOtherUser {
-                    NavigationLink(value: post.userId) {
-                        feedAuthorHeader
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    feedAuthorHeader
-                }
-            }
-            .padding(.horizontal)
+            feedAuthorHeader
+                .padding(.horizontal)
             
             if let book = post.book {
                 HStack(alignment: .top, spacing: 14) {
                     BookCoverView(book: book, size: 80, onTap: onBookTap != nil ? { onBookTap?(book) } : nil)
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(book.title)
-                            .font(Theme.headline())
-                            .foregroundStyle(Theme.textPrimary)
-                        Text(book.author)
-                            .font(Theme.callout())
-                            .foregroundStyle(Theme.textSecondary)
-                        if post.rating != nil || post.dateFinished != nil {
-                            HStack(spacing: 8) {
-                                if let r = post.rating {
+                    ZStack(alignment: .topLeading) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(book.title)
+                                .font(Theme.headline())
+                                .foregroundStyle(Theme.textPrimary)
+                                .multilineTextAlignment(.leading)
+                                .padding(.trailing, post.rating != nil ? 44 : 0)
+                            Text(book.author)
+                                .font(Theme.callout())
+                                .foregroundStyle(Theme.textSecondary)
+                            if let date = post.dateFinished {
+                                Text(date, style: .date)
+                                    .font(.caption2)
+                                    .foregroundStyle(Theme.textTertiary)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        // Same height as cover: bottom of number lines up with bottom of book art.
+                        if let r = post.rating {
+                            VStack {
+                                Spacer(minLength: 0)
+                                HStack {
+                                    Spacer(minLength: 0)
                                     Text(Theme.formatRatingOutOfTen(r))
                                         .font(Theme.callout())
                                         .foregroundStyle(Theme.textSecondary)
                                 }
-                                if let date = post.dateFinished {
-                                    Text(date, style: .date)
-                                        .font(.caption2)
-                                        .foregroundStyle(Theme.textTertiary)
-                                }
                             }
+                            .frame(maxWidth: .infinity, minHeight: 80, maxHeight: 80, alignment: .top)
+                            .allowsHitTesting(false)
                         }
                     }
-                    Spacer()
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .padding(.horizontal)
             }
@@ -262,15 +265,18 @@ struct FeedPostRow: View {
             }
             
             HStack(spacing: 20) {
-                Button {
-                    onLikeToggle?(!isLiked)
-                } label: {
-                    Image(systemName: isLiked ? "heart.fill" : "heart")
-                        .foregroundStyle(isLiked ? Theme.accent : Theme.textSecondary)
+                HStack(spacing: 4) {
+                    Button {
+                        onLikeToggle?(!isLiked)
+                    } label: {
+                        Image(systemName: isLiked ? "heart.fill" : "heart")
+                            .foregroundStyle(isLiked ? Theme.accent : Theme.textSecondary)
+                    }
+                    .buttonStyle(.plain)
+                    Text("\(post.likeCount)")
+                        .font(Theme.caption())
+                        .foregroundStyle(Theme.textSecondary)
                 }
-                Text("\(post.likeCount)")
-                    .font(Theme.caption())
-                    .foregroundStyle(Theme.textSecondary)
                 Button {
                     onCommentTap?()
                 } label: {
@@ -291,18 +297,40 @@ struct FeedPostRow: View {
         .padding(.top, 12)
     }
 
+    private var showEditReviewButton: Bool {
+        guard let uid = currentUserFirebaseUid else { return false }
+        guard post.userId == uid else { return false }
+        guard post.type == .finishedBook, post.bookId != nil else { return false }
+        return onEditReviewTap != nil
+    }
+
     private var feedAuthorHeader: some View {
-        HStack(spacing: 10) {
-            feedAvatar
-            VStack(alignment: .leading, spacing: 2) {
-                Text(post.user?.displayName ?? "User")
-                    .font(Theme.headline())
-                    .foregroundStyle(Theme.textPrimary)
-                Text(post.createdAt, style: .relative)
-                    .font(Theme.caption())
-                    .foregroundStyle(Theme.textTertiary)
+        HStack(alignment: .center, spacing: 12) {
+            NavigationLink(value: post.userId) {
+                HStack(spacing: 10) {
+                    feedAvatar
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(post.user?.displayName ?? "User")
+                            .font(Theme.headline())
+                            .foregroundStyle(Theme.textPrimary)
+                        Text(post.createdAt, style: .relative)
+                            .font(Theme.caption())
+                            .foregroundStyle(Theme.textTertiary)
+                    }
+                }
             }
-            Spacer()
+            .buttonStyle(.plain)
+            Spacer(minLength: 8)
+            if showEditReviewButton {
+                Button {
+                    onEditReviewTap?()
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+                .buttonStyle(.plain)
+            }
         }
     }
 
@@ -310,17 +338,8 @@ struct FeedPostRow: View {
     private var feedAvatar: some View {
         let initial = String((post.user?.displayName ?? "?").prefix(1))
         if let urlStr = post.user?.profileImageURL, let url = URL(string: urlStr) {
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                case .failure, .empty:
-                    feedAvatarPlaceholder(initial: initial)
-                @unknown default:
-                    feedAvatarPlaceholder(initial: initial)
-                }
+            CachedProfileImage(url: url, contentMode: .fill) {
+                feedAvatarPlaceholder(initial: initial)
             }
             .frame(width: 40, height: 40)
             .clipShape(Circle())

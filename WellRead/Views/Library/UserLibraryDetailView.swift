@@ -140,17 +140,8 @@ struct UserLibraryDetailView: View {
             if let u = profileUser {
                 ZStack {
                     if let urlString = u.profileImageURL, let url = URL(string: urlString) {
-                        AsyncImage(url: url) { phase in
-                            switch phase {
-                            case .success(let image):
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                            case .failure, .empty:
-                                avatarPlaceholder(initial: avatarInitial(for: u))
-                            @unknown default:
-                                avatarPlaceholder(initial: avatarInitial(for: u))
-                            }
+                        CachedProfileImage(url: url, contentMode: .fill) {
+                            avatarPlaceholder(initial: avatarInitial(for: u))
                         }
                     } else {
                         avatarPlaceholder(initial: avatarInitial(for: u))

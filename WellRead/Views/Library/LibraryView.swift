@@ -110,7 +110,8 @@ struct ProfileLibraryView: View {
                     isOnReadList: appState.isBookOnReadList(bookId: book.id),
                     isInQueue: appState.isBookInQueue(bookId: book.id),
                     onRemoveFromQueue: { appState.removeFromQueue(book: book); selectedBookForProfile = nil },
-                    readEntryForReview: appState.userReadBook(forBookId: book.id)
+                    readEntryForReview: appState.userReadBook(forBookId: book.id),
+                    canEditReadReview: true
                 )
                 .padding(.horizontal)
                 .padding(.bottom, 24)
@@ -508,17 +509,8 @@ struct ProfileLibraryView: View {
             } label: {
                 ZStack {
                     if let urlString = user.profileImageURL, let url = URL(string: urlString) {
-                        AsyncImage(url: url) { phase in
-                            switch phase {
-                            case .success(let image):
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                            case .failure, .empty:
-                                avatarPlaceholder(initial: String(user.displayName.prefix(1)), compact: true)
-                            @unknown default:
-                                avatarPlaceholder(initial: String(user.displayName.prefix(1)), compact: true)
-                            }
+                        CachedProfileImage(url: url, contentMode: .fill) {
+                            avatarPlaceholder(initial: String(user.displayName.prefix(1)), compact: true)
                         }
                     } else {
                         avatarPlaceholder(initial: String(user.displayName.prefix(1)), compact: true)
@@ -595,7 +587,11 @@ struct ProfileLibraryView: View {
         do {
             let urlString = try await ProfilePhotoService.uploadProfilePhoto(uid: uid, image: image)
             let cacheBust = "\(urlString.contains("?") ? "&" : "?")t=\(Int(Date().timeIntervalSince1970))"
-            try await UserRepository().updateProfileImageURL(uid: uid, url: urlString + cacheBust)
+            let fullURLString = urlString + cacheBust
+            if let profileURL = URL(string: fullURLString) {
+                ProfileImageCache.shared.store(image, for: profileURL)
+            }
+            try await UserRepository().updateProfileImageURL(uid: uid, url: fullURLString)
             await authService.refreshAppUser()
             await MainActor.run {
                 appState.currentUser = authService.appUser

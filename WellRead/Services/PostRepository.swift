@@ -185,4 +185,67 @@ final class PostRepository {
         default: return nil
         }
     }
+
+    private let commentRepo = CommentRepository()
+
+    /// All posts for this user + book (e.g. find feed posts to sync with a read entry).
+    func fetchPostsForUserAndBook(userId: String, bookId: String) async -> [Post] {
+        do {
+            let snapshot = try await db.collection(posts)
+                .whereField("userId", isEqualTo: userId)
+                .whereField("bookId", isEqualTo: bookId)
+                .getDocuments()
+            var list: [Post] = []
+            for doc in snapshot.documents {
+                if let p = await post(from: doc.data(), docId: doc.documentID) {
+                    list.append(p)
+                }
+            }
+            return list
+        } catch {
+            return []
+        }
+    }
+
+    /// Updates caption, rating, and date finished on an existing post.
+    func updatePost(postId: String, caption: String?, rating: Double?, dateFinished: Date?) async throws {
+        let ref = db.collection(posts).document(postId)
+        var data: [String: Any] = [:]
+        if let c = caption {
+            data["caption"] = c
+        } else {
+            data["caption"] = NSNull()
+        }
+        if let r = rating {
+            data["rating"] = Theme.normalizeRatingOutOfTen(r)
+        } else {
+            data["rating"] = NSNull()
+        }
+        if let d = dateFinished {
+            data["dateFinished"] = Timestamp(date: d)
+        } else {
+            data["dateFinished"] = NSNull()
+        }
+        try await ref.updateData(data)
+    }
+
+    /// Removes comments, likes, then the post document.
+    func deletePostCascade(postId: String) async throws {
+        try await commentRepo.deleteAllCommentsForPost(postId: postId)
+        let likesSnap = try await db.collection("postLikes")
+            .whereField("postId", isEqualTo: postId)
+            .getDocuments()
+        let likeDocs = likesSnap.documents
+        var i = 0
+        while i < likeDocs.count {
+            let end = min(i + 400, likeDocs.count)
+            let batch = db.batch()
+            for j in i..<end {
+                batch.deleteDocument(likeDocs[j].reference)
+            }
+            try await batch.commit()
+            i = end
+        }
+        try await db.collection(posts).document(postId).delete()
+    }
 }

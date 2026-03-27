@@ -12,4 +12,6 @@ struct Comment: Identifiable, Codable {
     var text: String
     var createdAt: Date
     var displayName: String?  // Optional; set when writing so we can show without lookup
+    /// Denormalized from the user profile at post time (optional for legacy comments).
+    var profileImageURL: String?
 }

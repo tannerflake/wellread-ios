@@ -57,6 +57,9 @@
 		B001002D /* DismissedSuggestionsRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001002D /* DismissedSuggestionsRepository.swift */; };
 		B001002E /* DiscoverSuggestionsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001002E /* DiscoverSuggestionsService.swift */; };
 		B001002F /* ProfilePhotoService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001002F /* ProfilePhotoService.swift */; };
+		B0010040 /* ProfileImageCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010040 /* ProfileImageCache.swift */; };
+		B0010041 /* CachedProfileImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010041 /* CachedProfileImage.swift */; };
+		B0010042 /* EditReadReviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010042 /* EditReadReviewSheet.swift */; };
 		B0010030 /* CommentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010030 /* CommentsView.swift */; };
 		B0010032 /* GoodreadsCSVParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010032 /* GoodreadsCSVParser.swift */; };
 		B0010033 /* GoodreadsImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010033 /* GoodreadsImportService.swift */; };
@@ -146,6 +149,9 @@
 		F001002D /* DismissedSuggestionsRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DismissedSuggestionsRepository.swift; sourceTree = "<group>"; };
 		F001002E /* DiscoverSuggestionsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoverSuggestionsService.swift; sourceTree = "<group>"; };
 		F001002F /* ProfilePhotoService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfilePhotoService.swift; sourceTree = "<group>"; };
+		F0010040 /* ProfileImageCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileImageCache.swift; sourceTree = "<group>"; };
+		F0010041 /* CachedProfileImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CachedProfileImage.swift; sourceTree = "<group>"; };
+		F0010042 /* EditReadReviewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditReadReviewSheet.swift; sourceTree = "<group>"; };
 		F0010030 /* CommentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommentsView.swift; sourceTree = "<group>"; };
 		F0010032 /* GoodreadsCSVParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoodreadsCSVParser.swift; sourceTree = "<group>"; };
 		F0010033 /* GoodreadsImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoodreadsImportService.swift; sourceTree = "<group>"; };
@@ -294,6 +300,7 @@
 				F001002D /* DismissedSuggestionsRepository.swift */,
 				F001002E /* DiscoverSuggestionsService.swift */,
 				F001002F /* ProfilePhotoService.swift */,
+				F0010040 /* ProfileImageCache.swift */,
 				F0010032 /* GoodreadsCSVParser.swift */,
 				F0010033 /* GoodreadsImportService.swift */,
 				F0010035 /* GoodreadsShareHelper.swift */,
@@ -342,6 +349,7 @@
 			isa = PBXGroup;
 			children = (
 				F001000F /* BookCoverView.swift */,
+				F0010041 /* CachedProfileImage.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -400,6 +408,7 @@
 			isa = PBXGroup;
 			children = (
 				F001002B /* BookProfileView.swift */,
+				F0010042 /* EditReadReviewSheet.swift */,
 			);
 			path = Book;
 			sourceTree = "<group>";
@@ -584,6 +593,9 @@
 				B001002D /* DismissedSuggestionsRepository.swift in Sources */,
 				B001002E /* DiscoverSuggestionsService.swift in Sources */,
 				B001002F /* ProfilePhotoService.swift in Sources */,
+				B0010040 /* ProfileImageCache.swift in Sources */,
+				B0010041 /* CachedProfileImage.swift in Sources */,
+				B0010042 /* EditReadReviewSheet.swift in Sources */,
 				B0010030 /* CommentsView.swift in Sources */,
 				B0010032 /* GoodreadsCSVParser.swift in Sources */,
 				B0010033 /* GoodreadsImportService.swift in Sources */,

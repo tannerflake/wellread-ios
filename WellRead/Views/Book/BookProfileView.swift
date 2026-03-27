@@ -28,6 +28,10 @@ struct BookProfileView: View {
     var readEntryForReview: UserBook? = nil
     /// Section title for that card (`"Your review"` vs `"Review"` on someone else's profile).
     var reviewSectionHeading: String = "Your review"
+    /// When `true`, shows a pencil on the review card to edit date, rating, thoughts, feed visibility, or delete.
+    var canEditReadReview: Bool = false
+
+    @EnvironmentObject private var appState: AppState
 
     @State private var summary: String?
     @State private var notableQuote: String?
@@ -44,6 +48,7 @@ struct BookProfileView: View {
     @State private var markAsReadThoughts = ""
     @State private var profileTags: [String] = []
     @State private var tagsLoading = false
+    @State private var userBookToEdit: UserBook? = nil
 
     private var markAsReadRatingSliderBinding: Binding<Double> {
         Binding(
@@ -107,6 +112,16 @@ struct BookProfileView: View {
                                     .foregroundStyle(Theme.textSecondary)
                                     .multilineTextAlignment(.leading)
                                 Spacer(minLength: 8)
+                                if canEditReadReview {
+                                    Button {
+                                        userBookToEdit = ub
+                                    } label: {
+                                        Image(systemName: "pencil")
+                                            .font(.body.weight(.semibold))
+                                            .foregroundStyle(Theme.textSecondary)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
                                 if let r = ub.rating {
                                     Text("\(Theme.formatRatingOutOfTen(r))/10")
                                         .font(.system(size: 14, weight: .semibold, design: .rounded))
@@ -258,6 +273,10 @@ struct BookProfileView: View {
             }
         }
         .overlay { markAsReadOverlay }
+        .sheet(item: $userBookToEdit) { ub in
+            EditReadReviewSheet(userBook: ub)
+                .environmentObject(appState)
+        }
         .navigationBarTitleDisplayMode(.inline)
         .task(id: book.id) {
             profileTags = []

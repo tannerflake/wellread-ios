@@ -39,11 +39,25 @@ service cloud.firestore {
       allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
     }
 
-    // Comments: read with post; create when authenticated
+    // Comments: read with post; create when authenticated; delete own comment or (when deleting a post) the post author
     match /comments/{commentId} {
       allow read: if true;
       allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow update: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow delete: if request.auth != null && (
+        resource.data.userId == request.auth.uid ||
+        get(/databases/$(database)/documents/posts/$(resource.data.postId)).data.userId == request.auth.uid
+      );
+    }
+
+    // Post likes: like doc id is "{uid}_{postId}"; delete own like or post author removing all likes for a post
+    match /postLikes/{likeId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow delete: if request.auth != null && (
+        resource.data.userId == request.auth.uid ||
+        get(/databases/$(database)/documents/posts/$(resource.data.postId)).data.userId == request.auth.uid
+      );
     }
 
     // Dismissed suggestions (Pass): user can only read/write their own passed book IDs

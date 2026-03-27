@@ -22,14 +22,46 @@ enum Theme {
     static func largeTitle() -> Font { .system(size: 28, weight: .bold, design: .default) }
     static func title() -> Font { .system(size: 22, weight: .bold, design: .default) }
     static func title2() -> Font { .system(size: 18, weight: .semibold, design: .default) }
-    /// Feed screen section labels (“Your friends”, “Feed”) — same size, between old large nav title and headline.
+    /// Feed screen section label for “Your friends” (and similar).
     static func feedSectionHeader() -> Font { .system(size: 17, weight: .semibold, design: .default) }
+    /// The “Feed” title above the post list.
+    static func feedBlockTitle() -> Font { .system(size: 22, weight: .semibold, design: .default) }
     static func headline() -> Font { .system(size: 16, weight: .semibold, design: .default) }
     /// Section titles on book profile (Summary, Notable quote, etc.) — ~2× headline for emphasis.
     static func profileSectionHeader() -> Font { .system(size: 32, weight: .bold, design: .default) }
     static func body() -> Font { .system(size: 16, weight: .regular, design: .default) }
     static func callout() -> Font { .system(size: 14, weight: .regular, design: .default) }
     static func caption() -> Font { .system(size: 12, weight: .regular, design: .default) }
+
+    /// Comment row: show seconds only when the comment is under one minute old; otherwise minutes, hours, days, then a short date.
+    static func commentRelativeTimestamp(_ date: Date, now: Date = Date()) -> String {
+        let interval = now.timeIntervalSince(date)
+        if interval < 0 {
+            return date.formatted(date: .abbreviated, time: .shortened)
+        }
+        if interval < 60 {
+            let s = Int(interval)
+            if s < 1 { return "just now" }
+            return "\(s) sec"
+        }
+        if interval < 3600 {
+            let m = Int(interval / 60)
+            return m == 1 ? "1 min" : "\(m) min"
+        }
+        if interval < 86400 {
+            let h = Int(interval / 3600)
+            return h == 1 ? "1 hr" : "\(h) hr"
+        }
+        let days = Int(interval / 86400)
+        if days < 7 {
+            return days == 1 ? "1 day" : "\(days) days"
+        }
+        if days < 60 {
+            let w = max(1, days / 7)
+            return w == 1 ? "1 week" : "\(w) weeks"
+        }
+        return date.formatted(date: .abbreviated, time: .omitted)
+    }
     
     // MARK: - Ratings (out of 10, one decimal — e.g. 8.8)
     static func formatRatingOutOfTen(_ value: Double) -> String {
