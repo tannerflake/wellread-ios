@@ -219,40 +219,29 @@ struct FeedPostRow: View {
             if let book = post.book {
                 HStack(alignment: .top, spacing: 14) {
                     BookCoverView(book: book, size: 80, onTap: onBookTap != nil ? { onBookTap?(book) } : nil)
-                    ZStack(alignment: .topLeading) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(book.title)
-                                .font(Theme.headline())
-                                .foregroundStyle(Theme.textPrimary)
-                                .multilineTextAlignment(.leading)
-                                .padding(.trailing, post.rating != nil ? 44 : 0)
-                            Text(book.author)
-                                .font(Theme.callout())
-                                .foregroundStyle(Theme.textSecondary)
-                            if let date = post.dateFinished {
-                                Text(date, style: .date)
-                                    .font(.caption2)
-                                    .foregroundStyle(Theme.textTertiary)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                        // Same height as cover: bottom of number lines up with bottom of book art.
-                        if let r = post.rating {
-                            VStack {
-                                Spacer(minLength: 0)
-                                HStack {
-                                    Spacer(minLength: 0)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(book.title)
+                            .font(Theme.headline())
+                            .foregroundStyle(Theme.textPrimary)
+                        Text(book.author)
+                            .font(Theme.callout())
+                            .foregroundStyle(Theme.textSecondary)
+                        if post.rating != nil || post.dateFinished != nil {
+                            HStack(spacing: 8) {
+                                if let r = post.rating {
                                     Text(Theme.formatRatingOutOfTen(r))
                                         .font(Theme.callout())
                                         .foregroundStyle(Theme.textSecondary)
                                 }
+                                if let date = post.dateFinished {
+                                    Text(date, style: .date)
+                                        .font(.caption2)
+                                        .foregroundStyle(Theme.textTertiary)
+                                }
                             }
-                            .frame(maxWidth: .infinity, minHeight: 80, maxHeight: 80, alignment: .top)
-                            .allowsHitTesting(false)
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Spacer()
                 }
                 .padding(.horizontal)
             }

@@ -26,17 +26,17 @@ struct MainTabView: View {
     }
     
     var body: some View {
-        ZStack(alignment: .bottom) {
-            Group {
-                switch selectedTab {
-                case .feed: FeedView()
-                case .discover: DiscoverView()
-                case .add: Color.clear
-                case .profile: ProfileLibraryView()
-                }
+        Group {
+            switch selectedTab {
+            case .feed: FeedView()
+            case .discover: DiscoverView()
+            case .add: Color.clear
+            case .profile: ProfileLibraryView()
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Reserve space for the tab bar in layout (avoids full-screen content drawing under it).
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             tabBar
         }
         .ignoresSafeArea(.keyboard)
@@ -55,6 +55,7 @@ struct MainTabView: View {
                 }
             )
             .environmentObject(authService)
+            .environmentObject(appState)
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }

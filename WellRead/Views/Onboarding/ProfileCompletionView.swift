@@ -6,7 +6,9 @@
 //  dismissible, but reappears on each launch until saved.
 //
 
+import PhotosUI
 import SwiftUI
+import UIKit
 
 // MARK: - Handle validation (shared with User.needsProfileCompletion)
 
@@ -56,6 +58,7 @@ enum ProfileEditorMode {
 
 struct ProfileCompletionView: View {
     @EnvironmentObject var authService: AuthService
+    @EnvironmentObject private var appState: AppState
     @FocusState private var focusedField: Field?
 
     let mode: ProfileEditorMode
@@ -75,6 +78,10 @@ struct ProfileCompletionView: View {
     /// When set, we couldn’t verify (e.g. Firestore rules) — don’t show “taken”.
     @State private var handleCheckError: String?
     @State private var handleCheckTask: Task<Void, Never>?
+    @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var showPhotoPicker = false
+    @State private var isUploadingPhoto = false
+    @State private var photoUploadError: String?
 
     private enum Field: Hashable {
         case first, last, handle, goal
@@ -114,6 +121,8 @@ struct ProfileCompletionView: View {
                     }
                 }
                 .padding(.top, 8)
+
+                profilePhotoSection
 
                 VStack(alignment: .leading, spacing: 16) {
                     labeledField(title: "First name") {
@@ -201,6 +210,130 @@ struct ProfileCompletionView: View {
             prefillNameFromProviderIfNeeded()
         }
         .onDisappear { handleCheckTask?.cancel() }
+        .onChange(of: selectedPhotoItem) { _, newItem in
+            showPhotoPicker = false
+            guard let item = newItem else { return }
+            Task {
+                let image = await Self.loadUIImage(from: item)
+                await MainActor.run {
+                    selectedPhotoItem = nil
+                }
+                guard let image else {
+                    await MainActor.run { photoUploadError = "Could not load image. Try another photo." }
+                    return
+                }
+                await uploadProfileImage(image)
+            }
+        }
+        .photosPicker(isPresented: $showPhotoPicker, selection: $selectedPhotoItem, matching: .images, photoLibrary: .shared())
+        .alert("Photo", isPresented: Binding(
+            get: { photoUploadError != nil },
+            set: { if !$0 { photoUploadError = nil } }
+        )) {
+            Button("OK", role: .cancel) { photoUploadError = nil }
+        } message: {
+            Text(photoUploadError ?? "")
+        }
+    }
+
+    private var profileUserForAvatar: User? {
+        appState.currentUser ?? authService.appUser
+    }
+
+    private var profilePhotoSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Profile photo")
+                .font(Theme.caption())
+                .foregroundStyle(Theme.textSecondary)
+            HStack(alignment: .center, spacing: 16) {
+                ZStack {
+                    if let user = profileUserForAvatar,
+                       let urlString = user.profileImageURL,
+                       let url = URL(string: urlString) {
+                        CachedProfileImage(url: url, contentMode: .fill) {
+                            avatarPlaceholder(initial: String(user.displayName.prefix(1)), size: 80)
+                        }
+                    } else if let user = profileUserForAvatar {
+                        avatarPlaceholder(initial: String(user.displayName.prefix(1)), size: 80)
+                    } else {
+                        avatarPlaceholder(initial: "?", size: 80)
+                    }
+                    if isUploadingPhoto {
+                        Color.black.opacity(0.4)
+                        ProgressView()
+                            .tint(.white)
+                    }
+                }
+                .frame(width: 80, height: 80)
+                .clipShape(Circle())
+
+                Button {
+                    showPhotoPicker = true
+                } label: {
+                    Label("Change profile picture", systemImage: "photo")
+                        .font(Theme.callout().weight(.semibold))
+                        .foregroundStyle(Theme.accent)
+                }
+                .buttonStyle(.plain)
+                .disabled(isUploadingPhoto)
+            }
+        }
+    }
+
+    private func avatarPlaceholder(initial: String, size: CGFloat) -> some View {
+        Circle()
+            .fill(Theme.surface)
+            .frame(width: size, height: size)
+            .overlay(
+                Text(initial)
+                    .font(.system(size: size * 0.38, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Theme.textSecondary)
+            )
+    }
+
+    private static func loadUIImage(from item: PhotosPickerItem) async -> UIImage? {
+        if let data = try? await item.loadTransferable(type: Data.self),
+           let image = UIImage(data: data) {
+            return image
+        }
+        guard let url = try? await item.loadTransferable(type: URL.self) else { return nil }
+        let didAccess = url.startAccessingSecurityScopedResource()
+        defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+        if let data = try? Data(contentsOf: url), let image = UIImage(data: data) {
+            return image
+        }
+        if FileManager.default.fileExists(atPath: url.path) {
+            return UIImage(contentsOfFile: url.path)
+        }
+        return nil
+    }
+
+    private func uploadProfileImage(_ image: UIImage) async {
+        guard let uid = authService.firebaseUser?.uid else { return }
+        await MainActor.run {
+            isUploadingPhoto = true
+            photoUploadError = nil
+        }
+        do {
+            let urlString = try await ProfilePhotoService.uploadProfilePhoto(uid: uid, image: image)
+            let cacheBust = "\(urlString.contains("?") ? "&" : "?")t=\(Int(Date().timeIntervalSince1970))"
+            let fullURLString = urlString + cacheBust
+            if let profileURL = URL(string: fullURLString) {
+                ProfileImageCache.shared.store(image, for: profileURL)
+            }
+            try await UserRepository().updateProfileImageURL(uid: uid, url: fullURLString)
+            await authService.refreshAppUser()
+            await MainActor.run {
+                appState.currentUser = authService.appUser
+                isUploadingPhoto = false
+                photoUploadError = nil
+            }
+        } catch {
+            await MainActor.run {
+                photoUploadError = error.localizedDescription
+                isUploadingPhoto = false
+            }
+        }
     }
 
     private func prefillFromExistingUser() {

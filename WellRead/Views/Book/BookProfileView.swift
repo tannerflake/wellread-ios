@@ -79,8 +79,8 @@ struct BookProfileView: View {
     }
 
     private let actionBarHeight: CGFloat = 76
-    /// Space so the action bar sits above the tab bar (tab bar + small gap).
-    private let tabBarInset: CGFloat = 52
+    /// Extra scroll space below the last section so content clears the fixed action bar.
+    private let actionBarScrollGap: CGFloat = 28
 
     var body: some View {
         VStack(spacing: 0) {
@@ -264,7 +264,7 @@ struct BookProfileView: View {
                     .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
                     .padding(.horizontal)
                 }
-                .padding(.bottom, showActionBar ? actionBarHeight + tabBarInset + 24 : 40)
+                .padding(.bottom, showActionBar ? actionBarHeight + actionBarScrollGap : 40)
             }
             .background(Theme.background)
 
@@ -460,7 +460,7 @@ struct BookProfileView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 10)
-        .padding(.bottom, tabBarInset)
+        .padding(.bottom, 8)
     }
 }
 

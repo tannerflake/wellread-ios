@@ -8,6 +8,60 @@
 
 import SwiftUI
 
+// MARK: - Reading goal strip (calendar year vs goal)
+
+enum LibraryReadingGoalStripCopy {
+    /// Signed-in viewer’s own library.
+    case own
+    /// Another member’s library (`displayFirstName` used for “Name’s goal”, else “their”).
+    case other(displayFirstName: String?)
+}
+
+/// Skinny progress bar + compact caption under the nav title, above the Read/Queue control.
+struct LibraryReadingGoalProgressStrip: View {
+    let calendarYear: Int
+    let booksRead: Int
+    let goal: Int
+    var copy: LibraryReadingGoalStripCopy = .own
+
+    private var goalTotal: Double {
+        max(Double(goal), 1)
+    }
+
+    private var caption: String {
+        switch copy {
+        case .own:
+            return "Read \(booksRead) of \(goal) for your \(calendarYear) goal"
+        case .other(let first):
+            let trimmed = first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !trimmed.isEmpty {
+                return "Read \(booksRead) of \(goal) for \(trimmed)'s \(calendarYear) goal"
+            }
+            return "Read \(booksRead) of \(goal) for their \(calendarYear) goal"
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(caption)
+                .font(.caption2)
+                .foregroundStyle(Theme.textSecondary)
+                .lineLimit(2)
+                .minimumScaleFactor(0.85)
+                .fixedSize(horizontal: false, vertical: true)
+            ProgressView(value: min(Double(booksRead), goalTotal), total: goalTotal)
+                .progressViewStyle(.linear)
+                .tint(Theme.accent)
+                .scaleEffect(x: 1, y: 0.5, anchor: .center)
+                .frame(height: 3)
+                .accessibilityLabel("\(calendarYear) reading goal")
+                .accessibilityValue("\(booksRead) of \(goal) books")
+        }
+        .padding(.top, 4)
+        .padding(.bottom, 6)
+    }
+}
+
 /// Read vs Queue — used by your library and friend library screens.
 enum LibraryReadQueueTab: String, CaseIterable {
     case read = "Read"

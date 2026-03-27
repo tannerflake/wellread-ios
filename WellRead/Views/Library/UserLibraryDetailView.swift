@@ -69,10 +69,36 @@ struct UserLibraryDetailView: View {
         return Theme.possessiveLibraryTitleFirstNameOnly(user: u)
     }
 
+    private var calendarYear: Int {
+        Calendar.current.component(.year, from: Date())
+    }
+
+    /// Finished books with `dateFinished` in the current calendar year.
+    private var booksFinishedThisCalendarYear: Int {
+        let y = calendarYear
+        return readBooks.filter { ub in
+            guard let d = ub.dateFinished else { return false }
+            return Calendar.current.component(.year, from: d) == y
+        }.count
+    }
+
+    private var activeReadingGoal: Int? {
+        guard let g = profileUser?.readingGoal, g > 0 else { return nil }
+        return g
+    }
+
     var body: some View {
         ZStack {
             Theme.background.ignoresSafeArea()
             VStack(spacing: 0) {
+                if let goal = activeReadingGoal {
+                    LibraryReadingGoalProgressStrip(
+                        calendarYear: calendarYear,
+                        booksRead: booksFinishedThisCalendarYear,
+                        goal: goal,
+                        copy: .other(displayFirstName: profileUser?.firstName)
+                    )
+                }
                 HStack(alignment: .center, spacing: 12) {
                     otherUserSegmentControl
                         .frame(maxWidth: .infinity)

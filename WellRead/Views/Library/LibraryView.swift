@@ -2,12 +2,10 @@
 //  LibraryView.swift
 //  WellRead
 //
-//  Library-only tab (labeled "Profile" in tab bar): "Your Library". Toolbar menu in top-right (incl. change photo).
+//  Library-only tab (labeled "Profile" in tab bar): "Your Library". Toolbar menu in top-right.
 //
 
-import PhotosUI
 import SwiftUI
-import UIKit
 
 // MARK: - Library (Profile tab content)
 
@@ -16,13 +14,8 @@ struct ProfileLibraryView: View {
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var queueDragCoordinator: QueueBookDragCoordinator
     @State private var segment: LibraryReadQueueTab = .read
-    @State private var viewMode: LibraryViewMode = .tierList
     @State private var selectedYear: Int? = nil
     @State private var selectedBookForProfile: Book? = nil
-    @State private var selectedPhotoItem: PhotosPickerItem?
-    @State private var showPhotoPicker = false
-    @State private var isUploadingPhoto = false
-    @State private var photoUploadError: String?
     @State private var showGoodreadsImport = false
     @State private var goodreadsImportInitialRows: [GoodreadsRow]? = nil
     @State private var showGoodreadsImportErrorAlert = false
@@ -31,13 +24,6 @@ struct ProfileLibraryView: View {
     @State private var readTabDropTargeted = false
     @State private var queueTabDropTargeted = false
     @State private var showEditProfile = false
-
-    var filteredBooks: [UserBook] {
-        switch segment {
-        case .read: return readBooksFilteredByYear
-        case .wantToRead: return appState.wantToRead
-        }
-    }
 
     private var readBooksFilteredByYear: [UserBook] {
         let read = appState.readBooks
@@ -80,7 +66,12 @@ struct ProfileLibraryView: View {
                 Theme.background.ignoresSafeArea()
                 VStack(spacing: 0) {
                     if let goal = activeReadingGoal {
-                        yearGoalProgressRow(read: booksFinishedThisCalendarYear, goal: goal)
+                        LibraryReadingGoalProgressStrip(
+                            calendarYear: calendarYear,
+                            booksRead: booksFinishedThisCalendarYear,
+                            goal: goal,
+                            copy: .own
+                        )
                     }
 
                     HStack(alignment: .center, spacing: 12) {
@@ -127,22 +118,6 @@ struct ProfileLibraryView: View {
                     toolbarProfilePhoto
                 }
             }
-            .onChange(of: selectedPhotoItem) { _, newItem in
-                showPhotoPicker = false
-                guard let item = newItem else { return }
-                Task {
-                    let image = await Self.loadUIImage(from: item)
-                    await MainActor.run {
-                        selectedPhotoItem = nil
-                    }
-                    guard let image else {
-                        await MainActor.run { photoUploadError = "Could not load image. Try another photo." }
-                        return
-                    }
-                    await uploadProfileImage(image)
-                }
-            }
-            .photosPicker(isPresented: $showPhotoPicker, selection: $selectedPhotoItem, matching: .images, photoLibrary: .shared())
             .sheet(isPresented: $showEditProfile) {
                 ProfileCompletionView(
                     mode: .edit,
@@ -153,6 +128,7 @@ struct ProfileLibraryView: View {
                     }
                 )
                 .environmentObject(authService)
+                .environmentObject(appState)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
             }
@@ -203,14 +179,6 @@ struct ProfileLibraryView: View {
                 if let msg = appState.pendingGoodreadsImportError {
                     Text(msg)
                 }
-            }
-            .alert("Photo", isPresented: Binding(
-                get: { photoUploadError != nil },
-                set: { if !$0 { photoUploadError = nil } }
-            )) {
-                Button("OK", role: .cancel) { photoUploadError = nil }
-            } message: {
-                Text(photoUploadError ?? "")
             }
             .sheet(item: $pendingMarkReadFromQueue) { userBook in
                 MarkAsReadQueueSheet(
@@ -485,22 +453,9 @@ struct ProfileLibraryView: View {
                     Label("Edit profile", systemImage: "person.crop.circle")
                 }
                 Button {
-                    showPhotoPicker = true
-                } label: {
-                    Label("Change photo", systemImage: "photo")
-                }
-                .disabled(isUploadingPhoto)
-                Button {
                     showGoodreadsImport = true
                 } label: {
                     Label("Import from Goodreads", systemImage: "square.and.arrow.down")
-                }
-                ForEach(LibraryViewMode.allCases, id: \.self) { mode in
-                    Button {
-                        viewMode = mode
-                    } label: {
-                        Label(mode.label, systemImage: mode.icon)
-                    }
                 }
                 Divider()
                 Button("Sign out", role: .destructive) {
@@ -515,12 +470,6 @@ struct ProfileLibraryView: View {
                     } else {
                         avatarPlaceholder(initial: String(user.displayName.prefix(1)), compact: true)
                     }
-                    if isUploadingPhoto {
-                        Color.black.opacity(0.4)
-                        ProgressView()
-                            .tint(.white)
-                            .scaleEffect(0.8)
-                    }
                 }
                 .frame(width: 36, height: 36)
                 .clipShape(Circle())
@@ -532,13 +481,6 @@ struct ProfileLibraryView: View {
                     showEditProfile = true
                 } label: {
                     Label("Edit profile", systemImage: "person.crop.circle")
-                }
-                ForEach(LibraryViewMode.allCases, id: \.self) { mode in
-                    Button {
-                        viewMode = mode
-                    } label: {
-                        Label(mode.label, systemImage: mode.icon)
-                    }
                 }
                 Divider()
                 Button("Sign out", role: .destructive) {
@@ -559,77 +501,6 @@ struct ProfileLibraryView: View {
                     .font(compact ? Theme.headline() : Theme.largeTitle())
                     .foregroundStyle(Theme.textSecondary)
             )
-    }
-
-    private static func loadUIImage(from item: PhotosPickerItem) async -> UIImage? {
-        if let data = try? await item.loadTransferable(type: Data.self),
-           let image = UIImage(data: data) {
-            return image
-        }
-        guard let url = try? await item.loadTransferable(type: URL.self) else { return nil }
-        let didAccess = url.startAccessingSecurityScopedResource()
-        defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
-        if let data = try? Data(contentsOf: url), let image = UIImage(data: data) {
-            return image
-        }
-        if FileManager.default.fileExists(atPath: url.path) {
-            return UIImage(contentsOfFile: url.path)
-        }
-        return nil
-    }
-
-    private func uploadProfileImage(_ image: UIImage) async {
-        guard let uid = authService.firebaseUser?.uid else { return }
-        await MainActor.run {
-            isUploadingPhoto = true
-            photoUploadError = nil
-        }
-        do {
-            let urlString = try await ProfilePhotoService.uploadProfilePhoto(uid: uid, image: image)
-            let cacheBust = "\(urlString.contains("?") ? "&" : "?")t=\(Int(Date().timeIntervalSince1970))"
-            let fullURLString = urlString + cacheBust
-            if let profileURL = URL(string: fullURLString) {
-                ProfileImageCache.shared.store(image, for: profileURL)
-            }
-            try await UserRepository().updateProfileImageURL(uid: uid, url: fullURLString)
-            await authService.refreshAppUser()
-            await MainActor.run {
-                appState.currentUser = authService.appUser
-                isUploadingPhoto = false
-                photoUploadError = nil
-            }
-        } catch {
-            await MainActor.run {
-                photoUploadError = error.localizedDescription
-                isUploadingPhoto = false
-            }
-        }
-    }
-
-    /// Thin row under the nav title: books finished this year vs profile goal (only when `readingGoal` is set).
-    private func yearGoalProgressRow(read: Int, goal: Int) -> some View {
-        let total = max(goal, 1)
-        let value = min(Double(read), Double(total))
-        return VStack(alignment: .leading, spacing: 3) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text("\(calendarYear) Goal:")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Theme.textSecondary)
-                Spacer(minLength: 4)
-                Text("\(read)/\(goal)")
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(Theme.textTertiary)
-            }
-            ProgressView(value: value, total: Double(total))
-                .progressViewStyle(.linear)
-                .tint(Theme.accent)
-                .scaleEffect(x: 1, y: 0.55, anchor: .center)
-                .frame(height: 3)
-                .accessibilityLabel("\(calendarYear) reading goal progress")
-                .accessibilityValue("\(read) out of \(goal) books")
-        }
-        .padding(.top, 2)
-        .padding(.bottom, 4)
     }
 
     /// Year filter to the right of the Read/Queue segment control (stays visible when switching segments; applies to Read list).
@@ -657,22 +528,17 @@ struct ProfileLibraryView: View {
 
     @ViewBuilder
     private var libraryContent: some View {
-        if viewMode == .tierList && segment == .read {
+        if segment == .read {
             TierListView(userBooks: readBooksFilteredByYear, onUpdateTierAndOrder: { id, tier, order in
                 appState.setTierAndOrder(for: id, tier: tier, order: order)
             }, onBookTap: { selectedBookForProfile = $0 })
-        } else if segment == .wantToRead {
+        } else {
             QueueLibraryView(
                 upNext: appState.wantToReadUpNext,
                 backlog: appState.wantToReadBacklog,
                 onUpdateShelfAndOrder: { id, shelf, idx in
                     appState.setQueueShelfAndOrder(for: id, shelf: shelf, insertionIndex: idx)
                 },
-                onBookTap: { selectedBookForProfile = $0 }
-            )
-        } else {
-            GridLibraryView(
-                userBooks: filteredBooks,
                 onBookTap: { selectedBookForProfile = $0 }
             )
         }
@@ -803,21 +669,3 @@ private struct MarkAsReadQueueSheet: View {
     }
 }
 
-// MARK: - Library view mode (shared)
-
-enum LibraryViewMode: String, CaseIterable {
-    case tierList
-    case grid
-    var icon: String {
-        switch self {
-        case .tierList: return "list.number"
-        case .grid: return "square.grid.2x2"
-        }
-    }
-    var label: String {
-        switch self {
-        case .tierList: return "Tier List"
-        case .grid: return "Grid"
-        }
-    }
-}
