@@ -9,6 +9,8 @@
 import SwiftUI
 
 struct BookProfileView: View {
+    @Environment(\.mainTabBarOverlapExtraHeight) private var mainTabBarOverlapExtraHeight
+
     let book: Book
     /// When provided, we load and show "Similar to" with cute small covers from the user's read list.
     var readBooksForSimilar: [UserBook]? = nil
@@ -272,6 +274,7 @@ struct BookProfileView: View {
                 actionBar
             }
         }
+        .padding(.bottom, mainTabBarOverlapExtraHeight)
         .overlay { markAsReadOverlay }
         .sheet(item: $userBookToEdit) { ub in
             EditReadReviewSheet(userBook: ub)
@@ -409,10 +412,10 @@ struct BookProfileView: View {
                 }) {
                     Label(isOnReadList ? "On read list" : "Read", systemImage: "checkmark.circle.fill")
                         .font(Theme.headline())
-                        .foregroundStyle(isOnReadList ? Theme.background : Theme.accent)
+                        .foregroundStyle(Theme.background)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .background(isOnReadList ? Theme.accent : Theme.surface)
+                        .background(Theme.accent)
                         .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
                 }
                 .buttonStyle(.plain)
@@ -447,10 +450,10 @@ struct BookProfileView: View {
                         Button(action: { onWantToRead?() }) {
                             Label("Queue", systemImage: "book.circle.fill")
                                 .font(Theme.headline())
-                                .foregroundStyle(Theme.background)
+                                .foregroundStyle(Theme.queuePowderBlueLabel)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 14)
-                                .background(Theme.accent)
+                                .background(Theme.queuePowderBlue)
                                 .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
                         }
                         .buttonStyle(.plain)

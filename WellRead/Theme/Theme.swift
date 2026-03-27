@@ -17,7 +17,11 @@ enum Theme {
     static let textPrimary = Color.white
     static let textSecondary = Color(white: 0.65)
     static let textTertiary = Color(white: 0.45)
-    
+    /// Book profile Queue button — light powder blue.
+    static let queuePowderBlue = Color(red: 0.78, green: 0.88, blue: 0.96)
+    /// Text on `queuePowderBlue` (enough contrast on light blue).
+    static let queuePowderBlueLabel = Color(red: 0.16, green: 0.30, blue: 0.44)
+
     // MARK: - Typography
     static func largeTitle() -> Font { .system(size: 28, weight: .bold, design: .default) }
     static func title() -> Font { .system(size: 22, weight: .bold, design: .default) }
@@ -103,6 +107,22 @@ enum Theme {
     static let cardPadding: CGFloat = 16
     static let gridSpacing: CGFloat = 12
     static let horizontalPadding: CGFloat = 20
+    /// Approximate height of `MainTabView`’s custom tab bar (icons, labels, padding). Used to inset pushed views that don’t inherit the parent’s safe area.
+    static let mainTabBarChromeHeight: CGFloat = 56
+}
+
+// MARK: - Main tab bar (custom)
+
+private struct MainTabBarOverlapKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 0
+}
+
+extension EnvironmentValues {
+    /// Extra bottom padding for full-screen views (e.g. book profile) above the custom tab bar when inside `MainTabView`.
+    var mainTabBarOverlapExtraHeight: CGFloat {
+        get { self[MainTabBarOverlapKey.self] }
+        set { self[MainTabBarOverlapKey.self] = newValue }
+    }
 }
 
 // Card style with subtle blur / elevation

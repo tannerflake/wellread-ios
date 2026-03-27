@@ -39,8 +39,12 @@ struct MainTabView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             tabBar
         }
+        .environment(\.mainTabBarOverlapExtraHeight, Theme.mainTabBarChromeHeight)
         .ignoresSafeArea(.keyboard)
-        .sheet(isPresented: $showAddBook) { AddBookFlowView() }
+        .sheet(isPresented: $showAddBook) {
+            AddBookFlowView()
+                .environment(\.mainTabBarOverlapExtraHeight, 0)
+        }
         .sheet(isPresented: $showCompleteProfileSheet, onDismiss: {
             if authService.appUser?.needsProfileCompletion == true {
                 userDismissedIncompleteProfileThisSession = true
