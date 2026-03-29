@@ -57,9 +57,6 @@
 		B001002D /* DismissedSuggestionsRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001002D /* DismissedSuggestionsRepository.swift */; };
 		B001002E /* DiscoverSuggestionsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001002E /* DiscoverSuggestionsService.swift */; };
 		B001002F /* ProfilePhotoService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001002F /* ProfilePhotoService.swift */; };
-		B0010040 /* ProfileImageCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010040 /* ProfileImageCache.swift */; };
-		B0010041 /* CachedProfileImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010041 /* CachedProfileImage.swift */; };
-		B0010042 /* EditReadReviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010042 /* EditReadReviewSheet.swift */; };
 		B0010030 /* CommentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010030 /* CommentsView.swift */; };
 		B0010032 /* GoodreadsCSVParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010032 /* GoodreadsCSVParser.swift */; };
 		B0010033 /* GoodreadsImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010033 /* GoodreadsImportService.swift */; };
@@ -75,6 +72,9 @@
 		B001003D /* WelcomeSpinesGoodreadsModal.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001003D /* WelcomeSpinesGoodreadsModal.swift */; };
 		B001003E /* GoodreadsImportTutorialEmbed.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001003E /* GoodreadsImportTutorialEmbed.swift */; };
 		B001003F /* LibraryDragHaptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001003F /* LibraryDragHaptics.swift */; };
+		B0010040 /* ProfileImageCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010040 /* ProfileImageCache.swift */; };
+		B0010041 /* CachedProfileImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010041 /* CachedProfileImage.swift */; };
+		B0010042 /* EditReadReviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010042 /* EditReadReviewSheet.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -149,9 +149,6 @@
 		F001002D /* DismissedSuggestionsRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DismissedSuggestionsRepository.swift; sourceTree = "<group>"; };
 		F001002E /* DiscoverSuggestionsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoverSuggestionsService.swift; sourceTree = "<group>"; };
 		F001002F /* ProfilePhotoService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfilePhotoService.swift; sourceTree = "<group>"; };
-		F0010040 /* ProfileImageCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileImageCache.swift; sourceTree = "<group>"; };
-		F0010041 /* CachedProfileImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CachedProfileImage.swift; sourceTree = "<group>"; };
-		F0010042 /* EditReadReviewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditReadReviewSheet.swift; sourceTree = "<group>"; };
 		F0010030 /* CommentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommentsView.swift; sourceTree = "<group>"; };
 		F0010032 /* GoodreadsCSVParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoodreadsCSVParser.swift; sourceTree = "<group>"; };
 		F0010033 /* GoodreadsImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoodreadsImportService.swift; sourceTree = "<group>"; };
@@ -167,6 +164,9 @@
 		F001003D /* WelcomeSpinesGoodreadsModal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeSpinesGoodreadsModal.swift; sourceTree = "<group>"; };
 		F001003E /* GoodreadsImportTutorialEmbed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoodreadsImportTutorialEmbed.swift; sourceTree = "<group>"; };
 		F001003F /* LibraryDragHaptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryDragHaptics.swift; sourceTree = "<group>"; };
+		F0010040 /* ProfileImageCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileImageCache.swift; sourceTree = "<group>"; };
+		F0010041 /* CachedProfileImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CachedProfileImage.swift; sourceTree = "<group>"; };
+		F0010042 /* EditReadReviewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditReadReviewSheet.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -814,7 +814,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.4;
+				MARKETING_VERSION = 1.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.wellread.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -842,7 +842,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.4;
+				MARKETING_VERSION = 1.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.wellread.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
