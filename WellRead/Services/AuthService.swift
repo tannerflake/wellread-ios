@@ -9,6 +9,7 @@ import Foundation
 import SwiftUI
 import FirebaseCore
 import FirebaseAuth
+import FirebaseMessaging
 import AuthenticationServices
 import CryptoKit
 import GoogleSignIn
@@ -60,8 +61,9 @@ final class AuthService: ObservableObject {
             bio: nil,
             profileImageURL: user.photoURL?.absoluteString,
             joinedAt: Date(),
-            followers: [],
             following: [],
+            communityMeshApplied: false,
+            hasSeenFollowCommunityModal: false,
             totalBooksRead: 0,
             totalPagesRead: 0,
             readingGoal: nil
@@ -218,11 +220,20 @@ final class AuthService: ObservableObject {
 
     func signOut() {
         authError = nil
+        let uid = firebaseUser?.uid
         do {
             try Auth.auth().signOut()
             GIDSignIn.sharedInstance.signOut()
         } catch {
             authError = error.localizedDescription
+        }
+        Task {
+            if let uid {
+                if let token = try? await Messaging.messaging().token() {
+                    try? await userRepo.removeFCMToken(uid: uid, token: token)
+                }
+            }
+            try? await Messaging.messaging().deleteToken()
         }
     }
 

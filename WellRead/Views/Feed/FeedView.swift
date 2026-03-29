@@ -15,8 +15,10 @@ struct FeedView: View {
     @State private var editReviewFromFeed: EditReadReviewSheetPayload? = nil
     @State private var otherReaders: [(uid: String, user: User)] = []
     @State private var isLoadingOtherReaders = true
+    @State private var showFollowCommunityWelcome = false
 
     private let userRepo = UserRepository()
+    private let postRepo = PostRepository()
 
     var body: some View {
         NavigationStack {
@@ -52,7 +54,21 @@ struct FeedView: View {
                 .refreshable {
                     await loadOtherReaders()
                 }
+
+                if showFollowCommunityWelcome {
+                    Color.black.opacity(0.45)
+                        .ignoresSafeArea()
+                        .transition(.opacity)
+
+                    FeedCommunityWelcomeModal {
+                        Task {
+                            await dismissFollowCommunityWelcome()
+                        }
+                    }
+                    .transition(.opacity)
+                }
             }
+            .animation(.easeInOut(duration: 0.22), value: showFollowCommunityWelcome)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Theme.background, for: .navigationBar)
@@ -88,9 +104,69 @@ struct FeedView: View {
             .task {
                 await loadOtherReaders()
             }
+            .task(id: authService.firebaseUser?.uid) {
+                await scheduleFollowCommunityWelcomeIfNeeded()
+            }
+            .onAppear {
+                openDeepLinkedPostIfNeeded()
+            }
+            .onChange(of: appState.deepLinkFeedPostId) { _, _ in
+                openDeepLinkedPostIfNeeded()
+            }
             .onChange(of: authService.firebaseUser?.uid) { _, _ in
                 Task { await loadOtherReaders() }
             }
+        }
+    }
+
+    private func openDeepLinkedPostIfNeeded() {
+        guard let id = appState.deepLinkFeedPostId else { return }
+        appState.deepLinkFeedPostId = nil
+        if let p = appState.feedPosts.first(where: { $0.id.uuidString == id }) {
+            postForComments = p
+            return
+        }
+        Task {
+            if let p = await postRepo.fetchPost(postId: id) {
+                await MainActor.run { postForComments = p }
+            }
+        }
+    }
+
+    /// After profile is available and the feed has had a moment to render, show the one-time community follow explainer.
+    private func scheduleFollowCommunityWelcomeIfNeeded() async {
+        guard authService.firebaseUser != nil else { return }
+        var attempts = 0
+        while authService.appUser == nil && attempts < 40 {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            attempts += 1
+        }
+        guard let u = authService.appUser, !u.hasSeenFollowCommunityModal else { return }
+        try? await Task.sleep(nanoseconds: 450_000_000)
+        await MainActor.run {
+            withAnimation(.easeInOut(duration: 0.22)) {
+                showFollowCommunityWelcome = true
+            }
+        }
+    }
+
+    private func dismissFollowCommunityWelcome() async {
+        guard let uid = authService.firebaseUser?.uid else {
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.22)) { showFollowCommunityWelcome = false }
+            }
+            return
+        }
+        do {
+            try await userRepo.markHasSeenFollowCommunityModal(uid: uid)
+            await authService.refreshAppUser()
+        } catch {
+            #if DEBUG
+            print("markHasSeenFollowCommunityModal: \(error)")
+            #endif
+        }
+        await MainActor.run {
+            withAnimation(.easeInOut(duration: 0.22)) { showFollowCommunityWelcome = false }
         }
     }
 

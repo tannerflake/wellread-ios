@@ -9,6 +9,8 @@ import SwiftUI
 import FirebaseCore
 import GoogleSignIn
 import FirebaseFirestore
+import FirebaseMessaging
+import UserNotifications
 
 /// Use the same Firestore database everywhere.
 /// - `Info.plist` key `FirestoreDatabaseID`: **empty** or omit → `(default)` database (Firebase Console “default” rules apply).
@@ -47,18 +49,51 @@ enum FirestoreDatabase {
     }
 }
 
-class AppDelegate: NSObject, UIApplicationDelegate {
+class AppDelegate: NSObject, UIApplicationDelegate, MessagingDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         FirebaseApp.configure()
         let db = FirestoreDatabase.firestore
         db.settings.cacheSettings = PersistentCacheSettings(sizeBytes: 50 * 1024 * 1024 as NSNumber)
+        Messaging.messaging().delegate = self
+        UNUserNotificationCenter.current().delegate = self
         return true
+    }
+
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        Messaging.messaging().apnsToken = deviceToken
+    }
+
+    func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
+        guard let token = fcmToken else { return }
+        PushNotificationService.persistFCMTokenToFirestore(token)
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound, .badge])
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        let userInfo = response.notification.request.content.userInfo
+        PushNotificationService.handleRemoteNotificationTap(userInfo: userInfo)
+        completionHandler()
     }
 
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
         if url.scheme == "wellread", url.host == "goodreads-import" {
             NotificationCenter.default.post(name: .openGoodreadsImport, object: nil)
+            return true
+        }
+        if let postId = WellreadDeepLink.postId(from: url) {
+            NotificationCenter.default.post(name: .wellreadOpenFeedPost, object: nil, userInfo: ["postId": postId])
             return true
         }
         if GIDSignIn.sharedInstance.handle(url) {
@@ -90,6 +125,8 @@ struct WellReadApp: App {
                 .onOpenURL { url in
                     if url.scheme == "wellread", url.host == "goodreads-import" {
                         handleGoodreadsImportFromShare()
+                    } else if let postId = WellreadDeepLink.postId(from: url) {
+                        NotificationCenter.default.post(name: .wellreadOpenFeedPost, object: nil, userInfo: ["postId": postId])
                     } else if url.isFileURL {
                         handleFileURLFromShare(url)
                     } else {

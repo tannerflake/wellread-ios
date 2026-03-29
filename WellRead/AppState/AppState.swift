@@ -26,6 +26,8 @@ final class AppState: ObservableObject {
     /// Set when Share Extension passed a URL; app downloads in foreground then sets rows or error and clears this.
     @Published var pendingGoodreadsImportURL: URL? = nil
     @Published var isFetchingGoodreadsFromURL = false
+    /// Set when opening a feed post from a push or `wellread://` URL; Feed opens comments when resolved.
+    @Published var deepLinkFeedPostId: String?
 
     /// True only after we've loaded dismissed book IDs from Firestore, so discover suggestions exclude them from the first fetch.
     private var dismissedBookIdsLoaded = false
@@ -107,6 +109,7 @@ final class AppState: ObservableObject {
         discoverCurrentSuggestion = nil
         discoverSuggestionQueue = []
         likedPostIds = []
+        deepLinkFeedPostId = nil
         BookRepository.shared.clearCache()
     }
 

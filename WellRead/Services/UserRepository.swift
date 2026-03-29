@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import CryptoKit
 import FirebaseFirestore
 
 /// Accounts hidden from the Feed “Your friends” strip (Apple review / internal test users).
@@ -79,6 +80,7 @@ final class UserRepository {
             let snapshot = try await ref.getDocument()
             if snapshot.exists {
                 await migrateHandleClaimIfNeeded(uid: uid, data: snapshot.data())
+                await migrateCommunityMeshIfNeeded(uid: uid, data: snapshot.data())
                 if let e = email?.trimmingCharacters(in: .whitespacesAndNewlines), !e.isEmpty {
                     let current = snapshot.data()?["email"] as? String
                     if current != e {
@@ -89,6 +91,7 @@ final class UserRepository {
             }
             let username = email?.components(separatedBy: "@").first ?? "user_\(String(uid.prefix(8)))"
             let name = displayName?.isEmpty == false ? displayName! : (email ?? "User")
+            let existingOtherUids = await fetchAllUserDocumentIds(excluding: uid)
             var newUser: [String: Any] = [
                 "username": username,
                 "displayName": name,
@@ -100,8 +103,9 @@ final class UserRepository {
                 "joinedAt": Timestamp(date: Date()),
                 "totalBooksRead": 0,
                 "totalPagesRead": 0,
-                "followers": [] as [String],
-                "following": [] as [String],
+                "following": existingOtherUids,
+                "communityMeshApplied": true,
+                "hasSeenFollowCommunityModal": false,
                 "readingGoal": NSNull(),
             ]
             if let e = email?.trimmingCharacters(in: .whitespacesAndNewlines), !e.isEmpty {
@@ -109,6 +113,7 @@ final class UserRepository {
             }
             try await ref.setData(newUser)
             try await setHandleClaim(handle: username, uid: uid)
+            await addNewUserToEveryoneFollowing(newUid: uid, existingOtherUids: existingOtherUids)
         } catch {
             // Log in real app; for now we continue so auth still works
         }
@@ -267,6 +272,119 @@ final class UserRepository {
         ])
     }
 
+    // MARK: - Push (FCM)
+
+    /// Stores an FCM registration token under `users/{uid}/fcmTokens/{hash}` for Cloud Messaging.
+    func saveFCMToken(uid: String, token: String) async throws {
+        let docId = Self.fcmTokenDocumentId(for: token)
+        try await db.collection(users).document(uid).collection("fcmTokens").document(docId).setData([
+            "token": token,
+            "updatedAt": FieldValue.serverTimestamp(),
+        ], merge: true)
+    }
+
+    func removeFCMToken(uid: String, token: String) async throws {
+        let docId = Self.fcmTokenDocumentId(for: token)
+        try await db.collection(users).document(uid).collection("fcmTokens").document(docId).delete()
+    }
+
+    // MARK: - Follow graph (community mesh + unfollow)
+
+    /// Returns all `users` document ids (Firebase Auth uids), optionally excluding one id.
+    func fetchAllUserDocumentIds(excluding excluded: String?, limit: Int = 500) async -> [String] {
+        do {
+            let snapshot = try await db.collection(users).limit(to: limit).getDocuments()
+            return snapshot.documents.map(\.documentID).filter { $0 != excluded }
+        } catch {
+            return []
+        }
+    }
+
+    /// Number of accounts that follow `uid` (their `following` contains the uid). O(n) query; fine for early scale.
+    func countUsersFollowing(uid: String) async -> Int {
+        do {
+            let snapshot = try await db.collection(users)
+                .whereField("following", arrayContains: uid)
+                .getDocuments()
+            return snapshot.documents.count
+        } catch {
+            return 0
+        }
+    }
+
+    /// Persists dismissal of the first-time feed modal (`users/{uid}.hasSeenFollowCommunityModal`).
+    func markHasSeenFollowCommunityModal(uid: String) async throws {
+        try await db.collection(users).document(uid).updateData([
+            "hasSeenFollowCommunityModal": true,
+        ])
+    }
+
+    /// Follow or unfollow `targetUid` from the signed-in user’s document only (`following` array).
+    func setFollowing(currentUid: String, targetUid: String, follow: Bool) async throws {
+        guard currentUid != targetUid else { return }
+        let ref = db.collection(users).document(currentUid)
+        if follow {
+            try await ref.updateData(["following": FieldValue.arrayUnion([targetUid])])
+        } else {
+            try await ref.updateData(["following": FieldValue.arrayRemove([targetUid])])
+        }
+    }
+
+    /// One-time mesh for legacy accounts: empty `following`, no mesh flag — add everyone and mark applied.
+    private func migrateCommunityMeshIfNeeded(uid: String, data: [String: Any]?) async {
+        guard let data else { return }
+        if data["communityMeshApplied"] as? Bool == true { return }
+        let existingFollowing = data["following"] as? [String] ?? []
+        if !existingFollowing.isEmpty {
+            try? await db.collection(users).document(uid).updateData(["communityMeshApplied": true])
+            return
+        }
+        await applyFullCommunityMesh(for: uid)
+    }
+
+    /// New user is already in `following` for all existing accounts; add `newUid` to each existing user’s `following`.
+    private func addNewUserToEveryoneFollowing(newUid: String, existingOtherUids: [String]) async {
+        let chunkSize = 400
+        var i = 0
+        while i < existingOtherUids.count {
+            let end = min(i + chunkSize, existingOtherUids.count)
+            do {
+                let batch = db.batch()
+                for j in i..<end {
+                    let ref = db.collection(users).document(existingOtherUids[j])
+                    batch.updateData(["following": FieldValue.arrayUnion([newUid])], forDocument: ref)
+                }
+                try await batch.commit()
+            } catch {
+                #if DEBUG
+                print("addNewUserToEveryoneFollowing batch error: \(error)")
+                #endif
+            }
+            i = end
+        }
+    }
+
+    private func applyFullCommunityMesh(for uid: String) async {
+        let allOthers = await fetchAllUserDocumentIds(excluding: uid)
+        do {
+            try await db.collection(users).document(uid).updateData([
+                "following": allOthers,
+                "communityMeshApplied": true,
+            ])
+        } catch {
+            #if DEBUG
+            print("applyFullCommunityMesh update self error: \(error)")
+            #endif
+            return
+        }
+        await addNewUserToEveryoneFollowing(newUid: uid, existingOtherUids: allOthers)
+    }
+
+    private static func fcmTokenDocumentId(for token: String) -> String {
+        let digest = SHA256.hash(data: Data(token.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
     private func user(from data: [String: Any], uid: String) -> User? {
         guard let username = data["username"] as? String,
               let displayName = data["displayName"] as? String,
@@ -285,6 +403,9 @@ final class UserRepository {
             let l = lastName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             profileSetupCompleted = !f.isEmpty && !l.isEmpty
         }
+        let following = data["following"] as? [String] ?? []
+        let communityMeshApplied = data["communityMeshApplied"] as? Bool ?? false
+        let hasSeenFollowCommunityModal = data["hasSeenFollowCommunityModal"] as? Bool ?? false
         return User(
             id: UUID(),
             username: username,
@@ -295,8 +416,9 @@ final class UserRepository {
             bio: data["bio"] as? String,
             profileImageURL: data["profileImageURL"] as? String,
             joinedAt: joinedAt,
-            followers: [],
-            following: [],
+            following: following,
+            communityMeshApplied: communityMeshApplied,
+            hasSeenFollowCommunityModal: hasSeenFollowCommunityModal,
             totalBooksRead: totalBooksRead,
             totalPagesRead: totalPagesRead,
             readingGoal: readingGoal

@@ -15,6 +15,9 @@
 		8BB4CBC72F4E9AEF0068B4B6 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 8BE1FAC32F4E8A70006ED44D /* FirebaseFirestore */; };
 		8BB4CBC82F4E8B00006ED44D /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 8BE1FAC22F4E8B00006ED44D /* GoogleSignIn */; };
 		8BB4CBC92F4E9AEF0068B4B6 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = 8BE1FAC42F4E8A70006ED44D /* FirebaseStorage */; };
+		8B8FC0012F4E9AEF0068B4B7 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = 8BE1FAC52F4E8A70006ED44D /* FirebaseMessaging */; };
+		B0010043 /* PushNotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010043 /* PushNotificationService.swift */; };
+		B0010044 /* FeedCommunityWelcomeModal.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010044 /* FeedCommunityWelcomeModal.swift */; };
 		B0010001 /* WellReadApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010001 /* WellReadApp.swift */; };
 		B0010002 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010002 /* RootView.swift */; };
 		B0010003 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010003 /* AppState.swift */; };
@@ -167,6 +170,8 @@
 		F0010040 /* ProfileImageCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileImageCache.swift; sourceTree = "<group>"; };
 		F0010041 /* CachedProfileImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CachedProfileImage.swift; sourceTree = "<group>"; };
 		F0010042 /* EditReadReviewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditReadReviewSheet.swift; sourceTree = "<group>"; };
+		F0010043 /* PushNotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationService.swift; sourceTree = "<group>"; };
+		F0010044 /* FeedCommunityWelcomeModal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedCommunityWelcomeModal.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -200,6 +205,7 @@
 				8BB4CBC72F4E9AEF0068B4B6 /* FirebaseFirestore in Frameworks */,
 				8BB4CBC92F4E9AEF0068B4B6 /* FirebaseStorage in Frameworks */,
 				8BB4CBC82F4E8B00006ED44D /* GoogleSignIn in Frameworks */,
+				8B8FC0012F4E9AEF0068B4B7 /* FirebaseMessaging in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -304,6 +310,7 @@
 				F0010032 /* GoodreadsCSVParser.swift */,
 				F0010033 /* GoodreadsImportService.swift */,
 				F0010035 /* GoodreadsShareHelper.swift */,
+				F0010043 /* PushNotificationService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -358,6 +365,7 @@
 			isa = PBXGroup;
 			children = (
 				F0010010 /* FeedView.swift */,
+				F0010044 /* FeedCommunityWelcomeModal.swift */,
 				F0010030 /* CommentsView.swift */,
 			);
 			path = Feed;
@@ -468,6 +476,7 @@
 				8BE1FAC32F4E8A70006ED44D /* FirebaseFirestore */,
 				8BE1FAC42F4E8A70006ED44D /* FirebaseStorage */,
 				8BE1FAC22F4E8B00006ED44D /* GoogleSignIn */,
+				8BE1FAC52F4E8A70006ED44D /* FirebaseMessaging */,
 			);
 			productName = WellRead;
 			productReference = E0010000 /* WellRead.app */;
@@ -602,6 +611,8 @@
 				B0010034 /* GoodreadsImportView.swift in Sources */,
 				B001003E /* GoodreadsImportTutorialEmbed.swift in Sources */,
 				B0010035 /* GoodreadsShareHelper.swift in Sources */,
+				B0010043 /* PushNotificationService.swift in Sources */,
+				B0010044 /* FeedCommunityWelcomeModal.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -928,6 +939,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 8BE1FABD2F4E8A70006ED44D /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseStorage;
+		};
+		8BE1FAC52F4E8A70006ED44D /* FirebaseMessaging */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8BE1FABD2F4E8A70006ED44D /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseMessaging;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

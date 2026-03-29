@@ -23,6 +23,8 @@ struct UserLibraryDetailView: View {
     @State private var segment: LibraryReadQueueTab = .read
     @State private var selectedYear: Int? = nil
     @State private var selectedBookForProfile: Book? = nil
+    @State private var iFollowThem: Bool = false
+    @State private var followActionInFlight = false
 
     private var readBooks: [UserBook] {
         books.filter { $0.status == .read }
@@ -100,6 +102,8 @@ struct UserLibraryDetailView: View {
                     )
                 }
                 HStack(alignment: .center, spacing: 12) {
+                    followToggleButton
+
                     otherUserSegmentControl
                         .frame(maxWidth: .infinity)
 
@@ -150,10 +154,14 @@ struct UserLibraryDetailView: View {
         .onAppear {
             Task {
                 profileUser = await userRepo.getUser(uid: userId)
+                await refreshIFollowState()
             }
             booksListener = userBookRepo.listenUserBooks(userId: userId) { list in
                 books = list
             }
+        }
+        .onChange(of: authService.firebaseUser?.uid) { _, _ in
+            Task { await refreshIFollowState() }
         }
         .onDisappear {
             booksListener?.remove()
@@ -199,6 +207,54 @@ struct UserLibraryDetailView: View {
                     .font(Theme.headline())
                     .foregroundStyle(Theme.textSecondary)
             )
+    }
+
+    @ViewBuilder
+    private var followToggleButton: some View {
+        if let me = authService.firebaseUser?.uid, me != userId {
+            Button {
+                Task { await toggleFollow() }
+            } label: {
+                Text(iFollowThem ? "Following" : "Follow")
+                    .font(Theme.caption())
+                    .fontWeight(.semibold)
+                    .foregroundStyle(iFollowThem ? Theme.textPrimary : Theme.background)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(iFollowThem ? Theme.surface : Theme.accent)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .strokeBorder(Theme.textTertiary.opacity(iFollowThem ? 0.35 : 0), lineWidth: 1)
+                    )
+            }
+            .buttonStyle(.plain)
+            .disabled(followActionInFlight)
+        }
+    }
+
+    private func refreshIFollowState() async {
+        guard let me = authService.firebaseUser?.uid, me != userId else {
+            iFollowThem = false
+            return
+        }
+        if let u = await userRepo.getUser(uid: me) {
+            iFollowThem = u.following.contains(userId)
+        }
+    }
+
+    private func toggleFollow() async {
+        guard let me = authService.firebaseUser?.uid, me != userId else { return }
+        followActionInFlight = true
+        defer { followActionInFlight = false }
+        let next = !iFollowThem
+        do {
+            try await userRepo.setFollowing(currentUid: me, targetUid: userId, follow: next)
+            iFollowThem = next
+            await authService.refreshAppUser()
+        } catch {
+            await refreshIFollowState()
+        }
     }
 
     private var otherUserSegmentControl: some View {

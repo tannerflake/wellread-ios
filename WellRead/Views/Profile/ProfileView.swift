@@ -10,7 +10,9 @@ import SwiftUI
 struct ProfileView: View {
     @EnvironmentObject var authService: AuthService
     @EnvironmentObject var appState: AppState
-    
+    @State private var followerCount: Int?
+    private let userRepo = UserRepository()
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -18,7 +20,7 @@ struct ProfileView: View {
                 ScrollView {
                     if let user = appState.currentUser {
                         VStack(alignment: .leading, spacing: 24) {
-                            header(user: user)
+                            header(user: user, followerCount: followerCount)
                             stats(user: user)
                             if let goal = user.readingGoal, goal > 0 {
                                 goalProgress(current: user.totalBooksRead, goal: goal)
@@ -28,6 +30,13 @@ struct ProfileView: View {
                         .padding(.bottom, 100)
                     }
                 }
+            }
+            .task(id: authService.firebaseUser?.uid) {
+                guard let uid = authService.firebaseUser?.uid else {
+                    followerCount = nil
+                    return
+                }
+                followerCount = await userRepo.countUsersFollowing(uid: uid)
             }
             .navigationTitle("Profile")
             .navigationBarTitleDisplayMode(.large)
@@ -48,7 +57,7 @@ struct ProfileView: View {
         }
     }
     
-    private func header(user: User) -> some View {
+    private func header(user: User, followerCount: Int?) -> some View {
         VStack(spacing: 12) {
             Circle()
                 .fill(Theme.surface)
@@ -72,7 +81,7 @@ struct ProfileView: View {
             }
             HStack(spacing: 24) {
                 VStack {
-                    Text("\(user.followers.count)")
+                    Text(followerCount.map { String($0) } ?? "—")
                         .font(Theme.headline())
                         .foregroundStyle(Theme.textPrimary)
                     Text("Followers")

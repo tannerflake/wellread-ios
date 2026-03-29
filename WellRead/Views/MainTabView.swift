@@ -87,8 +87,15 @@ struct MainTabView: View {
             GoodreadsImportView(initialRows: nil)
                 .environmentObject(appState)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .wellreadOpenFeedPost)) { note in
+            if let id = note.userInfo?["postId"] as? String {
+                selectedTab = .feed
+                appState.deepLinkFeedPostId = id
+            }
+        }
         .onAppear {
             appState.loadDiscoverSuggestionsIfNeeded()
+            PushNotificationService.requestPermissionAndRegister()
             if appState.pendingGoodreadsImportRows != nil || appState.pendingGoodreadsImportError != nil || appState.pendingGoodreadsImportURL != nil {
                 selectedTab = .profile
             }

@@ -32,6 +32,17 @@ final class PostRepository {
             }
     }
 
+    /// Loads a single post by Firestore document id (UUID string).
+    func fetchPost(postId: String) async -> Post? {
+        do {
+            let snapshot = try await db.collection(posts).document(postId).getDocument()
+            guard snapshot.exists, let data = snapshot.data() else { return nil }
+            return await post(from: data, docId: snapshot.documentID)
+        } catch {
+            return nil
+        }
+    }
+
     /// One-shot feed fetch (same as listenFeed: all users see all posts).
     func fetchFeed() async -> [Post] {
         do {
