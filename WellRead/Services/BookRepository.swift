@@ -30,19 +30,48 @@ final class BookRepository {
         cacheQueue.sync { memoryCache.removeAll() }
     }
 
-    /// Gets a book by id. Checks in-memory cache first, then Firestore. Caches result.
+    /// Gets a book by id. Checks in-memory cache first, then Firestore (aborts after **2s** and returns a title-only placeholder so lists don’t spin forever).
     func getBook(id: String) async -> Book? {
         if let cached = cacheQueue.sync(execute: { memoryCache[id] }) {
             return cached
         }
         let ref = db.collection(books).document(id)
-        do {
-            let snapshot = try await ref.getDocument()
-            guard snapshot.exists, let data = snapshot.data(), let b = book(from: data, id: id) else { return nil }
-            cacheQueue.sync { memoryCache[id] = b }
-            return b
-        } catch {
-            return nil
+        enum Race: Sendable {
+            case loaded(Book?)
+            case timedOut
+        }
+        return await withTaskGroup(of: Race.self) { group in
+            group.addTask { [self] in
+                do {
+                    let snapshot = try await ref.getDocument()
+                    guard snapshot.exists, let data = snapshot.data(), let b = book(from: data, id: id) else {
+                        return .loaded(nil)
+                    }
+                    return .loaded(b)
+                } catch {
+                    return .loaded(nil)
+                }
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                return .timedOut
+            }
+            guard let first = await group.next() else {
+                group.cancelAll()
+                return nil
+            }
+            switch first {
+            case .timedOut:
+                group.cancelAll()
+                return Book.metadataLoadTimeoutPlaceholder(id: id)
+            case .loaded(let b):
+                group.cancelAll()
+                if let b {
+                    cacheQueue.sync { memoryCache[id] = b }
+                    return b
+                }
+                return nil
+            }
         }
     }
 

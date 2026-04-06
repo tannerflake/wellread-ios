@@ -106,6 +106,7 @@ final class UserRepository {
                 "following": existingOtherUids,
                 "communityMeshApplied": true,
                 "hasSeenFollowCommunityModal": false,
+                "hasSeenPushNotificationPrompt": false,
                 "readingGoal": NSNull(),
             ]
             if let e = email?.trimmingCharacters(in: .whitespacesAndNewlines), !e.isEmpty {
@@ -288,6 +289,13 @@ final class UserRepository {
         try await db.collection(users).document(uid).collection("fcmTokens").document(docId).delete()
     }
 
+    /// Confirms `saveFCMToken` wrote the expected doc (same id as SHA256 hash of token).
+    func fcmTokenDocumentExists(uid: String, token: String) async throws -> Bool {
+        let docId = Self.fcmTokenDocumentId(for: token)
+        let snap = try await db.collection(users).document(uid).collection("fcmTokens").document(docId).getDocument()
+        return snap.exists
+    }
+
     // MARK: - Follow graph (community mesh + unfollow)
 
     /// Returns all `users` document ids (Firebase Auth uids), optionally excluding one id.
@@ -316,6 +324,13 @@ final class UserRepository {
     func markHasSeenFollowCommunityModal(uid: String) async throws {
         try await db.collection(users).document(uid).updateData([
             "hasSeenFollowCommunityModal": true,
+        ])
+    }
+
+    /// After the one-time push notification onboarding prompt (`users/{uid}.hasSeenPushNotificationPrompt`).
+    func markHasSeenPushNotificationPrompt(uid: String) async throws {
+        try await db.collection(users).document(uid).updateData([
+            "hasSeenPushNotificationPrompt": true,
         ])
     }
 
@@ -406,6 +421,8 @@ final class UserRepository {
         let following = data["following"] as? [String] ?? []
         let communityMeshApplied = data["communityMeshApplied"] as? Bool ?? false
         let hasSeenFollowCommunityModal = data["hasSeenFollowCommunityModal"] as? Bool ?? false
+        // Missing field: treat as already seen so existing accounts aren’t prompted after shipping this feature.
+        let hasSeenPushNotificationPrompt = data["hasSeenPushNotificationPrompt"] as? Bool ?? true
         return User(
             id: UUID(),
             username: username,
@@ -419,6 +436,7 @@ final class UserRepository {
             following: following,
             communityMeshApplied: communityMeshApplied,
             hasSeenFollowCommunityModal: hasSeenFollowCommunityModal,
+            hasSeenPushNotificationPrompt: hasSeenPushNotificationPrompt,
             totalBooksRead: totalBooksRead,
             totalPagesRead: totalPagesRead,
             readingGoal: readingGoal

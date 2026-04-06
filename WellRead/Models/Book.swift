@@ -18,6 +18,8 @@ struct Book: Identifiable, Equatable, Hashable {
     var isbn: String? = nil
     /// Alternate cover URLs to try if the primary fails (e.g. from Google Books search). Not persisted to Firestore.
     var fallbackCoverURLs: [String]? = nil
+    /// When true, `coverImageURLsToTry` is empty (e.g. Firestore metadata timed out — show title-only placeholder only).
+    var suppressCoverImageFetch: Bool = false
 
     /// Open Library cover API: try large, then medium, then small. See https://openlibrary.org/dev/docs/api/covers
     static func openLibraryCoverURLs(isbnDigits: String) -> [String] {
@@ -106,6 +108,7 @@ struct Book: Identifiable, Equatable, Hashable {
 
     /// Ordered URLs for loading cover art (same pipeline as `BookCoverView`).
     var coverImageURLsToTry: [URL] {
+        if suppressCoverImageFetch { return [] }
         var list: [String] = []
         let trimmedCover = coverURL.trimmingCharacters(in: .whitespacesAndNewlines)
         /// Custom / CDN / Firebase covers — try these before Open Library so we don’t re-hit OL on every navigation.
@@ -133,6 +136,22 @@ struct Book: Identifiable, Equatable, Hashable {
             for v in idBased where !list.contains(v) { list.append(v) }
         }
         return list.compactMap { URL(string: $0) }.filter { !$0.absoluteString.isEmpty }
+    }
+
+    /// Minimal book used when Firestore is slower than the client budget — UI shows `TitleOnlyBookCover` only (no network covers).
+    static func metadataLoadTimeoutPlaceholder(id: String) -> Book {
+        var b = Book(
+            id: id,
+            title: "Book",
+            author: "Unknown",
+            coverURL: "",
+            pageCount: nil,
+            publishedDate: nil,
+            description: nil,
+            genres: []
+        )
+        b.suppressCoverImageFetch = true
+        return b
     }
 }
 

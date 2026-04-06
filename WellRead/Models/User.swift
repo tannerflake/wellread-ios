@@ -23,6 +23,8 @@ struct User: Identifiable, Codable, Equatable {
     var communityMeshApplied: Bool
     /// Firestore `hasSeenFollowCommunityModal`; one-time feed modal explaining default mutual follows (syncs across devices).
     var hasSeenFollowCommunityModal: Bool
+    /// One-time prompt to enable push after profile onboarding (`hasSeenPushNotificationPrompt` in Firestore).
+    var hasSeenPushNotificationPrompt: Bool
     var totalBooksRead: Int
     var totalPagesRead: Int
     var readingGoal: Int?
@@ -40,6 +42,7 @@ struct User: Identifiable, Codable, Equatable {
         following: [],
         communityMeshApplied: true,
         hasSeenFollowCommunityModal: true,
+        hasSeenPushNotificationPrompt: true,
         totalBooksRead: 12,
         totalPagesRead: 3840,
         readingGoal: 24

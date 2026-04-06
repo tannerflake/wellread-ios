@@ -125,13 +125,13 @@ final class BookProfileService {
         }
     }
 
-    /// Merges Google Books volume data when local metadata is thin (for AI context only).
+    /// Merges Google Books volume data when local metadata is thin (for AI context only). Aborts API wait after 2s.
     private func mergeWithVolumeIfNeeded(_ book: Book) async -> Book {
         let needs = (book.description?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
             || book.genres.isEmpty
             || book.pageCount == nil
         guard needs else { return book }
-        guard let fetched = try? await GoogleBooksService.shared.fetchVolume(id: book.id) else { return book }
+        guard let fetched = await fetchVolumeWithinTwoSeconds(id: book.id) else { return book }
         var merged = book
         if merged.description == nil || merged.description?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true {
             merged.description = fetched.description
@@ -140,6 +140,36 @@ final class BookProfileService {
         if merged.pageCount == nil { merged.pageCount = fetched.pageCount }
         if merged.publishedDate == nil { merged.publishedDate = fetched.publishedDate }
         return merged
+    }
+
+    private enum VolumeRace: Sendable {
+        case volume(Book?)
+        case timedOut
+    }
+
+    /// Google Books volume fetch with a 2s budget; otherwise keep local `book` as-is.
+    private func fetchVolumeWithinTwoSeconds(id: String) async -> Book? {
+        await withTaskGroup(of: VolumeRace.self) { group in
+            group.addTask {
+                .volume(try? await GoogleBooksService.shared.fetchVolume(id: id))
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                return .timedOut
+            }
+            guard let first = await group.next() else {
+                group.cancelAll()
+                return nil
+            }
+            switch first {
+            case .timedOut:
+                group.cancelAll()
+                return nil
+            case .volume(let b):
+                group.cancelAll()
+                return b
+            }
+        }
     }
 
     private func parseTagsFromResponse(_ text: String) -> [String]? {

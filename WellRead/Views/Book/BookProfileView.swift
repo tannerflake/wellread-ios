@@ -3,7 +3,7 @@
 //  WellRead
 //
 //  Default book profile (Hinge-style): hero cover, title, author, summary + tags, notable quote,
-//  optional "Similar to" row, and three actions (Pass, Read, Queue).
+//  optional "Similar to" row, and three actions (Pass, Queue, Read).
 //
 
 import SwiftUI
@@ -42,29 +42,9 @@ struct BookProfileView: View {
     @State private var quoteLoading = false
     @State private var similarLoading = false
     @State private var showMarkAsReadModal = false
-    @State private var markAsReadDate = Date()
-    /// Visual middle of 1…10; label shows "—" until the user moves the slider.
-    @State private var markAsReadSliderValue: Double = 5.5
-    @State private var hasExplicitMarkReadRating = false
-    @State private var markAsReadPostToFeed = true
-    @State private var markAsReadThoughts = ""
     @State private var profileTags: [String] = []
     @State private var tagsLoading = false
     @State private var userBookToEdit: UserBook? = nil
-
-    private var markAsReadRatingSliderBinding: Binding<Double> {
-        Binding(
-            get: { markAsReadSliderValue },
-            set: { newValue in
-                markAsReadSliderValue = newValue
-                hasExplicitMarkReadRating = true
-            }
-        )
-    }
-
-    private var markAsReadRatingLabel: String {
-        hasExplicitMarkReadRating ? Theme.formatRatingOutOfTen(markAsReadSliderValue) : "—"
-    }
 
     private var showActionBar: Bool {
         onNotInterested != nil || onWantToRead != nil || onConfirmRead != nil || onRemoveFromQueue != nil
@@ -174,20 +154,19 @@ struct BookProfileView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.top, 4)
                         } else if !profileTags.isEmpty {
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 5) {
-                                    ForEach(profileTags, id: \.self) { tag in
-                                        Text(tag)
-                                            .font(.caption2)
-                                            .fontWeight(.medium)
-                                            .foregroundStyle(Theme.textSecondary)
-                                            .padding(.horizontal, 7)
-                                            .padding(.vertical, 3)
-                                            .background(Theme.textTertiary.opacity(0.12))
-                                            .clipShape(Capsule())
-                                    }
+                            FlowLayout(spacing: 5) {
+                                ForEach(profileTags, id: \.self) { tag in
+                                    Text(tag)
+                                        .font(.caption2)
+                                        .fontWeight(.medium)
+                                        .foregroundStyle(Theme.textSecondary)
+                                        .padding(.horizontal, 7)
+                                        .padding(.vertical, 3)
+                                        .background(Theme.textTertiary.opacity(0.12))
+                                        .clipShape(Capsule())
                                 }
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.top, 8)
                         }
                     }
@@ -275,7 +254,11 @@ struct BookProfileView: View {
             }
         }
         .padding(.bottom, mainTabBarOverlapExtraHeight)
-        .overlay { markAsReadOverlay }
+        .overlay {
+            MarkAsReadInlineOverlay(isPresented: $showMarkAsReadModal) { date, rating, post, thoughts in
+                onConfirmRead?(date, rating, post, thoughts)
+            }
+        }
         .sheet(item: $userBookToEdit) { ub in
             EditReadReviewSheet(userBook: ub)
                 .environmentObject(appState)
@@ -307,85 +290,6 @@ struct BookProfileView: View {
         }
     }
 
-    @ViewBuilder
-    private var markAsReadOverlay: some View {
-        if showMarkAsReadModal {
-            Color.black.opacity(0.45)
-                .ignoresSafeArea()
-                .onTapGesture { withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { showMarkAsReadModal = false } }
-                .overlay(alignment: .bottom) {
-                    markAsReadCard
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 100)
-                        .transition(.asymmetric(
-                            insertion: .opacity.combined(with: .move(edge: .bottom)).combined(with: .scale(scale: 0.92)),
-                            removal: .opacity.combined(with: .move(edge: .bottom))
-                        ))
-                }
-                .animation(.spring(response: 0.35, dampingFraction: 0.82), value: showMarkAsReadModal)
-        }
-    }
-
-    private var markAsReadCard: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Mark as read")
-                .font(Theme.title2())
-                .foregroundStyle(Theme.textPrimary)
-            VStack(alignment: .leading, spacing: 6) {
-                Text("When did you finish?")
-                    .font(Theme.caption())
-                    .foregroundStyle(Theme.textSecondary)
-                DatePicker("", selection: $markAsReadDate, displayedComponents: .date)
-                    .datePickerStyle(.compact)
-                    .labelsHidden()
-                    .tint(Theme.accent)
-            }
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Rating: \(markAsReadRatingLabel) / 10")
-                    .font(Theme.caption())
-                    .foregroundStyle(Theme.textSecondary)
-                Slider(value: markAsReadRatingSliderBinding, in: 1...10, step: 0.1)
-                    .tint(Theme.accent)
-            }
-            TextField("Thoughts on this book...", text: $markAsReadThoughts, axis: .vertical)
-                .font(Theme.body())
-                .foregroundStyle(Theme.textPrimary)
-                .lineLimit(3...6)
-                .padding(12)
-                .background(Theme.background.opacity(0.6))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-            Toggle(isOn: $markAsReadPostToFeed) {
-                Text("Post to feed")
-                    .font(Theme.callout())
-                    .foregroundStyle(Theme.textPrimary)
-            }
-            .tint(Theme.accent)
-            Button {
-                let date = markAsReadDate
-                let rating: Double? = hasExplicitMarkReadRating
-                    ? Theme.normalizeRatingOutOfTen(markAsReadSliderValue)
-                    : nil
-                let post = markAsReadPostToFeed
-                let thoughts = markAsReadThoughts.trimmingCharacters(in: .whitespacesAndNewlines)
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { showMarkAsReadModal = false }
-                onConfirmRead?(date, rating, post, thoughts.isEmpty ? nil : thoughts)
-            } label: {
-                Text("Mark as read")
-                    .font(Theme.headline())
-                    .foregroundStyle(Theme.background)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Theme.accent)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(20)
-        .background(Theme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
-        .shadow(color: .black.opacity(0.25), radius: 20, y: 8)
-    }
-
     private var actionBar: some View {
         HStack(spacing: 12) {
             if onNotInterested != nil {
@@ -399,27 +303,6 @@ struct BookProfileView: View {
                         .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
                 }
                 .buttonStyle(.plain)
-            }
-            if onConfirmRead != nil {
-                Button(action: {
-                    if isOnReadList { return }
-                    markAsReadDate = Date()
-                    markAsReadSliderValue = 5.5
-                    hasExplicitMarkReadRating = false
-                    markAsReadPostToFeed = true
-                    markAsReadThoughts = ""
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showMarkAsReadModal = true }
-                }) {
-                    Label(isOnReadList ? "On read list" : "Read", systemImage: "checkmark.circle.fill")
-                        .font(Theme.headline())
-                        .foregroundStyle(Theme.background)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(Theme.accent)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
-                }
-                .buttonStyle(.plain)
-                .disabled(isOnReadList)
             }
             if onWantToRead != nil || onRemoveFromQueue != nil {
                 Group {
@@ -459,6 +342,22 @@ struct BookProfileView: View {
                         .buttonStyle(.plain)
                     }
                 }
+            }
+            if onConfirmRead != nil {
+                Button(action: {
+                    if isOnReadList { return }
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showMarkAsReadModal = true }
+                }) {
+                    Label(isOnReadList ? "On read list" : "Read", systemImage: "checkmark.circle.fill")
+                        .font(Theme.headline())
+                        .foregroundStyle(Theme.background)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Theme.accent)
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+                }
+                .buttonStyle(.plain)
+                .disabled(isOnReadList)
             }
         }
         .padding(.horizontal)

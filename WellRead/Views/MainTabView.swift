@@ -2,12 +2,13 @@
 //  MainTabView.swift
 //  WellRead
 //
-//  Bottom tab bar: Feed, Discover, Add (center), Profile (library + profile merged).
+//  Bottom tab bar: Feed, Discover, Search (center), Profile (library + profile merged).
 //
 
 import SwiftUI
 
 struct MainTabView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var authService: AuthService
     @State private var selectedTab: Tab = .profile
@@ -17,7 +18,9 @@ struct MainTabView: View {
     @State private var userDismissedIncompleteProfileThisSession = false
     @State private var showWelcomeGoodreadsModal = false
     @State private var showGoodreadsImportFromWelcome = false
-    
+    @State private var showPushNotificationPromptSheet = false
+    @State private var showPushNudgeModal = false
+
     enum Tab: String, CaseIterable {
         case feed
         case discover
@@ -55,7 +58,7 @@ struct MainTabView: View {
                 subtitle: "Add your first name, last name, handle, and your reading goal for this year so friends can find you.",
                 onDismiss: {
                     showCompleteProfileSheet = false
-                    scheduleWelcomeGoodreadsModalIfNeeded()
+                    schedulePostProfileOnboardingFlow()
                 }
             )
             .environmentObject(authService)
@@ -63,12 +66,21 @@ struct MainTabView: View {
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
+        .sheet(isPresented: $showPushNotificationPromptSheet) {
+            PushNotificationPromptView(
+                onEnable: { finishPushNotificationPrompt(userRequestedEnable: true) },
+                onNotNow: { finishPushNotificationPrompt(userRequestedEnable: false) }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .interactiveDismissDisabled(true)
+        }
         .sheet(isPresented: $showWelcomeGoodreadsModal, onDismiss: {
             if let uid = authService.firebaseUser?.uid {
-                WelcomeSpinesGoodreadsPromptStorage.markShown(for: uid)
+                WelcomeSpynesGoodreadsPromptStorage.markShown(for: uid)
             }
         }) {
-            WelcomeSpinesGoodreadsModal(
+            WelcomeSpynesGoodreadsModal(
                 onLetsGo: {
                     showWelcomeGoodreadsModal = false
                     selectedTab = .profile
@@ -87,6 +99,23 @@ struct MainTabView: View {
             GoodreadsImportView(initialRows: nil)
                 .environmentObject(appState)
         }
+        .sheet(isPresented: $showPushNudgeModal) {
+            PushNotificationNudgeModal(
+                onEnable: {
+                    PushNotificationService.requestPermissionOrOpenSettingsIfDenied()
+                    showPushNudgeModal = false
+                },
+                onNoThanks: {
+                    if let uid = authService.firebaseUser?.uid {
+                        PushNotificationNudgeStorage.snoozeOneMonth(uid: uid)
+                    }
+                    showPushNudgeModal = false
+                }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .interactiveDismissDisabled(true)
+        }
         .onReceive(NotificationCenter.default.publisher(for: .wellreadOpenFeedPost)) { note in
             if let id = note.userInfo?["postId"] as? String {
                 selectedTab = .feed
@@ -95,11 +124,21 @@ struct MainTabView: View {
         }
         .onAppear {
             appState.loadDiscoverSuggestionsIfNeeded()
-            PushNotificationService.requestPermissionAndRegister()
+            PushNotificationService.registerForRemoteNotificationsOnly()
             if appState.pendingGoodreadsImportRows != nil || appState.pendingGoodreadsImportError != nil || appState.pendingGoodreadsImportURL != nil {
                 selectedTab = .profile
             }
             syncCompleteProfileSheet()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                considerShowingPushNudgeModal()
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    considerShowingPushNudgeModal()
+                }
+            }
         }
         .onChange(of: authService.appUser) { _, _ in
             syncCompleteProfileSheet()
@@ -133,11 +172,60 @@ struct MainTabView: View {
         showCompleteProfileSheet = true
     }
 
+    /// After profile completion: optional push prompt (new accounts), then Goodreads welcome once per account.
+    private func schedulePostProfileOnboardingFlow() {
+        guard authService.appUser?.needsProfileCompletion == false,
+              let user = authService.appUser,
+              authService.firebaseUser?.uid != nil else {
+            scheduleWelcomeGoodreadsModalIfNeeded()
+            return
+        }
+        if !user.hasSeenPushNotificationPrompt {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                showPushNotificationPromptSheet = true
+            }
+            return
+        }
+        scheduleWelcomeGoodreadsModalIfNeeded()
+    }
+
+    private func finishPushNotificationPrompt(userRequestedEnable: Bool) {
+        if userRequestedEnable {
+            PushNotificationService.requestPermissionAndRegister()
+        } else if let uid = authService.firebaseUser?.uid {
+            PushNotificationNudgeStorage.snoozeOneMonth(uid: uid)
+        }
+        Task {
+            try? await authService.markPushNotificationPromptSeen()
+            await MainActor.run {
+                showPushNotificationPromptSheet = false
+                scheduleWelcomeGoodreadsModalIfNeeded()
+            }
+        }
+    }
+
+    /// Recurring prompt when push permission is missing and snooze window has passed.
+    private func considerShowingPushNudgeModal() {
+        guard let uid = authService.firebaseUser?.uid else { return }
+        guard authService.appUser?.needsProfileCompletion == false else { return }
+        guard authService.appUser?.hasSeenPushNotificationPrompt == true else { return }
+        guard !showCompleteProfileSheet, !showPushNotificationPromptSheet, !showWelcomeGoodreadsModal,
+              !showGoodreadsImportFromWelcome, !showAddBook, !showPushNudgeModal else { return }
+        guard PushNotificationNudgeStorage.isEligibleForNudge(uid: uid) else { return }
+
+        PushNotificationService.needsPushPermissionNudge { needs in
+            guard needs else { return }
+            guard !showCompleteProfileSheet, !showPushNotificationPromptSheet, !showWelcomeGoodreadsModal,
+                  !showGoodreadsImportFromWelcome, !showAddBook, !showPushNudgeModal else { return }
+            showPushNudgeModal = true
+        }
+    }
+
     /// After profile completion sheet dismisses successfully, show the Goodreads welcome modal once per account.
     private func scheduleWelcomeGoodreadsModalIfNeeded() {
         guard authService.appUser?.needsProfileCompletion == false,
               let uid = authService.firebaseUser?.uid,
-              !WelcomeSpinesGoodreadsPromptStorage.hasShown(for: uid) else { return }
+              !WelcomeSpynesGoodreadsPromptStorage.hasShown(for: uid) else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
             showWelcomeGoodreadsModal = true
         }
@@ -148,7 +236,7 @@ struct MainTabView: View {
             tabButton(.feed, icon: "book.closed.fill", label: "Feed")
             tabButton(.discover, icon: "sparkles", label: "Discover")
             tabButton(.profile, icon: "books.vertical.fill", label: "Profile")
-            addButton
+            searchButton
         }
         .padding(.horizontal, 8)
         .padding(.top, 4)
@@ -182,18 +270,18 @@ struct MainTabView: View {
         .buttonStyle(.plain)
     }
     
-    private var addButton: some View {
+    private var searchButton: some View {
         Button {
             showAddBook = true
         } label: {
             VStack(spacing: 2) {
-                Image(systemName: "plus.circle.fill")
-                    .font(.system(size: 32))
-                Text("Add")
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 20, weight: .medium))
+                Text("Search")
                     .font(Theme.caption())
             }
             .frame(maxWidth: .infinity)
-            .foregroundStyle(Theme.accent)
+            .foregroundStyle(Theme.textSecondary)
         }
         .buttonStyle(.plain)
     }

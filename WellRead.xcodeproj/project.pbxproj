@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		8B7B90EC2F54C77000B7FB0C /* Secrets.plist in Resources */ = {isa = PBXBuildFile; fileRef = 8B7B90EB2F54C72300B7FB0C /* Secrets.plist */; };
+		8B8FC0012F4E9AEF0068B4B7 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = 8BE1FAC52F4E8A70006ED44D /* FirebaseMessaging */; };
+		8BB4CBCA2F4E9AEF0068B4B6 /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = 8BE1FAC72F4E8A70006ED44D /* FirebaseFunctions */; };
 		8BB2986E2F671AAA007008DC /* WellReadShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 8BB298642F671AAA007008DC /* WellReadShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		8BB4CBC02F4E9AEF0068B4B6 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 8BE1FABE2F4E8A70006ED44D /* FirebaseCore */; };
 		8BB4CBC32F4E9F2B0068B4B6 /* WellRead Firebase Service Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 8BB4CBC22F4E9F2B0068B4B6 /* WellRead Firebase Service Info.plist */; };
@@ -15,9 +17,6 @@
 		8BB4CBC72F4E9AEF0068B4B6 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 8BE1FAC32F4E8A70006ED44D /* FirebaseFirestore */; };
 		8BB4CBC82F4E8B00006ED44D /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 8BE1FAC22F4E8B00006ED44D /* GoogleSignIn */; };
 		8BB4CBC92F4E9AEF0068B4B6 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = 8BE1FAC42F4E8A70006ED44D /* FirebaseStorage */; };
-		8B8FC0012F4E9AEF0068B4B7 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = 8BE1FAC52F4E8A70006ED44D /* FirebaseMessaging */; };
-		B0010043 /* PushNotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010043 /* PushNotificationService.swift */; };
-		B0010044 /* FeedCommunityWelcomeModal.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010044 /* FeedCommunityWelcomeModal.swift */; };
 		B0010001 /* WellReadApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010001 /* WellReadApp.swift */; };
 		B0010002 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010002 /* RootView.swift */; };
 		B0010003 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010003 /* AppState.swift */; };
@@ -72,12 +71,21 @@
 		B001003A /* UserLibraryDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001003A /* UserLibraryDetailView.swift */; };
 		B001003B /* QueueBookDragCover.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001003B /* QueueBookDragCover.swift */; };
 		B001003C /* LibraryReadQueueSegmentShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001003C /* LibraryReadQueueSegmentShared.swift */; };
-		B001003D /* WelcomeSpinesGoodreadsModal.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001003D /* WelcomeSpinesGoodreadsModal.swift */; };
+		B001003D /* WelcomeSpynesGoodreadsModal.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001003D /* WelcomeSpynesGoodreadsModal.swift */; };
 		B001003E /* GoodreadsImportTutorialEmbed.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001003E /* GoodreadsImportTutorialEmbed.swift */; };
 		B001003F /* LibraryDragHaptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001003F /* LibraryDragHaptics.swift */; };
 		B0010040 /* ProfileImageCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010040 /* ProfileImageCache.swift */; };
 		B0010041 /* CachedProfileImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010041 /* CachedProfileImage.swift */; };
 		B0010042 /* EditReadReviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010042 /* EditReadReviewSheet.swift */; };
+		B0010043 /* PushNotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010043 /* PushNotificationService.swift */; };
+		B0010044 /* FeedCommunityWelcomeModal.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010044 /* FeedCommunityWelcomeModal.swift */; };
+		B0010045 /* FlowLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010045 /* FlowLayout.swift */; };
+		B0010046 /* MarkAsReadInlineOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010046 /* MarkAsReadInlineOverlay.swift */; };
+		B0010047 /* PushRegistrationDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010047 /* PushRegistrationDiagnostics.swift */; };
+		B0010048 /* PushDiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010048 /* PushDiagnosticsView.swift */; };
+		B0010049 /* PushNotificationPromptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010049 /* PushNotificationPromptView.swift */; };
+		B0010050 /* PushNotificationNudgeStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010050 /* PushNotificationNudgeStorage.swift */; };
+		B0010051 /* PushNotificationNudgeModal.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010051 /* PushNotificationNudgeModal.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -164,7 +172,7 @@
 		F001003A /* UserLibraryDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserLibraryDetailView.swift; sourceTree = "<group>"; };
 		F001003B /* QueueBookDragCover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueueBookDragCover.swift; sourceTree = "<group>"; };
 		F001003C /* LibraryReadQueueSegmentShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryReadQueueSegmentShared.swift; sourceTree = "<group>"; };
-		F001003D /* WelcomeSpinesGoodreadsModal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeSpinesGoodreadsModal.swift; sourceTree = "<group>"; };
+		F001003D /* WelcomeSpynesGoodreadsModal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeSpynesGoodreadsModal.swift; sourceTree = "<group>"; };
 		F001003E /* GoodreadsImportTutorialEmbed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoodreadsImportTutorialEmbed.swift; sourceTree = "<group>"; };
 		F001003F /* LibraryDragHaptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryDragHaptics.swift; sourceTree = "<group>"; };
 		F0010040 /* ProfileImageCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileImageCache.swift; sourceTree = "<group>"; };
@@ -172,6 +180,13 @@
 		F0010042 /* EditReadReviewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditReadReviewSheet.swift; sourceTree = "<group>"; };
 		F0010043 /* PushNotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationService.swift; sourceTree = "<group>"; };
 		F0010044 /* FeedCommunityWelcomeModal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedCommunityWelcomeModal.swift; sourceTree = "<group>"; };
+		F0010045 /* FlowLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowLayout.swift; sourceTree = "<group>"; };
+		F0010046 /* MarkAsReadInlineOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkAsReadInlineOverlay.swift; sourceTree = "<group>"; };
+		F0010047 /* PushRegistrationDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushRegistrationDiagnostics.swift; sourceTree = "<group>"; };
+		F0010048 /* PushDiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushDiagnosticsView.swift; sourceTree = "<group>"; };
+		F0010049 /* PushNotificationPromptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationPromptView.swift; sourceTree = "<group>"; };
+		F0010050 /* PushNotificationNudgeStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationNudgeStorage.swift; sourceTree = "<group>"; };
+		F0010051 /* PushNotificationNudgeModal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationNudgeModal.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -206,6 +221,7 @@
 				8BB4CBC92F4E9AEF0068B4B6 /* FirebaseStorage in Frameworks */,
 				8BB4CBC82F4E8B00006ED44D /* GoogleSignIn in Frameworks */,
 				8B8FC0012F4E9AEF0068B4B7 /* FirebaseMessaging in Frameworks */,
+				8BB4CBCA2F4E9AEF0068B4B6 /* FirebaseFunctions in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -311,6 +327,8 @@
 				F0010033 /* GoodreadsImportService.swift */,
 				F0010035 /* GoodreadsShareHelper.swift */,
 				F0010043 /* PushNotificationService.swift */,
+				F0010047 /* PushRegistrationDiagnostics.swift */,
+				F0010050 /* PushNotificationNudgeStorage.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -337,7 +355,9 @@
 			children = (
 				F001000C /* OnboardingFlowView.swift */,
 				F0010037 /* ProfileCompletionView.swift */,
-				F001003D /* WelcomeSpinesGoodreadsModal.swift */,
+				F001003D /* WelcomeSpynesGoodreadsModal.swift */,
+				F0010049 /* PushNotificationPromptView.swift */,
+				F0010051 /* PushNotificationNudgeModal.swift */,
 				F0010029 /* ReviewerLoginView.swift */,
 			);
 			path = Onboarding;
@@ -356,6 +376,7 @@
 			isa = PBXGroup;
 			children = (
 				F001000F /* BookCoverView.swift */,
+				F0010045 /* FlowLayout.swift */,
 				F0010041 /* CachedProfileImage.swift */,
 			);
 			path = Components;
@@ -383,6 +404,7 @@
 			isa = PBXGroup;
 			children = (
 				F0010012 /* LibraryView.swift */,
+				F0010048 /* PushDiagnosticsView.swift */,
 				F001003C /* LibraryReadQueueSegmentShared.swift */,
 				F0010013 /* GridLibraryView.swift */,
 				F0010036 /* QueueLibraryView.swift */,
@@ -417,6 +439,7 @@
 			children = (
 				F001002B /* BookProfileView.swift */,
 				F0010042 /* EditReadReviewSheet.swift */,
+				F0010046 /* MarkAsReadInlineOverlay.swift */,
 			);
 			path = Book;
 			sourceTree = "<group>";
@@ -477,6 +500,7 @@
 				8BE1FAC42F4E8A70006ED44D /* FirebaseStorage */,
 				8BE1FAC22F4E8B00006ED44D /* GoogleSignIn */,
 				8BE1FAC52F4E8A70006ED44D /* FirebaseMessaging */,
+				8BE1FAC72F4E8A70006ED44D /* FirebaseFunctions */,
 			);
 			productName = WellRead;
 			productReference = E0010000 /* WellRead.app */;
@@ -568,7 +592,7 @@
 				B001000B /* MainTabView.swift in Sources */,
 				B001000C /* OnboardingFlowView.swift in Sources */,
 				B0010037 /* ProfileCompletionView.swift in Sources */,
-				B001003D /* WelcomeSpinesGoodreadsModal.swift in Sources */,
+				B001003D /* WelcomeSpynesGoodreadsModal.swift in Sources */,
 				B0010029 /* ReviewerLoginView.swift in Sources */,
 				B001000D /* AddBookFlowView.swift in Sources */,
 				B001000E /* BookSearchRow.swift in Sources */,
@@ -599,6 +623,7 @@
 				B001002C /* BookProfileService.swift in Sources */,
 				B0010039 /* WellReadTagCatalog.swift in Sources */,
 				B001002B /* BookProfileView.swift in Sources */,
+				B0010046 /* MarkAsReadInlineOverlay.swift in Sources */,
 				B001002D /* DismissedSuggestionsRepository.swift in Sources */,
 				B001002E /* DiscoverSuggestionsService.swift in Sources */,
 				B001002F /* ProfilePhotoService.swift in Sources */,
@@ -612,7 +637,13 @@
 				B001003E /* GoodreadsImportTutorialEmbed.swift in Sources */,
 				B0010035 /* GoodreadsShareHelper.swift in Sources */,
 				B0010043 /* PushNotificationService.swift in Sources */,
+				B0010047 /* PushRegistrationDiagnostics.swift in Sources */,
+				B0010050 /* PushNotificationNudgeStorage.swift in Sources */,
+				B0010048 /* PushDiagnosticsView.swift in Sources */,
+				B0010049 /* PushNotificationPromptView.swift in Sources */,
+				B0010051 /* PushNotificationNudgeModal.swift in Sources */,
 				B0010044 /* FeedCommunityWelcomeModal.swift in Sources */,
+				B0010045 /* FlowLayout.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -825,7 +856,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.5;
+				MARKETING_VERSION = 1.6;
 				PRODUCT_BUNDLE_IDENTIFIER = com.wellread.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -853,7 +884,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.5;
+				MARKETING_VERSION = 1.6;
 				PRODUCT_BUNDLE_IDENTIFIER = com.wellread.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -944,6 +975,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 8BE1FABD2F4E8A70006ED44D /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseMessaging;
+		};
+		8BE1FAC72F4E8A70006ED44D /* FirebaseFunctions */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8BE1FABD2F4E8A70006ED44D /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFunctions;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

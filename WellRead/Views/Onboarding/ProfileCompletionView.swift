@@ -14,7 +14,7 @@ import UIKit
 
 enum ProfileHandleRules {
     static let reservedHandles: Set<String> = [
-        "admin", "support", "help", "spines", "wellread", "root", "system", "api", "staff", "moderator"
+        "admin", "support", "help", "spynes", "spines", "wellread", "root", "system", "api", "staff", "moderator"
     ]
 
     /// Lowercase ASCII handle only (a–z, 0–9, _).

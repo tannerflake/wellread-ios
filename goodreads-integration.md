@@ -30,7 +30,7 @@ Ideal flow
 	2.	Show a 2-screen explainer:
 	•	“You’ll sign in to Goodreads”
 	•	“You’ll generate your library export”
-	•	“Spines will capture the CSV and import it automatically”
+	•	“Spynes will capture the CSV and import it automatically”
 	3.	Open Goodreads export flow in an in-app browser surface
 	4.	User logs in
 	5.	User taps Export Library
@@ -86,7 +86,7 @@ Use this if:
 	•	you want fewer auth headaches
 	•	you can accept a slightly less magical import
 
-Option C: external Safari + “Open in Spines” fallback
+Option C: external Safari + “Open in Spynes” fallback
 
 Least elegant, but very robust.
 
@@ -94,7 +94,7 @@ Flow:
 	•	launch Goodreads export page in Safari
 	•	instruct user to tap export
 	•	user downloads CSV
-	•	share to Spines or pick file in Spines
+	•	share to Spynes or pick file in Spynes
 
 This is the fallback, not the primary.
 
@@ -115,7 +115,7 @@ Path 2, fallback
 
 “Already downloaded your CSV?”
 	•	native file picker via UIDocumentPickerViewController
-	•	or share extension / “Open in Spines”
+	•	or share extension / “Open in Spynes”
 
 That gives you the slick path and a recovery path.
 
@@ -181,7 +181,7 @@ If you rely on AI too early, you’ll create inconsistent imports and ugly trust
 
 Your data model decisions matter more than the parser
 
-Before building, decide how Goodreads concepts map to Spines.
+Before building, decide how Goodreads concepts map to Spynes.
 
 Must-decide mappings
 	•	exclusive shelf -> your canonical status?
@@ -235,7 +235,7 @@ Toggles:
 	•	Import shelves as tags
 	•	Import ratings
 	•	Import reviews
-	•	Skip books already in Spines
+	•	Skip books already in Spynes
 	•	Merge duplicates automatically
 
 4. Save the raw file and parse result
@@ -310,7 +310,7 @@ V1.5
 
 V2
 	•	share extension from Files/Safari
-	•	“Open in Spines”
+	•	“Open in Spynes”
 	•	maybe broader import sources beyond Goodreads
 
 My actual recommendation

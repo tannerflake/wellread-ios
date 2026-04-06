@@ -38,6 +38,7 @@ struct EditReadReviewSheet: View {
     @State private var saveError: String?
     @State private var showDeleteConfirm = false
     @State private var isDeleting = false
+    @FocusState private var isThoughtsFocused: Bool
 
     init(userBook: UserBook, feedCaption: String? = nil) {
         self.userBook = userBook
@@ -64,8 +65,9 @@ struct EditReadReviewSheet: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
                     if let b = userBook.book {
                         HStack(spacing: 12) {
                             BookCoverView(book: b, size: 56)
@@ -126,12 +128,14 @@ struct EditReadReviewSheet: View {
                                 .font(Theme.body())
                                 .foregroundStyle(Theme.textPrimary)
                                 .scrollContentBackground(.hidden)
-                                .frame(minHeight: 120)
+                                .frame(minHeight: 120, maxHeight: 280)
+                                .focused($isThoughtsFocused)
                         }
                         .padding(12)
                         .background(Theme.background.opacity(0.6))
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
+                    .id("editReviewThoughts")
 
                     Toggle(isOn: $postToFeed) {
                         Text("Show on feed")
@@ -173,8 +177,25 @@ struct EditReadReviewSheet: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(isSaving || isDeleting)
+                    }
+                    .padding(20)
                 }
-                .padding(20)
+                .scrollDismissesKeyboard(.interactively)
+                .onChange(of: thoughts) { _, _ in
+                    guard isThoughtsFocused else { return }
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        proxy.scrollTo("editReviewThoughts", anchor: .bottom)
+                    }
+                }
+                .onChange(of: isThoughtsFocused) { _, focused in
+                    if focused {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                proxy.scrollTo("editReviewThoughts", anchor: .bottom)
+                            }
+                        }
+                    }
+                }
             }
             .background(Theme.background)
             .navigationTitle("Edit review")

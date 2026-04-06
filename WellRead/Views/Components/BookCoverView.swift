@@ -14,8 +14,8 @@ import CryptoKit
 final class CoverImageCache {
     static let shared = CoverImageCache()
 
-    /// Max seconds for each URL attempt (network + decode). Matches `FallbackCoverImage`’s task race.
-    static let loadTimeoutSeconds: TimeInterval = 3
+    /// Max seconds for each URL attempt (network + decode). `FallbackCoverImage` also enforces a **total** budget per cover.
+    static let loadTimeoutSeconds: TimeInterval = 2
 
     private let cache = NSCache<NSString, UIImage>()
     private let session: URLSession
@@ -372,12 +372,10 @@ private struct TitleOnlyBookCover: View {
     private var bottomPadding: CGFloat { max(6, size * 0.07) }
 }
 
-/// Per-URL load budget (aligned with `CoverImageCache.loadTimeoutSeconds`).
-private var coverImageLoadTimeoutNanoseconds: UInt64 {
-    UInt64(CoverImageCache.loadTimeoutSeconds * 1_000_000_000)
-}
+/// Total seconds to obtain **any** cover image (network or cache); after this, show title placeholder.
+private let coverLoadTotalBudgetSeconds: TimeInterval = 2
 
-/// Tries each URL in order; uses memory + disk cached images so no re-fetch or spinner when the view re-appears or app relaunches.
+/// Tries each URL in order within a single total time budget; uses memory + disk cached images when available.
 private struct FallbackCoverImage: View {
     /// Stable identity for `.task` — tier/queue reorder recreates cells; sync cache hydrate avoids spinner when URLs unchanged.
     let bookId: String
@@ -385,19 +383,22 @@ private struct FallbackCoverImage: View {
     let size: CGFloat
     var placeholderTitle: String? = nil
     var placeholderAuthor: String? = nil
-    @State private var currentIndex: Int = 0
     @State private var loadedImage: UIImage?
-    /// Matches `urls[currentIndex].absoluteString` after a successful load — stops `.task` from clearing the image every time the tab reappears.
-    @State private var loadedURLString: String?
+    @State private var useTitlePlaceholder = false
 
-    /// Loads from cache/network, or gives up after `CoverImageCache.loadTimeoutSeconds` and returns `nil` (try next URL or title placeholder).
-    private func loadCoverImage(url: URL) async -> UIImage? {
-        await withTaskGroup(of: UIImage?.self) { group in
+    private var taskIdentity: String {
+        "\(bookId)-\(urls.map(\.absoluteString).joined(separator: "|"))"
+    }
+
+    /// Loads from cache/network within `timeout`, or `nil` when time runs out.
+    private func loadCoverImage(url: URL, timeout: TimeInterval) async -> UIImage? {
+        let ns = UInt64(max(0.05, timeout) * 1_000_000_000)
+        return await withTaskGroup(of: UIImage?.self) { group in
             group.addTask {
                 await CoverImageCache.shared.image(for: url)
             }
             group.addTask {
-                try? await Task.sleep(nanoseconds: coverImageLoadTimeoutNanoseconds)
+                try? await Task.sleep(nanoseconds: ns)
                 return nil
             }
             let first = await group.next()
@@ -408,7 +409,7 @@ private struct FallbackCoverImage: View {
 
     var body: some View {
         ZStack {
-            if currentIndex >= urls.count {
+            if useTitlePlaceholder {
                 if let title = placeholderTitle, !title.isEmpty {
                     TitleOnlyBookCover(title: title, author: placeholderAuthor, size: size)
                 } else {
@@ -430,30 +431,33 @@ private struct FallbackCoverImage: View {
         }
         .frame(width: size, height: size * 1.5)
         .clipped()
-        // `bookId` + URL index: reordering in LazyVStack recreates views — sync hydrate from cache must run before async work.
-        .task(id: "\(bookId)-\(currentIndex)") {
-            guard currentIndex < urls.count else { return }
-            let url = urls[currentIndex]
-            let urlKey = url.absoluteString
-
-            if let cached = CoverImageCache.shared.imageSyncFromCache(for: url) {
-                loadedImage = cached
-                loadedURLString = urlKey
-                return
-            }
-            if loadedImage != nil, loadedURLString == urlKey { return }
-
+        .task(id: taskIdentity) {
             loadedImage = nil
-            if let img = await loadCoverImage(url: url) {
-                loadedImage = img
-                loadedURLString = urlKey
-            } else if currentIndex + 1 < urls.count {
-                loadedURLString = nil
-                currentIndex += 1
-            } else {
-                loadedURLString = nil
-                currentIndex = urls.count // all URLs failed; show title placeholder
+            useTitlePlaceholder = false
+            let start = Date()
+            let budget = coverLoadTotalBudgetSeconds
+
+            for url in urls {
+                let elapsed = Date().timeIntervalSince(start)
+                if elapsed >= budget {
+                    useTitlePlaceholder = true
+                    return
+                }
+                if let cached = CoverImageCache.shared.imageSyncFromCache(for: url) {
+                    loadedImage = cached
+                    return
+                }
+                let remaining = budget - Date().timeIntervalSince(start)
+                if remaining <= 0 {
+                    useTitlePlaceholder = true
+                    return
+                }
+                if let img = await loadCoverImage(url: url, timeout: remaining) {
+                    loadedImage = img
+                    return
+                }
             }
+            useTitlePlaceholder = true
         }
     }
 

@@ -2,6 +2,7 @@ import { initializeApp, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onCall, HttpsError } from "firebase-functions/v2/https";
 import type { DocumentData, Firestore } from "firebase-admin/firestore";
 
 const app = getApps().length ? getApps()[0]! : initializeApp();
@@ -73,6 +74,83 @@ async function sendToUser(
   await messaging.sendEach(messages);
 }
 
+/** Fixed post id for diagnostics-only pushes (deep link may not resolve to a real post). */
+const TEST_PUSH_POST_ID = "00000000-0000-4000-8000-000000000001";
+
+const TEST_PUSH_TYPES = new Set([
+  "friend_review_posted",
+  "review_liked",
+  "review_commented",
+  "thread_commented",
+]);
+
+/**
+ * Authenticated clients only: sends one sample notification of the given type to the caller’s uid
+ * using stored FCM tokens (same path as production `sendToUser`).
+ */
+export const sendTestPushNotification = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    if (!request.auth?.uid) {
+      throw new HttpsError("unauthenticated", "Sign in required");
+    }
+    const uid = request.auth.uid;
+    const raw = request.data as { type?: string } | undefined;
+    const type = raw?.type;
+    if (!type || !TEST_PUSH_TYPES.has(type)) {
+      throw new HttpsError(
+        "invalid-argument",
+        "type must be one of: friend_review_posted, review_liked, review_commented, thread_commented"
+      );
+    }
+
+    const tokens = await tokensForUser(uid);
+    if (!tokens.length) {
+      throw new HttpsError(
+        "failed-precondition",
+        "No FCM tokens stored for this user. Use a physical device, allow notifications, and wait for the Firestore write."
+      );
+    }
+
+    switch (type) {
+      case "friend_review_posted":
+        await sendToUser(
+          uid,
+          "Alex gave Sample Book a 9.0",
+          "Smart, ambitious, provocative, and way more readable than...",
+          { type: "friend_review_posted", postId: TEST_PUSH_POST_ID }
+        );
+        break;
+      case "review_liked":
+        await sendToUser(uid, "Alex liked your review of Sample Book", "", {
+          type: "review_liked",
+          postId: TEST_PUSH_POST_ID,
+        });
+        break;
+      case "review_commented":
+        await sendToUser(
+          uid,
+          "Alex commented on your review of Sample Book",
+          "Great take on chapter three...",
+          { type: "review_commented", postId: TEST_PUSH_POST_ID }
+        );
+        break;
+      case "thread_commented":
+        await sendToUser(
+          uid,
+          "Alex also commented on the Sample Book review you joined",
+          "Adding my two cents here...",
+          { type: "thread_commented", postId: TEST_PUSH_POST_ID }
+        );
+        break;
+      default:
+        throw new HttpsError("invalid-argument", "Unknown type");
+    }
+
+    return { ok: true, sent: tokens.length, type };
+  }
+);
+
 /** Friends who follow `authorUid` (Firestore `following` contains author string ids). */
 async function recipientUidsWhoFollow(authorUid: string): Promise<string[]> {
   const q = await db.collection("users").where("following", "array-contains", authorUid).get();
@@ -103,7 +181,7 @@ export const onFriendReviewPosted = onDocumentCreated(
     const titleLine = `${first} gave ${bookPart} a ${rating}`;
 
     const title = titleLine;
-    const body = teaser ? teaser : "Open Spines to read the full review.";
+    const body = teaser ? teaser : "Open Spynes to read the full review.";
 
     const recipients = await recipientUidsWhoFollow(authorId);
     const payload = {

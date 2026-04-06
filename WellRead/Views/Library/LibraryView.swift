@@ -24,6 +24,9 @@ struct ProfileLibraryView: View {
     @State private var readTabDropTargeted = false
     @State private var queueTabDropTargeted = false
     @State private var showEditProfile = false
+    #if DEBUG
+    @State private var showPushDiagnostics = false
+    #endif
 
     private var readBooksFilteredByYear: [UserBook] {
         let read = appState.readBooks
@@ -137,6 +140,14 @@ struct ProfileLibraryView: View {
                     .environmentObject(appState)
                     .onDisappear { goodreadsImportInitialRows = nil }
             }
+            #if DEBUG
+            .sheet(isPresented: $showPushDiagnostics) {
+                NavigationStack {
+                    PushDiagnosticsView()
+                }
+                .presentationDetents([.medium, .large])
+            }
+            #endif
             .overlay {
                 if appState.isFetchingGoodreadsFromURL {
                     Theme.background.ignoresSafeArea()
@@ -457,6 +468,13 @@ struct ProfileLibraryView: View {
                 } label: {
                     Label("Import from Goodreads", systemImage: "square.and.arrow.down")
                 }
+                #if DEBUG
+                Button {
+                    showPushDiagnostics = true
+                } label: {
+                    Label("Push diagnostics", systemImage: "bell.badge")
+                }
+                #endif
                 Divider()
                 Button("Sign out", role: .destructive) {
                     authService.signOut()
@@ -482,6 +500,13 @@ struct ProfileLibraryView: View {
                 } label: {
                     Label("Edit profile", systemImage: "person.crop.circle")
                 }
+                #if DEBUG
+                Button {
+                    showPushDiagnostics = true
+                } label: {
+                    Label("Push diagnostics", systemImage: "bell.badge")
+                }
+                #endif
                 Divider()
                 Button("Sign out", role: .destructive) {
                     authService.signOut()
@@ -553,6 +578,7 @@ private struct MarkAsReadQueueSheet: View {
     let onCancel: () -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @FocusState private var isThoughtsFocused: Bool
     @State private var markAsReadDate = Date()
     /// Visual middle of 1…10; label shows "—" until the user moves the slider.
     @State private var markAsReadSliderValue: Double = 5.5
@@ -580,48 +606,105 @@ private struct MarkAsReadQueueSheet: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text(bookTitle)
-                        .font(Theme.title())
-                        .foregroundStyle(Theme.textPrimary)
-                        .lineLimit(4)
+            ScrollViewReader { proxy in
+                ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("Mark as read")
-                            .font(Theme.title2())
+                        Text(bookTitle)
+                            .font(Theme.title())
                             .foregroundStyle(Theme.textPrimary)
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("When did you finish?")
-                                .font(Theme.caption())
-                                .foregroundStyle(Theme.textSecondary)
-                            DatePicker("", selection: $markAsReadDate, displayedComponents: .date)
-                                .datePickerStyle(.compact)
-                                .labelsHidden()
-                                .tint(Theme.accent)
-                        }
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Rating: \(markAsReadRatingLabel) / 10")
-                                .font(Theme.caption())
-                                .foregroundStyle(Theme.textSecondary)
-                            Slider(value: markAsReadRatingSliderBinding, in: 1...10, step: 0.1)
-                                .tint(Theme.accent)
-                        }
-                        TextField("Thoughts on this book...", text: $markAsReadThoughts, axis: .vertical)
-                            .font(Theme.body())
-                            .foregroundStyle(Theme.textPrimary)
-                            .lineLimit(3...6)
-                            .padding(12)
-                            .background(Theme.background.opacity(0.6))
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                        Toggle(isOn: $markAsReadPostToFeed) {
-                            Text("Post to feed")
-                                .font(Theme.callout())
+                            .lineLimit(4)
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("Mark as read")
+                                .font(Theme.title2())
                                 .foregroundStyle(Theme.textPrimary)
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("When did you finish?")
+                                    .font(Theme.caption())
+                                    .foregroundStyle(Theme.textSecondary)
+                                DatePicker("", selection: $markAsReadDate, displayedComponents: .date)
+                                    .datePickerStyle(.compact)
+                                    .labelsHidden()
+                                    .tint(Theme.accent)
+                            }
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Rating: \(markAsReadRatingLabel) / 10")
+                                    .font(Theme.caption())
+                                    .foregroundStyle(Theme.textSecondary)
+                                Slider(value: markAsReadRatingSliderBinding, in: 1...10, step: 0.1)
+                                    .tint(Theme.accent)
+                            }
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Thoughts")
+                                    .font(Theme.caption())
+                                    .foregroundStyle(Theme.textSecondary)
+                                ZStack(alignment: .topLeading) {
+                                    if markAsReadThoughts.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                        Text("Thoughts on this book…")
+                                            .font(Theme.body())
+                                            .foregroundStyle(Theme.textSecondary.opacity(0.7))
+                                            .padding(.horizontal, 4)
+                                            .padding(.vertical, 10)
+                                    }
+                                    TextEditor(text: $markAsReadThoughts)
+                                        .font(Theme.body())
+                                        .foregroundStyle(Theme.textPrimary)
+                                        .scrollContentBackground(.hidden)
+                                        .frame(minHeight: 160, maxHeight: 320)
+                                        .focused($isThoughtsFocused)
+                                }
+                                .padding(12)
+                                .background(Theme.background.opacity(0.6))
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                            }
+                            .id("markReadThoughtsBlock")
+
+                            Toggle(isOn: $markAsReadPostToFeed) {
+                                Text("Post to feed")
+                                    .font(Theme.callout())
+                                    .foregroundStyle(Theme.textPrimary)
+                            }
+                            .tint(Theme.accent)
+
+                            Button {
+                                let date = markAsReadDate
+                                let rating: Double? = hasExplicitMarkReadRating
+                                    ? Theme.normalizeRatingOutOfTen(markAsReadSliderValue)
+                                    : nil
+                                let post = markAsReadPostToFeed
+                                let thoughts = markAsReadThoughts.trimmingCharacters(in: .whitespacesAndNewlines)
+                                onConfirm(date, rating, post, thoughts.isEmpty ? nil : thoughts)
+                                dismiss()
+                            } label: {
+                                Text("Mark as read")
+                                    .font(Theme.headline())
+                                    .foregroundStyle(Theme.background)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 14)
+                                    .background(Theme.accent)
+                                    .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .tint(Theme.accent)
+                    }
+                    .padding(20)
+                    .padding(.bottom, 24)
+                }
+                .scrollDismissesKeyboard(.interactively)
+                .onChange(of: markAsReadThoughts) { _, _ in
+                    guard isThoughtsFocused else { return }
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        proxy.scrollTo("markReadThoughtsBlock", anchor: .bottom)
                     }
                 }
-                .padding(20)
+                .onChange(of: isThoughtsFocused) { _, focused in
+                    if focused {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                proxy.scrollTo("markReadThoughtsBlock", anchor: .bottom)
+                            }
+                        }
+                    }
+                }
             }
             .background(Theme.background)
             .navigationBarTitleDisplayMode(.inline)
@@ -641,30 +724,6 @@ private struct MarkAsReadQueueSheet: View {
             hasExplicitMarkReadRating = false
             markAsReadPostToFeed = true
             markAsReadThoughts = ""
-        }
-        .safeAreaInset(edge: .bottom) {
-            Button {
-                let date = markAsReadDate
-                let rating: Double? = hasExplicitMarkReadRating
-                    ? Theme.normalizeRatingOutOfTen(markAsReadSliderValue)
-                    : nil
-                let post = markAsReadPostToFeed
-                let thoughts = markAsReadThoughts.trimmingCharacters(in: .whitespacesAndNewlines)
-                onConfirm(date, rating, post, thoughts.isEmpty ? nil : thoughts)
-                dismiss()
-            } label: {
-                Text("Mark as read")
-                    .font(Theme.headline())
-                    .foregroundStyle(Theme.background)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Theme.accent)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
-            .background(Theme.background.opacity(0.98))
         }
     }
 }

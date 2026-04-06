@@ -224,7 +224,7 @@ struct FeedView: View {
                         ForEach(Array(otherReaders.enumerated()), id: \.element.uid) { _, item in
                             NavigationLink(value: item.uid) {
                                 VStack(spacing: 8) {
-                                    otherReaderSquareAvatar(user: item.user, size: 64)
+                                    otherReaderCircleAvatar(user: item.user, size: 64)
                                     Text(item.user.displayName)
                                         .font(Theme.caption())
                                         .foregroundStyle(Theme.textSecondary)
@@ -246,28 +246,27 @@ struct FeedView: View {
         .padding(.top, 4)
     }
 
-    private func otherReaderSquareAvatar(user: User, size: CGFloat) -> some View {
-        let corner: CGFloat = 12
+    private func otherReaderCircleAvatar(user: User, size: CGFloat) -> some View {
         let initial = String(user.displayName.prefix(1))
         return Group {
             if let urlStr = user.profileImageURL, let url = URL(string: urlStr) {
                 CachedProfileImage(url: url, contentMode: .fill) {
-                    otherReaderPlaceholder(initial: initial, size: size, corner: corner)
+                    otherReaderPlaceholder(initial: initial, size: size)
                 }
             } else {
-                otherReaderPlaceholder(initial: initial, size: size, corner: corner)
+                otherReaderPlaceholder(initial: initial, size: size)
             }
         }
         .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: corner))
+        .clipShape(Circle())
         .overlay(
-            RoundedRectangle(cornerRadius: corner)
+            Circle()
                 .strokeBorder(Theme.textTertiary.opacity(0.25), lineWidth: 1)
         )
     }
 
-    private func otherReaderPlaceholder(initial: String, size: CGFloat, corner: CGFloat) -> some View {
-        RoundedRectangle(cornerRadius: corner)
+    private func otherReaderPlaceholder(initial: String, size: CGFloat) -> some View {
+        Circle()
             .fill(Theme.surface)
             .overlay(
                 Text(initial)

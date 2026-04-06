@@ -1,13 +1,16 @@
 /**
- * Delete all userBooks for a given Firebase user (wellread database).
+ * Delete userBooks for a given Firebase user (wellread database).
  *
  * Prerequisites:
  *   Firebase service account key at scripts/import-books/service-account.json
  *   (same as import.js - Firebase Console → Project Settings → Service Accounts → Generate new private key)
  *
- * Run:
- *   cd scripts/import-books
- *   FIREBASE_UID="jCaSGxcYgHZd6OzXfxmGNn1GZBj2" node clear-user-books.js
+ * Run (all shelves):
+ *   FIREBASE_UID="..." node clear-user-books.js
+ * Or resolve uid by email:
+ *   FIREBASE_EMAIL="you@example.com" node clear-user-books.js
+ * Only finished / read shelf (status in Firestore is "Read"):
+ *   FIREBASE_EMAIL="you@example.com" STATUS="Read" node clear-user-books.js
  *
  * Optional: GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
  */
@@ -17,14 +20,20 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import { getAuth } from 'firebase-admin/auth';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const FIREBASE_UID = process.env.FIREBASE_UID;
+const FIREBASE_EMAIL = process.env.FIREBASE_EMAIL;
+/** If set, only delete documents with this status (e.g. "Read", "Queue", "Currently Reading"). */
+const STATUS = process.env.STATUS;
 const SERVICE_ACCOUNT_PATH = process.env.GOOGLE_APPLICATION_CREDENTIALS || join(__dirname, 'service-account.json');
 
-if (!FIREBASE_UID) {
-  console.error('Set FIREBASE_UID (the user whose books to clear). Example: FIREBASE_UID="jCaSGxcYgHZd6OzXfxmGNn1GZBj2" node clear-user-books.js');
+if (!FIREBASE_UID && !FIREBASE_EMAIL) {
+  console.error(
+    'Set FIREBASE_UID or FIREBASE_EMAIL. Example: FIREBASE_EMAIL="you@example.com" STATUS="Read" node clear-user-books.js'
+  );
   process.exit(1);
 }
 
@@ -42,15 +51,37 @@ const db = getFirestore(app, 'wellread');
 
 const BATCH_SIZE = 500;
 
-async function main() {
+async function syncTotalBooksReadFromShelf(uid) {
   const col = db.collection('userBooks');
-  const snapshot = await col.where('userId', '==', FIREBASE_UID).get();
+  const remaining = await col.where('userId', '==', uid).where('status', '==', 'Read').get();
+  await db.collection('users').doc(uid).set({ totalBooksRead: remaining.size }, { merge: true });
+  console.log('Synced users/', uid, 'totalBooksRead →', remaining.size);
+}
+
+async function main() {
+  let uid = FIREBASE_UID;
+  if (!uid) {
+    const auth = getAuth(app);
+    const user = await auth.getUserByEmail(FIREBASE_EMAIL);
+    uid = user.uid;
+    console.log('Resolved', FIREBASE_EMAIL, '→ uid', uid);
+  }
+
+  const col = db.collection('userBooks');
+  let query = col.where('userId', '==', uid);
+  if (STATUS) {
+    query = query.where('status', '==', STATUS);
+  }
+  const snapshot = await query.get();
   const count = snapshot.size;
   if (count === 0) {
-    console.log('No userBooks found for', FIREBASE_UID);
+    console.log('No userBooks found for', uid, STATUS ? `(status=${STATUS})` : '(all statuses)');
+    if (STATUS === 'Read') {
+      await syncTotalBooksReadFromShelf(uid);
+    }
     return;
   }
-  console.log('Deleting', count, 'userBooks for user', FIREBASE_UID);
+  console.log('Deleting', count, 'userBooks for user', uid, STATUS ? `(status=${STATUS})` : '');
   const refs = snapshot.docs.map((d) => d.ref);
   for (let i = 0; i < refs.length; i += BATCH_SIZE) {
     const batch = db.batch();
@@ -60,6 +91,9 @@ async function main() {
     console.log('  Deleted', Math.min(i + BATCH_SIZE, refs.length), 'of', refs.length);
   }
   console.log('Done. Deleted', count, 'userBooks.');
+  if (STATUS === 'Read') {
+    await syncTotalBooksReadFromShelf(uid);
+  }
 }
 
 main().catch((e) => {

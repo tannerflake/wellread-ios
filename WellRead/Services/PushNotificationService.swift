@@ -34,6 +34,13 @@ enum WellreadDeepLink {
 enum PushNotificationService {
     private static let userRepo = UserRepository()
 
+    /// Registers with APNs without showing the permission dialog (for users who already granted alerts, or after cold start).
+    static func registerForRemoteNotificationsOnly() {
+        DispatchQueue.main.async {
+            UIApplication.shared.registerForRemoteNotifications()
+        }
+    }
+
     static func requestPermissionAndRegister() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, _ in
             guard granted else { return }
@@ -43,10 +50,56 @@ enum PushNotificationService {
         }
     }
 
+    /// If permission was denied, opens Settings; otherwise requests authorization (shows system prompt when still undetermined).
+    static func requestPermissionOrOpenSettingsIfDenied() {
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            DispatchQueue.main.async {
+                switch settings.authorizationStatus {
+                case .denied:
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                case .notDetermined:
+                    requestPermissionAndRegister()
+                default:
+                    requestPermissionAndRegister()
+                }
+            }
+        }
+    }
+
+    /// `true` when we should show the recurring push nudge (no full alert permission yet).
+    static func needsPushPermissionNudge(completion: @escaping (Bool) -> Void) {
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            let needs: Bool
+            switch settings.authorizationStatus {
+            case .authorized:
+                needs = false
+            case .provisional, .ephemeral:
+                needs = false
+            case .denied, .notDetermined:
+                needs = true
+            @unknown default:
+                needs = true
+            }
+            DispatchQueue.main.async {
+                completion(needs)
+            }
+        }
+    }
+
     static func persistFCMTokenToFirestore(_ token: String) {
-        guard let uid = Auth.auth().currentUser?.uid else { return }
+        guard let uid = Auth.auth().currentUser?.uid else {
+            PushRegistrationDiagnostics.recordFirestoreSkippedNotSignedIn()
+            return
+        }
         Task {
-            try? await userRepo.saveFCMToken(uid: uid, token: token)
+            do {
+                try await userRepo.saveFCMToken(uid: uid, token: token)
+                PushRegistrationDiagnostics.recordFirestoreWriteSuccess(at: Date())
+            } catch {
+                PushRegistrationDiagnostics.recordFirestoreWriteFailed(error)
+            }
         }
     }
 

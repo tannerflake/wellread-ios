@@ -62,10 +62,19 @@ class AppDelegate: NSObject, UIApplicationDelegate, MessagingDelegate, UNUserNot
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         Messaging.messaging().apnsToken = deviceToken
+        PushRegistrationDiagnostics.setAPNsDeviceToken(deviceToken)
+        Task { @MainActor in
+            PushRegistrationDiagnostics.shared.apnsRegistrationError = nil
+        }
+    }
+
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        PushRegistrationDiagnostics.setAPNsRegistrationFailed(error)
     }
 
     func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
         guard let token = fcmToken else { return }
+        PushRegistrationDiagnostics.setFCMToken(token)
         PushNotificationService.persistFCMTokenToFirestore(token)
     }
 

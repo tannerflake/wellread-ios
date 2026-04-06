@@ -23,7 +23,6 @@ struct AddBookFlowView: View {
     @State private var selectedBookForProfile: Book?
     @State private var status: ReadingStatus = .read
     @State private var rating: Double = 7.0
-    @State private var reviewText = ""
     @State private var step: Step = .search
     
     enum Step {
@@ -249,51 +248,30 @@ struct AddBookFlowView: View {
     }
     
     private var ratingStep: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            Text("Rating: \(Theme.formatRatingOutOfTen(rating)) / 10")
-                .font(Theme.title2())
-                .foregroundStyle(Theme.textPrimary)
-            Slider(value: $rating, in: 1...10, step: 0.1)
-                .tint(Theme.accent)
-                .padding(.horizontal)
-            Text("Review (optional)")
-                .font(Theme.headline())
-                .foregroundStyle(Theme.textSecondary)
-            TextEditor(text: $reviewText)
-                .font(Theme.body())
-                .foregroundStyle(Theme.textPrimary)
-                .scrollContentBackground(.hidden)
-                .frame(minHeight: 100)
-                .padding()
-                .background(Theme.surface)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
-                .padding(.horizontal)
-            Button("Save") { saveAndDismiss() }
-                .font(Theme.headline())
-                .foregroundStyle(Theme.background)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(Theme.accent)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
-                .padding(.horizontal)
-                .disabled(isSaving)
-            if let err = saveError {
-                Text(err).font(Theme.caption()).foregroundStyle(.red).padding(.horizontal)
-            }
-        }
-        .padding(.top, 24)
+        AddBookRatingStepView(
+            rating: $rating,
+            isSaving: isSaving,
+            saveError: saveError,
+            onSave: { _, review in saveAndDismiss(ratingStepReview: review) }
+        )
     }
-    
-    private func saveAndDismiss() {
+
+    private func saveAndDismiss(ratingStepReview: String? = nil) {
         guard let book = selectedBook, let uid = authService.firebaseUser?.uid else { dismiss(); return }
         let now = Date()
         let tempId = UUID()
         let ratingValue = status == .read ? Theme.normalizeRatingOutOfTen(rating) : nil
-        let review = reviewText.isEmpty ? nil : reviewText
+        let review: String?
+        if status == .read {
+            let trimmed = ratingStepReview?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            review = trimmed.isEmpty ? nil : trimmed
+        } else {
+            review = nil
+        }
         let dateFinished = status == .read ? now : nil
         let dateStarted = status == .currentlyReading ? now : nil
 
-        var optimistic = UserBook(
+        let optimistic = UserBook(
             id: tempId,
             userId: uid,
             bookId: book.id,
@@ -346,5 +324,53 @@ struct AddBookFlowView: View {
                 }
             }
         }
+    }
+}
+
+private struct AddBookRatingStepView: View {
+    @Binding var rating: Double
+    let isSaving: Bool
+    let saveError: String?
+    let onSave: (Double, String?) -> Void
+
+    @State private var reviewText = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            Text("Rating: \(Theme.formatRatingOutOfTen(rating)) / 10")
+                .font(Theme.title2())
+                .foregroundStyle(Theme.textPrimary)
+            Slider(value: $rating, in: 1...10, step: 0.1)
+                .tint(Theme.accent)
+                .padding(.horizontal)
+            Text("Review (optional)")
+                .font(Theme.headline())
+                .foregroundStyle(Theme.textSecondary)
+            TextEditor(text: $reviewText)
+                .font(Theme.body())
+                .foregroundStyle(Theme.textPrimary)
+                .scrollContentBackground(.hidden)
+                .frame(minHeight: 100)
+                .padding()
+                .background(Theme.surface)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+                .padding(.horizontal)
+            Button("Save") {
+                let t = reviewText.trimmingCharacters(in: .whitespacesAndNewlines)
+                onSave(rating, t.isEmpty ? nil : t)
+            }
+            .font(Theme.headline())
+            .foregroundStyle(Theme.background)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .background(Theme.accent)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+            .padding(.horizontal)
+            .disabled(isSaving)
+            if let err = saveError {
+                Text(err).font(Theme.caption()).foregroundStyle(.red).padding(.horizontal)
+            }
+        }
+        .padding(.top, 24)
     }
 }

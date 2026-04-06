@@ -64,6 +64,7 @@ final class AuthService: ObservableObject {
             following: [],
             communityMeshApplied: false,
             hasSeenFollowCommunityModal: false,
+            hasSeenPushNotificationPrompt: true,
             totalBooksRead: 0,
             totalPagesRead: 0,
             readingGoal: nil
@@ -117,6 +118,13 @@ final class AuthService: ObservableObject {
             throw NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Not signed in."])
         }
         try await userRepo.completeProfileSetup(uid: uid, firstName: firstName, lastName: lastName, handle: handle, readingGoal: readingGoal)
+        await refreshAppUser()
+    }
+
+    /// Marks the post-onboarding push prompt as completed (`hasSeenPushNotificationPrompt` in Firestore).
+    func markPushNotificationPromptSeen() async throws {
+        guard let uid = firebaseUser?.uid else { return }
+        try await userRepo.markHasSeenPushNotificationPrompt(uid: uid)
         await refreshAppUser()
     }
 
