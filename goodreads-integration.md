@@ -30,7 +30,7 @@ Ideal flow
 	2.	Show a 2-screen explainer:
 	•	“You’ll sign in to Goodreads”
 	•	“You’ll generate your library export”
-	•	“Spynes will capture the CSV and import it automatically”
+	•	“Spines will capture the CSV and import it automatically”
 	3.	Open Goodreads export flow in an in-app browser surface
 	4.	User logs in
 	5.	User taps Export Library
@@ -86,7 +86,7 @@ Use this if:
 	•	you want fewer auth headaches
 	•	you can accept a slightly less magical import
 
-Option C: external Safari + “Open in Spynes” fallback
+Option C: external Safari + “Open in Spines” fallback
 
 Least elegant, but very robust.
 
@@ -94,7 +94,7 @@ Flow:
 	•	launch Goodreads export page in Safari
 	•	instruct user to tap export
 	•	user downloads CSV
-	•	share to Spynes or pick file in Spynes
+	•	share to Spines or pick file in Spines
 
 This is the fallback, not the primary.
 
@@ -115,7 +115,7 @@ Path 2, fallback
 
 “Already downloaded your CSV?”
 	•	native file picker via UIDocumentPickerViewController
-	•	or share extension / “Open in Spynes”
+	•	or share extension / “Open in Spines”
 
 That gives you the slick path and a recovery path.
 
@@ -181,7 +181,7 @@ If you rely on AI too early, you’ll create inconsistent imports and ugly trust
 
 Your data model decisions matter more than the parser
 
-Before building, decide how Goodreads concepts map to Spynes.
+Before building, decide how Goodreads concepts map to Spines.
 
 Must-decide mappings
 	•	exclusive shelf -> your canonical status?
@@ -235,7 +235,7 @@ Toggles:
 	•	Import shelves as tags
 	•	Import ratings
 	•	Import reviews
-	•	Skip books already in Spynes
+	•	Skip books already in Spines
 	•	Merge duplicates automatically
 
 4. Save the raw file and parse result
@@ -310,7 +310,7 @@ V1.5
 
 V2
 	•	share extension from Files/Safari
-	•	“Open in Spynes”
+	•	“Open in Spines”
 	•	maybe broader import sources beyond Goodreads
 
 My actual recommendation
@@ -346,7 +346,7 @@ Once you send the screenshots, I can help you design:
 
 - **App Group** (`group.com.wellread.app`): Must be enabled for both the main app and the Share Extension in [Apple Developer → Identifiers](https://developer.apple.com/account/resources/identifiers/list). If the extension’s container is null, UserDefaults/app-group file won’t be shared.
 - **Keychain Sharing**: Used as a fallback to pass the shared URL from the Share Extension to the main app when the App Group container is unavailable. Both targets have the same keychain access group (`$(AppIdentifierPrefix)com.wellread.app`) in their entitlements. If you archive or run on a real device and see a keychain entitlement error, add **Keychain Sharing** for both App IDs in the developer portal and regenerate provisioning profiles.
-- Share extensions cannot open the containing app via `extensionContext?.open(url)`; the main app consumes the pending URL when it becomes active (e.g. user switches to Spynes).
+- Share extensions cannot open the containing app via `extensionContext?.open(url)`; the main app consumes the pending URL when it becomes active (e.g. user switches to Spines).
 
 ## Book covers (Open Library + Google)
 

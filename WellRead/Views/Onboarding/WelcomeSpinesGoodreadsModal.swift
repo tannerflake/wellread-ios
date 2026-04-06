@@ -1,5 +1,5 @@
 //
-//  WelcomeSpynesGoodreadsModal.swift
+//  WelcomeSpinesGoodreadsModal.swift
 //  WellRead
 //
 //  Shown once after the user completes name + handle onboarding.
@@ -7,9 +7,10 @@
 
 import SwiftUI
 
-enum WelcomeSpynesGoodreadsPromptStorage {
-    private static let keyPrefix = "welcomeSpynesGoodreadsPromptShown_"
-    private static let legacyKeyPrefix = "welcomeSpinesGoodreadsPromptShown_"
+enum WelcomeSpinesGoodreadsPromptStorage {
+    private static let keyPrefix = "welcomeSpinesGoodreadsPromptShown_"
+    /// Prior branding key — still honored so existing users are not re-prompted.
+    private static let legacyKeyPrefix = "welcomeSpynesGoodreadsPromptShown_"
 
     static func hasShown(for uid: String) -> Bool {
         if UserDefaults.standard.bool(forKey: keyPrefix + uid) { return true }
@@ -18,16 +19,17 @@ enum WelcomeSpynesGoodreadsPromptStorage {
 
     static func markShown(for uid: String) {
         UserDefaults.standard.set(true, forKey: keyPrefix + uid)
+        UserDefaults.standard.removeObject(forKey: legacyKeyPrefix + uid)
     }
 }
 
-struct WelcomeSpynesGoodreadsModal: View {
+struct WelcomeSpinesGoodreadsModal: View {
     let onLetsGo: () -> Void
     let onLater: () -> Void
 
     var body: some View {
         VStack(spacing: 24) {
-            Text("Welcome to Spynes")
+            Text("Welcome to Spines")
                 .font(Theme.largeTitle())
                 .foregroundStyle(Theme.textPrimary)
                 .multilineTextAlignment(.center)

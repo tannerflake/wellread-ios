@@ -181,7 +181,7 @@ export const onFriendReviewPosted = onDocumentCreated(
     const titleLine = `${first} gave ${bookPart} a ${rating}`;
 
     const title = titleLine;
-    const body = teaser ? teaser : "Open Spynes to read the full review.";
+    const body = teaser ? teaser : "Open Spines to read the full review.";
 
     const recipients = await recipientUidsWhoFollow(authorId);
     const payload = {

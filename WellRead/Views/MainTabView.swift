@@ -77,10 +77,10 @@ struct MainTabView: View {
         }
         .sheet(isPresented: $showWelcomeGoodreadsModal, onDismiss: {
             if let uid = authService.firebaseUser?.uid {
-                WelcomeSpynesGoodreadsPromptStorage.markShown(for: uid)
+                WelcomeSpinesGoodreadsPromptStorage.markShown(for: uid)
             }
         }) {
-            WelcomeSpynesGoodreadsModal(
+            WelcomeSpinesGoodreadsModal(
                 onLetsGo: {
                     showWelcomeGoodreadsModal = false
                     selectedTab = .profile
@@ -225,7 +225,7 @@ struct MainTabView: View {
     private func scheduleWelcomeGoodreadsModalIfNeeded() {
         guard authService.appUser?.needsProfileCompletion == false,
               let uid = authService.firebaseUser?.uid,
-              !WelcomeSpynesGoodreadsPromptStorage.hasShown(for: uid) else { return }
+              !WelcomeSpinesGoodreadsPromptStorage.hasShown(for: uid) else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
             showWelcomeGoodreadsModal = true
         }

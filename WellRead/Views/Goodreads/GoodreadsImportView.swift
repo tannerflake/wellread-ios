@@ -166,7 +166,7 @@ struct GoodreadsImportView: View {
                             }
                             GridRow {
                                 goodreadsStepNumberBadge(2)
-                                goodreadsStepBody("Come back to Spynes and tap \"Allow Paste\".")
+                                goodreadsStepBody("Come back to Spines and tap \"Allow Paste\".")
                             }
                             GridRow {
                                 goodreadsStepNumberBadge(3)
@@ -316,7 +316,7 @@ struct GoodreadsImportView: View {
 
         return ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                Text("Import \(toImport.count) books into Spynes?")
+                Text("Import \(toImport.count) books into Spines?")
                     .font(Theme.title2())
                     .foregroundStyle(Theme.textPrimary)
                 summarySection(matched: toImport.count, unmatched: preview.unmatched.count, duplicates: duplicateCount)

@@ -12,7 +12,7 @@ struct FeedCommunityWelcomeModal: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Text("Welcome to Spynes")
+            Text("Welcome to Spines")
                 .font(Theme.largeTitle())
                 .foregroundStyle(Theme.textPrimary)
                 .multilineTextAlignment(.center)
@@ -23,7 +23,7 @@ struct FeedCommunityWelcomeModal: View {
                 VStack(alignment: .leading, spacing: 14) {
                     paragraph("I'm excited to have you here early.")
                     paragraph("I'm focused on building a strong community of thoughtful, curious people.")
-                    paragraph("To foster this, early users automatically follow all other Spynes users.")
+                    paragraph("To foster this, early users automatically follow all other Spines users.")
                     paragraph("Why? Because I think you'll like them and what they have to say.")
                     paragraph("You can unfollow anyone at any time from their profile, and they won't be notified.")
                     paragraph("There's nothing more I love in this life than the free sharing of new thoughts and ideas.")

@@ -26,9 +26,9 @@ enum GoodreadsImportCopy {
 
     Reliable way to import:
     1) On Goodreads (in the app or at goodreads.com/review/import), download your library CSV and save it to Files.
-    2) In the Files app, tap the CSV file → Share → Spynes.
+    2) In the Files app, tap the CSV file → Share → Spines.
 
-    Or open the Goodreads export page in Safari, download the CSV, then share the file to Spynes.
+    Or open the Goodreads export page in Safari, download the CSV, then share the file to Spines.
     """
 }
 

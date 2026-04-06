@@ -1,8 +1,8 @@
-# Spynes Push Notifications: Product Spec
+# Spines Push Notifications: Product Spec
 
 ## Purpose
 
-This document defines the first set of meaningful push notifications for Spynes. The goal is to drive re-engagement around social activity that already feels valuable inside the product, especially activity tied to reviews, discovery, and conversation.
+This document defines the first set of meaningful push notifications for Spines. The goal is to drive re-engagement around social activity that already feels valuable inside the product, especially activity tied to reviews, discovery, and conversation.
 
 These notifications should feel personal, social, and curiosity-inducing without feeling spammy. The implementation details can be chosen by the coding agent based on the existing architecture, but the intended product behavior should stay consistent with the guidance below.
 
@@ -370,7 +370,7 @@ This spec is intentionally product-focused, not architecture-prescriptive.
 
 ## Bottom Line
 
-The first push notification system for Spynes should start with social events that are obviously meaningful:
+The first push notification system for Spines should start with social events that are obviously meaningful:
 
 - a friend posts a review
 - someone likes your review

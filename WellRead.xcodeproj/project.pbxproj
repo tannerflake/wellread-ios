@@ -9,7 +9,6 @@
 /* Begin PBXBuildFile section */
 		8B7B90EC2F54C77000B7FB0C /* Secrets.plist in Resources */ = {isa = PBXBuildFile; fileRef = 8B7B90EB2F54C72300B7FB0C /* Secrets.plist */; };
 		8B8FC0012F4E9AEF0068B4B7 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = 8BE1FAC52F4E8A70006ED44D /* FirebaseMessaging */; };
-		8BB4CBCA2F4E9AEF0068B4B6 /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = 8BE1FAC72F4E8A70006ED44D /* FirebaseFunctions */; };
 		8BB2986E2F671AAA007008DC /* WellReadShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 8BB298642F671AAA007008DC /* WellReadShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		8BB4CBC02F4E9AEF0068B4B6 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 8BE1FABE2F4E8A70006ED44D /* FirebaseCore */; };
 		8BB4CBC32F4E9F2B0068B4B6 /* WellRead Firebase Service Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 8BB4CBC22F4E9F2B0068B4B6 /* WellRead Firebase Service Info.plist */; };
@@ -17,6 +16,7 @@
 		8BB4CBC72F4E9AEF0068B4B6 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 8BE1FAC32F4E8A70006ED44D /* FirebaseFirestore */; };
 		8BB4CBC82F4E8B00006ED44D /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 8BE1FAC22F4E8B00006ED44D /* GoogleSignIn */; };
 		8BB4CBC92F4E9AEF0068B4B6 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = 8BE1FAC42F4E8A70006ED44D /* FirebaseStorage */; };
+		8BB4CBCA2F4E9AEF0068B4B6 /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = 8BE1FAC72F4E8A70006ED44D /* FirebaseFunctions */; };
 		B0010001 /* WellReadApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010001 /* WellReadApp.swift */; };
 		B0010002 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010002 /* RootView.swift */; };
 		B0010003 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010003 /* AppState.swift */; };
@@ -71,7 +71,7 @@
 		B001003A /* UserLibraryDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001003A /* UserLibraryDetailView.swift */; };
 		B001003B /* QueueBookDragCover.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001003B /* QueueBookDragCover.swift */; };
 		B001003C /* LibraryReadQueueSegmentShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001003C /* LibraryReadQueueSegmentShared.swift */; };
-		B001003D /* WelcomeSpynesGoodreadsModal.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001003D /* WelcomeSpynesGoodreadsModal.swift */; };
+		B001003D /* WelcomeSpinesGoodreadsModal.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001003D /* WelcomeSpinesGoodreadsModal.swift */; };
 		B001003E /* GoodreadsImportTutorialEmbed.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001003E /* GoodreadsImportTutorialEmbed.swift */; };
 		B001003F /* LibraryDragHaptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001003F /* LibraryDragHaptics.swift */; };
 		B0010040 /* ProfileImageCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010040 /* ProfileImageCache.swift */; };
@@ -172,7 +172,7 @@
 		F001003A /* UserLibraryDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserLibraryDetailView.swift; sourceTree = "<group>"; };
 		F001003B /* QueueBookDragCover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueueBookDragCover.swift; sourceTree = "<group>"; };
 		F001003C /* LibraryReadQueueSegmentShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryReadQueueSegmentShared.swift; sourceTree = "<group>"; };
-		F001003D /* WelcomeSpynesGoodreadsModal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeSpynesGoodreadsModal.swift; sourceTree = "<group>"; };
+		F001003D /* WelcomeSpinesGoodreadsModal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeSpinesGoodreadsModal.swift; sourceTree = "<group>"; };
 		F001003E /* GoodreadsImportTutorialEmbed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoodreadsImportTutorialEmbed.swift; sourceTree = "<group>"; };
 		F001003F /* LibraryDragHaptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryDragHaptics.swift; sourceTree = "<group>"; };
 		F0010040 /* ProfileImageCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileImageCache.swift; sourceTree = "<group>"; };
@@ -355,7 +355,7 @@
 			children = (
 				F001000C /* OnboardingFlowView.swift */,
 				F0010037 /* ProfileCompletionView.swift */,
-				F001003D /* WelcomeSpynesGoodreadsModal.swift */,
+				F001003D /* WelcomeSpinesGoodreadsModal.swift */,
 				F0010049 /* PushNotificationPromptView.swift */,
 				F0010051 /* PushNotificationNudgeModal.swift */,
 				F0010029 /* ReviewerLoginView.swift */,
@@ -592,7 +592,7 @@
 				B001000B /* MainTabView.swift in Sources */,
 				B001000C /* OnboardingFlowView.swift in Sources */,
 				B0010037 /* ProfileCompletionView.swift in Sources */,
-				B001003D /* WelcomeSpynesGoodreadsModal.swift in Sources */,
+				B001003D /* WelcomeSpinesGoodreadsModal.swift in Sources */,
 				B0010029 /* ReviewerLoginView.swift in Sources */,
 				B001000D /* AddBookFlowView.swift in Sources */,
 				B001000E /* BookSearchRow.swift in Sources */,
@@ -702,7 +702,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = WellReadShareExtension/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Spynes;
+				INFOPLIST_KEY_CFBundleDisplayName = Spines;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -769,7 +769,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = WellReadShareExtension/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Spynes;
+				INFOPLIST_KEY_CFBundleDisplayName = Spines;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -845,11 +845,11 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = WellRead/WellRead.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = T32N9X64JM;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = WellRead/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Spynes;
+				INFOPLIST_KEY_CFBundleDisplayName = Spines;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.books";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -873,11 +873,11 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = WellRead/WellRead.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = T32N9X64JM;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = WellRead/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Spynes;
+				INFOPLIST_KEY_CFBundleDisplayName = Spines;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.books";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				LD_RUNPATH_SEARCH_PATHS = (

@@ -146,7 +146,7 @@ struct WellReadApp: App {
                     handleGoodreadsImportFromShare()
                 }
                 .onChange(of: scenePhase) { _, newValue in
-                    // Share extensions cannot open the containing app; when user manually switches to Spynes after sharing, we process the pending URL here.
+                    // Share extensions cannot open the containing app; when user manually switches to Spines after sharing, we process the pending URL here.
                     if newValue == .active {
                         Task { @MainActor in
                             try? await Task.sleep(nanoseconds: 300_000_000) // 0.3s so UI is ready
@@ -173,7 +173,7 @@ struct WellReadApp: App {
         }
     }
 
-    /// When the app is opened with a file URL (e.g. user tapped Spynes in share sheet and system opened app with the file).
+    /// When the app is opened with a file URL (e.g. user tapped Spines in share sheet and system opened app with the file).
     private func handleFileURLFromShare(_ url: URL) {
         guard url.isFileURL else { return }
         let accessed = url.startAccessingSecurityScopedResource()

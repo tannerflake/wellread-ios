@@ -14,7 +14,7 @@ private enum OtherReadersExclusion {
     /// `displayName` match (trimmed, case-insensitive), e.g. default Apple review accounts.
     static let displayNamesLowercased: Set<String> = ["john apple"]
     /// Firestore `email` field (synced from Firebase Auth on sign-in).
-    static let emailsLowercased: Set<String> = ["review@spynesapp.com"]
+    static let emailsLowercased: Set<String> = ["review@spynesapp.com", "review@spinesapp.com"]
 
     static func shouldExclude(firestoreData: [String: Any], user: User) -> Bool {
         let dn = user.displayName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
