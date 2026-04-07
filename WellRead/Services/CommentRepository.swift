@@ -18,8 +18,19 @@ final class CommentRepository {
         db.collection(comments)
             .whereField("postId", isEqualTo: postId)
             .order(by: "createdAt", descending: false)
-            .addSnapshotListener { [weak self] snapshot, _ in
-                guard let self = self, let snapshot = snapshot else { return }
+            .addSnapshotListener { [weak self] snapshot, error in
+                guard let self = self else { return }
+                if let error = error {
+                    #if DEBUG
+                    print("CommentRepository.listenComments: \(error.localizedDescription)")
+                    #endif
+                    onUpdate([])
+                    return
+                }
+                guard let snapshot = snapshot else {
+                    onUpdate([])
+                    return
+                }
                 let list = snapshot.documents.compactMap { doc -> Comment? in
                     self.comment(from: doc.data(), docId: doc.documentID)
                 }

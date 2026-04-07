@@ -181,17 +181,12 @@ struct EditReadReviewSheet: View {
                     .padding(20)
                 }
                 .scrollDismissesKeyboard(.interactively)
-                .onChange(of: thoughts) { _, _ in
-                    guard isThoughtsFocused else { return }
-                    withAnimation(.easeOut(duration: 0.15)) {
-                        proxy.scrollTo("editReviewThoughts", anchor: .bottom)
-                    }
-                }
+                /// Scroll once when the field is focused — not on every keystroke (`onChange(thoughts)` caused lag and ScrollView index errors).
                 .onChange(of: isThoughtsFocused) { _, focused in
                     if focused {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                             withAnimation(.easeOut(duration: 0.2)) {
-                                proxy.scrollTo("editReviewThoughts", anchor: .bottom)
+                                proxy.scrollTo("editReviewThoughts", anchor: .center)
                             }
                         }
                     }

@@ -6,14 +6,12 @@
 //
 
 import SwiftUI
-import UIKit
 
 struct MarkAsReadInlineOverlay: View {
     @Binding var isPresented: Bool
     let onConfirm: (Date, Double?, Bool, String?) -> Void
 
     @FocusState private var isThoughtsFocused: Bool
-    @State private var keyboardBottomInset: CGFloat = 0
     @State private var markAsReadDate = Date()
     @State private var markAsReadSliderValue: Double = 5.5
     @State private var hasExplicitMarkReadRating = false
@@ -50,24 +48,19 @@ struct MarkAsReadInlineOverlay: View {
                             }
                             .scrollDismissesKeyboard(.interactively)
                             .frame(maxHeight: min(UIScreen.main.bounds.height * 0.78, 640))
-                            .onChange(of: markAsReadThoughts) { _, _ in
-                                guard isThoughtsFocused else { return }
-                                withAnimation(.easeOut(duration: 0.15)) {
-                                    proxy.scrollTo("inlineThoughts", anchor: .bottom)
-                                }
-                            }
+                            /// Scroll once on focus only — per-keystroke scroll caused lag and “variant selector cell index” errors.
                             .onChange(of: isThoughtsFocused) { _, focused in
                                 if focused {
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                                         withAnimation(.easeOut(duration: 0.2)) {
-                                            proxy.scrollTo("inlineThoughts", anchor: .bottom)
+                                            proxy.scrollTo("inlineThoughts", anchor: .center)
                                         }
                                     }
                                 }
                             }
                         }
                         .padding(.horizontal, 20)
-                        .padding(.bottom, keyboardBottomInset > 1 ? keyboardBottomInset + 8 : 100)
+                        .padding(.bottom, 12)
                         .transition(
                             .asymmetric(
                                 insertion: .opacity.combined(with: .move(edge: .bottom)).combined(with: .scale(scale: 0.92)),
@@ -79,23 +72,12 @@ struct MarkAsReadInlineOverlay: View {
             }
         }
         .onChange(of: isPresented) { _, new in
-            guard new else {
-                keyboardBottomInset = 0
-                return
-            }
+            guard new else { return }
             markAsReadDate = Date()
             markAsReadSliderValue = 5.5
             hasExplicitMarkReadRating = false
             markAsReadPostToFeed = true
             markAsReadThoughts = ""
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
-            guard let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
-            let screenH = UIScreen.main.bounds.height
-            keyboardBottomInset = max(0, screenH - frame.minY)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-            keyboardBottomInset = 0
         }
     }
 

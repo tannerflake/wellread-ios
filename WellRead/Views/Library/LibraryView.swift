@@ -690,17 +690,11 @@ private struct MarkAsReadQueueSheet: View {
                     .padding(.bottom, 24)
                 }
                 .scrollDismissesKeyboard(.interactively)
-                .onChange(of: markAsReadThoughts) { _, _ in
-                    guard isThoughtsFocused else { return }
-                    withAnimation(.easeOut(duration: 0.15)) {
-                        proxy.scrollTo("markReadThoughtsBlock", anchor: .bottom)
-                    }
-                }
                 .onChange(of: isThoughtsFocused) { _, focused in
                     if focused {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                             withAnimation(.easeOut(duration: 0.2)) {
-                                proxy.scrollTo("markReadThoughtsBlock", anchor: .bottom)
+                                proxy.scrollTo("markReadThoughtsBlock", anchor: .center)
                             }
                         }
                     }

@@ -43,7 +43,6 @@ struct MainTabView: View {
             tabBar
         }
         .environment(\.mainTabBarOverlapExtraHeight, Theme.mainTabBarChromeHeight)
-        .ignoresSafeArea(.keyboard)
         .sheet(isPresented: $showAddBook) {
             AddBookFlowView()
                 .environment(\.mainTabBarOverlapExtraHeight, 0)
