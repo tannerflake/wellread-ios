@@ -88,6 +88,8 @@ final class AuthService: ObservableObject {
             return first ?? nil
         }
         self.appUser = fromFirestore ?? fallbackUser
+        /// FCM may have delivered a registration token before `Auth` had a uid; `persistFCMTokenToFirestore` skipped. Re-fetch and save now.
+        PushNotificationService.syncFCMTokenToFirestoreIfSignedIn()
     }
 
     /// Refreshes appUser from Firestore (e.g. after profile photo upload). Call from MainActor.

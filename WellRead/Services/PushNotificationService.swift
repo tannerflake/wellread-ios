@@ -46,6 +46,25 @@ enum PushNotificationService {
             guard granted else { return }
             DispatchQueue.main.async {
                 UIApplication.shared.registerForRemoteNotifications()
+                /// APNs/FCM can produce a token shortly after registration; delegate may have fired before auth was ready — sync once permission is granted.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    syncFCMTokenToFirestoreIfSignedIn()
+                }
+            }
+        }
+    }
+
+    /// Fetches the current FCM token and writes `users/{uid}/fcmTokens/{hash}`. Call after sign-in and when fixing “skipped (not signed in)” races.
+    static func syncFCMTokenToFirestoreIfSignedIn() {
+        guard Auth.auth().currentUser != nil else { return }
+        Task {
+            do {
+                let token = try await Messaging.messaging().token()
+                persistFCMTokenToFirestore(token)
+            } catch {
+                #if DEBUG
+                print("syncFCMTokenToFirestoreIfSignedIn: \(error.localizedDescription)")
+                #endif
             }
         }
     }

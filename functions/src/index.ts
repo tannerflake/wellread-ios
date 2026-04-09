@@ -3,6 +3,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
+import * as logger from "firebase-functions/logger";
 import type { DocumentData, Firestore } from "firebase-admin/firestore";
 
 const app = getApps().length ? getApps()[0]! : initializeApp();
@@ -58,20 +59,42 @@ async function sendToUser(
   data: Record<string, string>
 ): Promise<void> {
   const tokens = await tokensForUser(uid);
-  if (!tokens.length) return;
+  if (!tokens.length) {
+    logger.warn("push skipped: no FCM tokens for user", { uid });
+    return;
+  }
+  // iOS often drops or mishandles alerts with an empty body; keep a short fallback.
+  const bodyText = body.trim().length > 0 ? body.trim() : "Tap to open Spines";
   const messages = tokens.map((token) => ({
     token,
-    notification: { title, body },
+    notification: { title, body: bodyText },
     data,
     apns: {
       payload: {
         aps: {
+          alert: {
+            title,
+            body: bodyText,
+          },
           sound: "default",
         },
       },
     },
   }));
-  await messaging.sendEach(messages);
+  const resp = await messaging.sendEach(messages);
+  if (resp.failureCount > 0) {
+    resp.responses.forEach((r, i) => {
+      if (!r.success) {
+        logger.error("FCM send failed", {
+          uid,
+          tokenPrefix: tokens[i]?.slice(0, 12),
+          error: r.error?.message,
+          code: r.error?.code,
+        });
+      }
+    });
+  }
+  logger.info("push sendToUser", { uid, tokenCount: tokens.length, successCount: resp.successCount, failureCount: resp.failureCount });
 }
 
 /** Fixed post id for diagnostics-only pushes (deep link may not resolve to a real post). */
@@ -220,7 +243,7 @@ export const onPostLiked = onDocumentCreated(
       ? `${first} liked your review of ${book}`
       : `${first} liked your review`;
 
-    await sendToUser(authorId, title, "", {
+    await sendToUser(authorId, title, "Tap to open Spines", {
       type: "review_liked",
       postId,
     });

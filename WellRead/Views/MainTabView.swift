@@ -134,6 +134,9 @@ struct MainTabView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    PushNotificationService.syncFCMTokenToFirestoreIfSignedIn()
+                }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                     considerShowingPushNudgeModal()
                 }
