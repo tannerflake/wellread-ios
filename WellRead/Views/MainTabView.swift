@@ -115,6 +115,10 @@ struct MainTabView: View {
             .presentationDragIndicator(.visible)
             .interactiveDismissDisabled(true)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .wellreadOpenFeed)) { _ in
+            selectedTab = .feed
+            appState.deepLinkFeedPostId = nil
+        }
         .onReceive(NotificationCenter.default.publisher(for: .wellreadOpenFeedPost)) { note in
             if let id = note.userInfo?["postId"] as? String {
                 selectedTab = .feed

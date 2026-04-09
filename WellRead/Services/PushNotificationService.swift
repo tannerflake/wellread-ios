@@ -29,6 +29,14 @@ enum WellreadDeepLink {
         }
         return nil
     }
+
+    /// `data.type` from FCM (e.g. `friend_review_posted`); used to tune tap behavior.
+    static func pushNotificationType(from userInfo: [AnyHashable: Any]) -> String? {
+        for key in ["type", "notification_type"] {
+            if let s = userInfo[AnyHashable(key)] as? String, !s.isEmpty { return s }
+        }
+        return nil
+    }
 }
 
 enum PushNotificationService {
@@ -123,6 +131,12 @@ enum PushNotificationService {
     }
 
     static func handleRemoteNotificationTap(userInfo: [AnyHashable: Any]) {
+        let type = WellreadDeepLink.pushNotificationType(from: userInfo)
+        /// Friend-review pushes should land on the feed only, not open the comment thread.
+        if type == "friend_review_posted" {
+            NotificationCenter.default.post(name: .wellreadOpenFeed, object: nil)
+            return
+        }
         guard let postId = WellreadDeepLink.postId(fromNotificationUserInfo: userInfo) else { return }
         NotificationCenter.default.post(
             name: .wellreadOpenFeedPost,
@@ -133,5 +147,7 @@ enum PushNotificationService {
 }
 
 extension Notification.Name {
+    /// Opens the Feed tab without scrolling to a post or opening comments.
+    static let wellreadOpenFeed = Notification.Name("wellreadOpenFeed")
     static let wellreadOpenFeedPost = Notification.Name("wellreadOpenFeedPost")
 }
