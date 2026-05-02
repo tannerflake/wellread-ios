@@ -109,4 +109,35 @@ final class WellReadTagCatalog {
         }
         return out
     }
+
+    /// Category order for onboarding chips: broad (Format, Genre, …) first, then any extra CSV categories.
+    static let onboardingCategoryPriority: [String] = [
+        "Format",
+        "Genre",
+        "Nonfiction Topics",
+        "Story Type",
+        "Tone / Vibe",
+        "Setting / World",
+        "Character / Dynamics",
+        "Pacing / Style",
+        "Themes",
+        "Reading Experience",
+    ]
+
+    /// Sections for multi-select onboarding (same tags as book profiles, grouped for scanning).
+    func onboardingSectionsOrdered() -> [(category: String, tags: [String])] {
+        var seenCategories = Set<String>()
+        var sections: [(category: String, tags: [String])] = []
+        for cat in Self.onboardingCategoryPriority {
+            guard let list = tagsByCategory[cat], !list.isEmpty else { continue }
+            sections.append((cat, list))
+            seenCategories.insert(cat)
+        }
+        let remaining = tagsByCategory.keys.filter { !seenCategories.contains($0) }.sorted()
+        for cat in remaining {
+            guard let list = tagsByCategory[cat], !list.isEmpty else { continue }
+            sections.append((cat, list))
+        }
+        return sections
+    }
 }

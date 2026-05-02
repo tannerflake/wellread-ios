@@ -67,7 +67,8 @@ final class AuthService: ObservableObject {
             hasSeenPushNotificationPrompt: true,
             totalBooksRead: 0,
             totalPagesRead: 0,
-            readingGoal: nil
+            readingGoal: nil,
+            readingInterestTags: []
         )
         let fromFirestore: User? = await withTaskGroup(of: User?.self) { group in
             group.addTask {
@@ -115,11 +116,11 @@ final class AuthService: ObservableObject {
     }
 
     /// Saves first name, last name, handle, and optional yearly book count after SSO (or from Edit profile); marks profile setup complete.
-    func completeProfileSetup(firstName: String, lastName: String, handle: String, readingGoal: Int?) async throws {
+    func completeProfileSetup(firstName: String, lastName: String, handle: String, readingGoal: Int?, readingInterestTags: [String]? = nil, enforceMinimumReadingInterestTags: Bool = true) async throws {
         guard let uid = firebaseUser?.uid else {
             throw NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Not signed in."])
         }
-        try await userRepo.completeProfileSetup(uid: uid, firstName: firstName, lastName: lastName, handle: handle, readingGoal: readingGoal)
+        try await userRepo.completeProfileSetup(uid: uid, firstName: firstName, lastName: lastName, handle: handle, readingGoal: readingGoal, readingInterestTags: readingInterestTags, enforceMinimumReadingInterestTags: enforceMinimumReadingInterestTags)
         await refreshAppUser()
     }
 

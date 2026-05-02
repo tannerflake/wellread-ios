@@ -14,8 +14,6 @@ struct MainTabView: View {
     @State private var selectedTab: Tab = .profile
     @State private var showAddBook = false
     @State private var showCompleteProfileSheet = false
-    /// After the user dismisses the sheet without finishing, don't nag until the next app launch.
-    @State private var userDismissedIncompleteProfileThisSession = false
     @State private var showWelcomeGoodreadsModal = false
     @State private var showGoodreadsImportFromWelcome = false
     @State private var showPushNotificationPromptSheet = false
@@ -42,28 +40,27 @@ struct MainTabView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             tabBar
         }
-        .environment(\.mainTabBarOverlapExtraHeight, Theme.mainTabBarChromeHeight)
+        // BookProfileView reads `mainTabBarOverlapExtraHeight`; keep 0 here—`.safeAreaInset` already reserves space above the tab bar (extra padding duplicated the gap on Discover).
+        .environment(\.mainTabBarOverlapExtraHeight, 0)
         .sheet(isPresented: $showAddBook) {
             AddBookFlowView()
                 .environment(\.mainTabBarOverlapExtraHeight, 0)
         }
         .sheet(isPresented: $showCompleteProfileSheet, onDismiss: {
-            if authService.appUser?.needsProfileCompletion == true {
-                userDismissedIncompleteProfileThisSession = true
-            }
+            schedulePostProfileOnboardingFlow()
         }) {
             ProfileCompletionView(
                 title: "Complete your profile",
-                subtitle: "Add your first name, last name, handle, and your reading goal for this year so friends can find you.",
+                subtitle: "Add your photo, name, handle, and reading goal—then choose what you love to read.",
                 onDismiss: {
                     showCompleteProfileSheet = false
-                    schedulePostProfileOnboardingFlow()
                 }
             )
             .environmentObject(authService)
             .environmentObject(appState)
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
+            .interactiveDismissDisabled(true)
         }
         .sheet(isPresented: $showPushNotificationPromptSheet) {
             PushNotificationPromptView(
@@ -150,8 +147,6 @@ struct MainTabView: View {
             syncCompleteProfileSheet()
         }
         .onChange(of: authService.firebaseUser?.uid) { _, _ in
-            // New login (e.g. reviewer email path): allow the sheet again after dismiss.
-            userDismissedIncompleteProfileThisSession = false
             syncCompleteProfileSheet()
         }
         .onChange(of: appState.pendingGoodreadsImportRows) { _, rows in
@@ -167,11 +162,6 @@ struct MainTabView: View {
 
     private func syncCompleteProfileSheet() {
         guard authService.appUser?.needsProfileCompletion == true else {
-            showCompleteProfileSheet = false
-            userDismissedIncompleteProfileThisSession = false
-            return
-        }
-        if userDismissedIncompleteProfileThisSession {
             showCompleteProfileSheet = false
             return
         }

@@ -13,7 +13,7 @@ struct OnboardingFlowView: View {
     @EnvironmentObject var appState: AppState
     @State private var step: Step = .welcome
     @State private var username = ""
-    @State private var readingGoal = "24"
+    @State private var readingGoal = ""
     @State private var showReviewerLogin = false
 
     enum Step {

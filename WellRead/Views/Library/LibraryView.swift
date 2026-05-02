@@ -125,7 +125,7 @@ struct ProfileLibraryView: View {
                 ProfileCompletionView(
                     mode: .edit,
                     title: "Edit profile",
-                    subtitle: "Update your name, handle, and how many books you want to read this year.",
+                    subtitle: "Update your name, handle, yearly reading goal, and reading tastes.",
                     onDismiss: {
                         showEditProfile = false
                     }

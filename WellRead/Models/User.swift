@@ -28,7 +28,9 @@ struct User: Identifiable, Codable, Equatable {
     var totalBooksRead: Int
     var totalPagesRead: Int
     var readingGoal: Int?
-    
+    /// Tags the reader chose during onboarding (`Tags.csv` strings); empty for legacy accounts.
+    var readingInterestTags: [String]
+
     static let demo = User(
         id: UUID(),
         username: "tanner",
@@ -45,7 +47,8 @@ struct User: Identifiable, Codable, Equatable {
         hasSeenPushNotificationPrompt: true,
         totalBooksRead: 12,
         totalPagesRead: 3840,
-        readingGoal: 24
+        readingGoal: 24,
+        readingInterestTags: []
     )
 }
 

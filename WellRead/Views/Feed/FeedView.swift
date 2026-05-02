@@ -377,7 +377,7 @@ struct FeedPostRow: View {
                         Text(post.user?.displayName ?? "User")
                             .font(Theme.headline())
                             .foregroundStyle(Theme.textPrimary)
-                        Text(post.createdAt, style: .relative)
+                        Text(Theme.commentRelativeTimestamp(post.createdAt))
                             .font(Theme.caption())
                             .foregroundStyle(Theme.textTertiary)
                     }

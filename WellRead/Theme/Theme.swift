@@ -37,7 +37,7 @@ enum Theme {
     static func callout() -> Font { .system(size: 14, weight: .regular, design: .default) }
     static func caption() -> Font { .system(size: 12, weight: .regular, design: .default) }
 
-    /// Comment row: show seconds only when the comment is under one minute old; otherwise minutes, hours, days, then a short date.
+    /// Comment rows and feed post timestamps: seconds only under one minute; otherwise minutes and hours until 24 h; then whole days/weeks—no hour remainder once a post is a day old.
     static func commentRelativeTimestamp(_ date: Date, now: Date = Date()) -> String {
         let interval = now.timeIntervalSince(date)
         if interval < 0 {
@@ -118,7 +118,7 @@ private struct MainTabBarOverlapKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
-    /// Extra bottom padding for full-screen views (e.g. book profile) above the custom tab bar when inside `MainTabView`.
+    /// Extra bottom padding for views (e.g. book profile) when the tab bar doesn’t inset them. With `.safeAreaInset(tabBar)` on `MainTabView`, use `0`—otherwise you double the gap.
     var mainTabBarOverlapExtraHeight: CGFloat {
         get { self[MainTabBarOverlapKey.self] }
         set { self[MainTabBarOverlapKey.self] = newValue }

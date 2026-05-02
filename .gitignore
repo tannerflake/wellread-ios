@@ -10,3 +10,4 @@ DerivedData/
 
 # macOS
 .DS_Store
+.claude/

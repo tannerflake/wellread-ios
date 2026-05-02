@@ -156,8 +156,9 @@ final class UserRepository {
         }
     }
 
-    /// First-time profile after SSO (or edit profile): name, handle, optional yearly book goal, marks onboarding complete.
-    func completeProfileSetup(uid: String, firstName: String, lastName: String, handle: String, readingGoal: Int?) async throws {
+    /// First-time profile after SSO (or edit profile): name, handle, yearly book goal, marks onboarding complete.
+    /// Pass `readingInterestTags` to set taste tags from `Tags.csv`. When `enforceMinimumReadingInterestTags` is true (default), at least two tags are required—use false when saving from Edit profile so the user can clear or pick fewer.
+    func completeProfileSetup(uid: String, firstName: String, lastName: String, handle: String, readingGoal: Int?, readingInterestTags: [String]? = nil, enforceMinimumReadingInterestTags: Bool = true) async throws {
         let trimmedFirst = firstName.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedLast = lastName.trimmingCharacters(in: .whitespacesAndNewlines)
         let h = handle.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -194,6 +195,14 @@ final class UserRepository {
             profileFields["readingGoal"] = g
         } else {
             profileFields["readingGoal"] = NSNull()
+        }
+
+        if let tags = readingInterestTags {
+            let canonical = WellReadTagCatalog.shared.whitelist(tags)
+            if enforceMinimumReadingInterestTags, canonical.count < 2 {
+                throw NSError(domain: "UserRepository", code: 400, userInfo: [NSLocalizedDescriptionKey: "Choose at least two reading topics."])
+            }
+            profileFields["readingInterestTags"] = canonical
         }
 
         let batch = db.batch()
@@ -439,7 +448,8 @@ final class UserRepository {
             hasSeenPushNotificationPrompt: hasSeenPushNotificationPrompt,
             totalBooksRead: totalBooksRead,
             totalPagesRead: totalPagesRead,
-            readingGoal: readingGoal
+            readingGoal: readingGoal,
+            readingInterestTags: data["readingInterestTags"] as? [String] ?? []
         )
     }
 }

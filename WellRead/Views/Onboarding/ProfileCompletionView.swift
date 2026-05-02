@@ -2,8 +2,8 @@
 //  ProfileCompletionView.swift
 //  WellRead
 //
-//  First name, last name, and handle. Shown as a sheet over the main app until complete;
-//  dismissible, but reappears on each launch until saved.
+//  Post–sign-in onboarding (two steps: profile + reading interests) or Edit profile from Library.
+//  Main-tab onboarding sheet is not swipe-dismissible until requirements are met.
 //
 
 import PhotosUI
@@ -70,8 +70,11 @@ struct ProfileCompletionView: View {
     @State private var firstName = ""
     @State private var lastName = ""
     @State private var handle = ""
-    /// Plain digits; validated as 1…1000 for the calendar year goal.
-    @State private var readingGoalText = "24"
+    /// Plain digits; validated as 1…1000 for the calendar year goal (no default — user must enter).
+    @State private var readingGoalText = ""
+    /// Onboarding only: step 2 is reading-interest tags.
+    @State private var onboardingWizardStep = 1
+    @State private var selectedInterestTags: Set<String> = []
     @State private var errorMessage: String?
     @State private var isSubmitting = false
     @State private var handleAvailable: Bool?
@@ -107,7 +110,11 @@ struct ProfileCompletionView: View {
         self.onDismiss = onDismiss
     }
 
-    var body: some View {
+    private var onboardingInterestSections: [(category: String, tags: [String])] {
+        WellReadTagCatalog.shared.onboardingSectionsOrdered()
+    }
+
+    private var profileBasicsScroll: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -174,36 +181,158 @@ struct ProfileCompletionView: View {
                     }
                 }
 
+                if mode == .edit {
+                    editReadingTastesSection
+                }
+
                 if let errorMessage {
                     Text(errorMessage)
                         .font(Theme.caption())
                         .foregroundStyle(.red.opacity(0.95))
                 }
 
-                Button(action: submit) {
+                Button(action: primaryBasicsAction) {
                     HStack {
                         if isSubmitting {
                             ProgressView()
                                 .tint(Theme.background)
                         } else {
-                            Text("Save")
+                            Text(mode == .onboarding ? "Continue" : "Save")
                                 .font(Theme.headline())
                         }
                     }
                     .foregroundStyle(Theme.background)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
-                    .background(canSubmit && !isSubmitting ? Theme.accent : Theme.accent.opacity(0.45))
+                    .background(canSubmitBasics && !isSubmitting ? Theme.accent : Theme.accent.opacity(0.45))
                     .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
                 }
-                .disabled(!canSubmit || isSubmitting)
+                .disabled(!canSubmitBasics || isSubmitting)
                 .padding(.top, 8)
             }
             .padding(Theme.horizontalPadding)
             .padding(.bottom, 40)
         }
-        // Interactive scroll-dismiss fights the sheet + TextField focus; dismiss as soon as scrolling begins.
         .scrollDismissesKeyboard(.immediately)
+    }
+
+    private var interestsStepContent: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                Button {
+                    onboardingWizardStep = 1
+                } label: {
+                    Label("Back", systemImage: "chevron.left")
+                        .font(Theme.callout().weight(.semibold))
+                        .foregroundStyle(Theme.accent)
+                }
+                .buttonStyle(.plain)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("What do you love to read?")
+                        .font(Theme.largeTitle())
+                        .foregroundStyle(Theme.textPrimary)
+                    Text("Pick at least two topics—we use them to personalize your experience.")
+                        .font(Theme.body())
+                        .foregroundStyle(Theme.textSecondary)
+                }
+
+                tasteTagsCatalogGrid
+
+                if let errorMessage {
+                    Text(errorMessage)
+                        .font(Theme.caption())
+                        .foregroundStyle(.red.opacity(0.95))
+                }
+
+                Button(action: submitOnboardingWithInterests) {
+                    HStack {
+                        if isSubmitting {
+                            ProgressView()
+                                .tint(Theme.background)
+                        } else {
+                            Text("Continue")
+                                .font(Theme.headline())
+                        }
+                    }
+                    .foregroundStyle(Theme.background)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(canFinishOnboarding && !isSubmitting ? Theme.accent : Theme.accent.opacity(0.45))
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+                }
+                .disabled(!canFinishOnboarding || isSubmitting)
+                .padding(.top, 8)
+            }
+            .padding(Theme.horizontalPadding)
+            .padding(.bottom, 40)
+        }
+        .scrollDismissesKeyboard(.immediately)
+    }
+
+    /// Shared grid of catalog tags (onboarding step 2 + Edit profile).
+    private var tasteTagsCatalogGrid: some View {
+        ForEach(onboardingInterestSections, id: \.category) { section in
+            VStack(alignment: .leading, spacing: 10) {
+                Text(section.category.uppercased())
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.textTertiary)
+                    .tracking(0.6)
+                FlowLayout(spacing: 10) {
+                    ForEach(section.tags, id: \.self) { tag in
+                        interestTagChip(tag)
+                    }
+                }
+            }
+        }
+    }
+
+    private var editReadingTastesSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Reading tastes")
+                    .font(Theme.caption())
+                    .foregroundStyle(Theme.textSecondary)
+                Text("Tap to select or remove topics—we use them to personalize Discover.")
+                    .font(Theme.body())
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            tasteTagsCatalogGrid
+        }
+    }
+
+    private func interestTagChip(_ tag: String) -> some View {
+        Button {
+            if selectedInterestTags.contains(tag) {
+                selectedInterestTags.remove(tag)
+            } else {
+                selectedInterestTags.insert(tag)
+            }
+        } label: {
+            let selected = selectedInterestTags.contains(tag)
+            Text(tag)
+                .font(Theme.callout())
+                .foregroundStyle(selected ? Theme.accent : Theme.textPrimary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Theme.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 20))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20)
+                        .strokeBorder(selected ? Theme.accent : Color.white.opacity(0.12), lineWidth: selected ? 2 : 1)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    var body: some View {
+        Group {
+            if mode == .onboarding && onboardingWizardStep == 2 {
+                interestsStepContent
+            } else {
+                profileBasicsScroll
+            }
+        }
         .background(Theme.background.ignoresSafeArea())
         .onAppear {
             prefillFromExistingUser()
@@ -350,6 +479,7 @@ struct ProfileCompletionView: View {
         if let g = u.readingGoal {
             readingGoalText = "\(g)"
         }
+        selectedInterestTags = Set(u.readingInterestTags)
     }
 
     /// Apple / Google sometimes provide a display name before our form runs.
@@ -425,7 +555,7 @@ struct ProfileCompletionView: View {
         return n
     }
 
-    private var canSubmit: Bool {
+    private var canSubmitBasics: Bool {
         let f = firstName.trimmingCharacters(in: .whitespacesAndNewlines)
         let l = lastName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !f.isEmpty, !l.isEmpty else { return false }
@@ -433,7 +563,83 @@ struct ProfileCompletionView: View {
         guard !ProfileHandleRules.reservedHandles.contains(normalizedHandle) else { return false }
         guard handleAvailable == true else { return false }
         guard parsedReadingGoal != nil else { return false }
+        if mode == .onboarding {
+            let url = profileUserForAvatar?.profileImageURL?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !url.isEmpty else { return false }
+        }
         return true
+    }
+
+    private var canFinishOnboarding: Bool {
+        WellReadTagCatalog.shared.whitelist(Array(selectedInterestTags)).count >= 2
+    }
+
+    private func primaryBasicsAction() {
+        if mode == .onboarding {
+            guard canSubmitBasics else { return }
+            errorMessage = nil
+            focusedField = nil
+            onboardingWizardStep = 2
+        } else {
+            submitEditProfile()
+        }
+    }
+
+    private func submitEditProfile() {
+        guard canSubmitBasics, let goal = parsedReadingGoal else { return }
+        errorMessage = nil
+        isSubmitting = true
+        Task {
+            do {
+                let tags = WellReadTagCatalog.shared.whitelist(Array(selectedInterestTags))
+                try await authService.completeProfileSetup(
+                    firstName: firstName.trimmingCharacters(in: .whitespacesAndNewlines),
+                    lastName: lastName.trimmingCharacters(in: .whitespacesAndNewlines),
+                    handle: normalizedHandle,
+                    readingGoal: goal,
+                    readingInterestTags: tags,
+                    enforceMinimumReadingInterestTags: false
+                )
+                await MainActor.run {
+                    isSubmitting = false
+                    onDismiss?()
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = error.localizedDescription
+                    isSubmitting = false
+                }
+            }
+        }
+    }
+
+    private func submitOnboardingWithInterests() {
+        guard canFinishOnboarding, let goal = parsedReadingGoal else { return }
+        let tags = WellReadTagCatalog.shared.whitelist(Array(selectedInterestTags))
+        guard tags.count >= 2 else { return }
+        errorMessage = nil
+        isSubmitting = true
+        Task {
+            do {
+                try await authService.completeProfileSetup(
+                    firstName: firstName.trimmingCharacters(in: .whitespacesAndNewlines),
+                    lastName: lastName.trimmingCharacters(in: .whitespacesAndNewlines),
+                    handle: normalizedHandle,
+                    readingGoal: goal,
+                    readingInterestTags: tags,
+                    enforceMinimumReadingInterestTags: true
+                )
+                await MainActor.run {
+                    isSubmitting = false
+                    onDismiss?()
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = error.localizedDescription
+                    isSubmitting = false
+                }
+            }
+        }
     }
 
     private func scheduleHandleAvailabilityCheck() {
@@ -468,31 +674,6 @@ struct ProfileCompletionView: View {
                 case .failed:
                     handleAvailable = nil
                     handleCheckError = "Couldn’t verify this handle (Firestore permissions). In Firebase Console: Firestore → choose the database “wellread” (not default) → Rules → paste the repo’s firestore.rules → Publish."
-                }
-            }
-        }
-    }
-
-    private func submit() {
-        guard canSubmit, let goal = parsedReadingGoal else { return }
-        errorMessage = nil
-        isSubmitting = true
-        Task {
-            do {
-                try await authService.completeProfileSetup(
-                    firstName: firstName.trimmingCharacters(in: .whitespacesAndNewlines),
-                    lastName: lastName.trimmingCharacters(in: .whitespacesAndNewlines),
-                    handle: normalizedHandle,
-                    readingGoal: goal
-                )
-                await MainActor.run {
-                    isSubmitting = false
-                    onDismiss?()
-                }
-            } catch {
-                await MainActor.run {
-                    errorMessage = error.localizedDescription
-                    isSubmitting = false
                 }
             }
         }

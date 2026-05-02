@@ -586,7 +586,12 @@ final class AppState: ObservableObject {
         isLoadingDiscoverSuggestions = true
         Task { [weak self] in
             guard let self = self else { return }
-            let batch = await DiscoverSuggestionsService.fetchBatch(readBooks: self.readBooks, queueBookIds: self.queueBookIds, dismissedBookIds: self.dismissedBookIds)
+            let batch = await DiscoverSuggestionsService.fetchBatch(
+                readBooks: self.readBooks,
+                queueBookIds: self.queueBookIds,
+                dismissedBookIds: self.dismissedBookIds,
+                readingInterestTags: self.currentUser?.readingInterestTags ?? []
+            )
             await MainActor.run {
                 self.isLoadingDiscoverSuggestions = false
                 let filtered = batch.filter { !self.shouldExcludeFromDiscover(bookId: $0.id) }
@@ -645,7 +650,12 @@ final class AppState: ObservableObject {
     private func fetchMoreDiscoverSuggestionsInBackground() {
         Task { [weak self] in
             guard let self = self else { return }
-            let batch = await DiscoverSuggestionsService.fetchBatch(readBooks: self.readBooks, queueBookIds: self.queueBookIds, dismissedBookIds: self.dismissedBookIds)
+            let batch = await DiscoverSuggestionsService.fetchBatch(
+                readBooks: self.readBooks,
+                queueBookIds: self.queueBookIds,
+                dismissedBookIds: self.dismissedBookIds,
+                readingInterestTags: self.currentUser?.readingInterestTags ?? []
+            )
             await MainActor.run {
                 let filtered = batch.filter { !self.shouldExcludeFromDiscover(bookId: $0.id) }
                 self.discoverSuggestionQueue.append(contentsOf: filtered)
