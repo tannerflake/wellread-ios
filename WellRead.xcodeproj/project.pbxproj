@@ -849,7 +849,7 @@
 				DEVELOPMENT_TEAM = T32N9X64JM;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = WellRead/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Spine;
+				INFOPLIST_KEY_CFBundleDisplayName = SPINE;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.books";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -877,7 +877,7 @@
 				DEVELOPMENT_TEAM = T32N9X64JM;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = WellRead/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Spine;
+				INFOPLIST_KEY_CFBundleDisplayName = SPINE;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.books";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
