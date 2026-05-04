@@ -18,6 +18,8 @@ struct DiscoverView: View {
             ZStack {
                 Theme.background.ignoresSafeArea()
                 VStack(spacing: 0) {
+                    spineDiscoverHeader
+
                     Group {
                         if appState.isLoadingDiscoverSuggestions && appState.discoverCurrentSuggestion == nil {
                             loadingView
@@ -30,10 +32,10 @@ struct DiscoverView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
-            .navigationTitle("Discover")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Theme.background, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbarColorScheme(.light, for: .navigationBar)
             .navigationDestination(item: $selectedBookForProfile) { book in
                 BookProfileView(
                     book: book,
@@ -68,6 +70,23 @@ struct DiscoverView: View {
                 }
             }
         }
+    }
+
+    /// Brand banner at the top of the Discover tab — matches the Feed's `SPINE // FEED` treatment.
+    private var spineDiscoverHeader: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("SPINE // DISCOVER")
+                .font(.system(size: 22, weight: .bold, design: .monospaced))
+                .tracking(2)
+                .foregroundStyle(Theme.textPrimary)
+            Text(SpinesGlyphs.rule(width: 32))
+                .font(.system(size: 12, weight: .regular, design: .monospaced))
+                .foregroundStyle(Theme.chromeTeal)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, Theme.horizontalPadding)
+        .padding(.top, 8)
+        .padding(.bottom, 12)
     }
 
     private var loadingView: some View {
@@ -131,9 +150,6 @@ struct DiscoverView: View {
             readEntryForReview: appState.userReadBook(forBookId: book.id),
             canEditReadReview: true
         )
-        .padding(.horizontal)
-        .padding(.bottom, 24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .id(book.id)
     }
 

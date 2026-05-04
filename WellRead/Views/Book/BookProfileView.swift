@@ -1,9 +1,11 @@
 //
 //  BookProfileView.swift
-//  WellRead
+//  Spine
 //
-//  Default book profile (Hinge-style): hero cover, title, author, summary + tags, notable quote,
-//  optional "Similar to" row, and three actions (Pass, Queue, Read).
+//  Hero book profile — terminal/Win95-flavored: filename URL bar at the top,
+//  cover front-and-center, then "windowed" section cards (review, summary,
+//  similar, quote) with teal title bars. Action bar below uses bracketed
+//  mono labels.
 //
 
 import SwiftUI
@@ -28,8 +30,8 @@ struct BookProfileView: View {
     var onRemoveFromQueue: (() -> Void)? = nil
     /// When set and the entry has review text and/or a rating, shows the first card section (e.g. current user's read row).
     var readEntryForReview: UserBook? = nil
-    /// Section title for that card (`"Your review"` vs `"Review"` on someone else's profile).
-    var reviewSectionHeading: String = "Your review"
+    /// Section title for that card (`"My review"` vs `"Review"` on someone else's profile).
+    var reviewSectionHeading: String = "My review"
     /// When `true`, shows a pencil on the review card to edit date, rating, thoughts, feed visibility, or delete.
     var canEditReadReview: Bool = false
 
@@ -60,192 +62,39 @@ struct BookProfileView: View {
         return hasText || hasRating
     }
 
-    private let actionBarHeight: CGFloat = 76
-    /// Extra scroll space below the last section so content clears the fixed action bar.
-    private let actionBarScrollGap: CGFloat = 28
+    /// Hide the Notable Quote card entirely when no quote was found. Still shown while loading.
+    private var shouldShowQuoteCard: Bool {
+        if quoteLoading { return true }
+        let trimmed = notableQuote?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return !trimmed.isEmpty
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    // Hero cover — front and center
-                    VStack(spacing: 16) {
-                        BookCoverView(book: book, size: 220)
-                            .shadow(color: .black.opacity(0.2), radius: 12, x: 0, y: 6)
-                        VStack(spacing: 6) {
-                            Text(book.title)
-                                .font(Theme.title())
-                                .foregroundStyle(Theme.textPrimary)
-                                .multilineTextAlignment(.center)
-                            Text(book.author)
-                                .font(Theme.headline())
-                                .foregroundStyle(Theme.textSecondary)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 16)
 
-                    // Your review (first card section when present)
+                    hero
+
                     if showReviewSection, let ub = readEntryForReview {
-                        VStack(alignment: .leading, spacing: 12) {
-                            HStack(alignment: .center, spacing: 12) {
-                                Text(reviewSectionHeading)
-                                    .font(Theme.profileSectionHeader())
-                                    .foregroundStyle(Theme.textSecondary)
-                                    .multilineTextAlignment(.leading)
-                                Spacer(minLength: 8)
-                                if canEditReadReview {
-                                    Button {
-                                        userBookToEdit = ub
-                                    } label: {
-                                        Image(systemName: "pencil")
-                                            .font(.body.weight(.semibold))
-                                            .foregroundStyle(Theme.textSecondary)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                                if let r = ub.rating {
-                                    Text("\(Theme.formatRatingOutOfTen(r))/10")
-                                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                                        .foregroundStyle(Theme.background)
-                                        .padding(.horizontal, 11)
-                                        .padding(.vertical, 6)
-                                        .background(Theme.accent)
-                                        .clipShape(Capsule())
-                                }
-                            }
-                            if let text = ub.reviewText?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
-                                Text(text)
-                                    .font(Theme.body())
-                                    .foregroundStyle(Theme.textPrimary)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                        }
-                        .padding()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Theme.surface)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+                        reviewWindow(ub: ub)
+                            .padding(.horizontal)
+                    }
+
+                    summaryWindow
                         .padding(.horizontal)
-                    }
 
-                    // Summary
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Summary")
-                            .font(Theme.profileSectionHeader())
-                            .foregroundStyle(Theme.textSecondary)
-                        if summaryLoading {
-                            ProgressView()
-                                .frame(maxWidth: .infinity, alignment: .center)
-                                .padding(.vertical, 12)
-                        } else if let s = summary, !s.isEmpty {
-                            Text(s)
-                                .font(Theme.body())
-                                .foregroundStyle(Theme.textPrimary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        } else {
-                            Text("Summary unavailable.")
-                                .font(Theme.callout())
-                                .foregroundStyle(Theme.textTertiary)
-                        }
-
-                        if tagsLoading {
-                            ProgressView()
-                                .controlSize(.small)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.top, 4)
-                        } else if !profileTags.isEmpty {
-                            FlowLayout(spacing: 5) {
-                                ForEach(profileTags, id: \.self) { tag in
-                                    Text(tag)
-                                        .font(.caption2)
-                                        .fontWeight(.medium)
-                                        .foregroundStyle(Theme.textSecondary)
-                                        .padding(.horizontal, 7)
-                                        .padding(.vertical, 3)
-                                        .background(Theme.textTertiary.opacity(0.12))
-                                        .clipShape(Capsule())
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.top, 8)
-                        }
-                    }
-                    .padding()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Theme.surface)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
-                    .padding(.horizontal)
-
-                    // Similar to — cute little icons (only when we have similar books)
                     if !readBooksForSimilar.isEmptyOrNil && (similarLoading || !similarBooks.isEmpty) {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Similar to books you've read")
-                                .font(Theme.profileSectionHeader())
-                                .foregroundStyle(Theme.textSecondary)
-                            if similarLoading {
-                                HStack(spacing: 12) {
-                                    ForEach(0..<3, id: \.self) { _ in
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .fill(Theme.surface)
-                                            .frame(width: 52, height: 52 * 1.5)
-                                            .overlay(ProgressView().tint(Theme.accent))
-                                    }
-                                }
-                            } else {
-                                ScrollView(.horizontal, showsIndicators: false) {
-                                    HStack(spacing: 14) {
-                                        ForEach(similarBooks) { similar in
-                                            VStack(spacing: 6) {
-                                                BookCoverView(book: similar, size: 52, onTap: onBookTap != nil ? { onBookTap?(similar) } : nil)
-                                                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                                                Text(similar.title)
-                                                    .font(.caption2)
-                                                    .foregroundStyle(Theme.textSecondary)
-                                                    .lineLimit(2)
-                                                    .multilineTextAlignment(.center)
-                                                    .frame(width: 64)
-                                            }
-                                        }
-                                    }
-                                    .padding(.vertical, 4)
-                                }
-                            }
-                        }
-                        .padding()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Theme.surface)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
-                        .padding(.horizontal)
+                        similarWindow
+                            .padding(.horizontal)
                     }
 
-                    // Notable quote
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Notable quote")
-                            .font(Theme.profileSectionHeader())
-                            .foregroundStyle(Theme.textSecondary)
-                        if quoteLoading {
-                            ProgressView()
-                                .frame(maxWidth: .infinity, alignment: .center)
-                                .padding(.vertical, 12)
-                        } else if let q = notableQuote, !q.isEmpty {
-                            Text(q)
-                                .font(Theme.body())
-                                .italic()
-                                .foregroundStyle(Theme.textPrimary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        } else {
-                            Text("No notable quote available.")
-                                .font(Theme.callout())
-                                .foregroundStyle(Theme.textTertiary)
-                        }
+                    if shouldShowQuoteCard {
+                        quoteWindow
+                            .padding(.horizontal)
                     }
-                    .padding()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Theme.surface)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
-                    .padding(.horizontal)
                 }
-                .padding(.bottom, showActionBar ? actionBarHeight + actionBarScrollGap : 40)
+                .padding(.bottom, 32)
             }
             .background(Theme.background)
 
@@ -254,6 +103,7 @@ struct BookProfileView: View {
             }
         }
         .padding(.bottom, mainTabBarOverlapExtraHeight)
+        .background(Theme.background)
         .overlay {
             MarkAsReadInlineOverlay(isPresented: $showMarkAsReadModal) { date, rating, post, thoughts in
                 onConfirmRead?(date, rating, post, thoughts)
@@ -290,17 +140,228 @@ struct BookProfileView: View {
         }
     }
 
+    // MARK: - Hero
+
+    private var hero: some View {
+        VStack(spacing: 14) {
+            BookCoverView(book: book, size: 220)
+                .shadow(color: Theme.textPrimary.opacity(0.18), radius: 14, x: 0, y: 6)
+
+            VStack(spacing: 4) {
+                Text(book.title)
+                    .font(Theme.title())
+                    .tracking(Theme.displayTracking)
+                    .foregroundStyle(Theme.textPrimary)
+                    .multilineTextAlignment(.center)
+
+                Text("by \(book.author)")
+                    .font(Theme.callout())
+                    .foregroundStyle(Theme.textSecondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, 24)
+
+            Text(SpinesGlyphs.rule(width: 28))
+                .font(.system(size: 14, weight: .regular, design: .monospaced))
+                .foregroundStyle(Theme.chromeTeal)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 12)
+    }
+
+    // MARK: - Review window
+
+    private func reviewWindow(ub: UserBook) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if canEditReadReview || ub.rating != nil {
+                HStack(alignment: .center, spacing: 12) {
+                    Spacer(minLength: 0)
+                    if canEditReadReview {
+                        Button {
+                            userBookToEdit = ub
+                        } label: {
+                            Image(systemName: "pencil")
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(Theme.textSecondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    if let r = ub.rating {
+                        ratingPill(rating: r)
+                    }
+                }
+            }
+            if let text = ub.reviewText?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+                Text(text)
+                    .font(Theme.body())
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineSpacing(Theme.bodyLineSpacing)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding()
+        .windowedCard(title: reviewSectionHeading)
+    }
+
+    private func ratingPill(rating: Double) -> some View {
+        Text("[ \(Theme.formatRatingOutOfTen(rating))/10 ]")
+            .font(.system(size: 12, weight: .bold, design: .monospaced))
+            .tracking(0.5)
+            .foregroundStyle(Theme.phosphorWhite)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Theme.accent)
+            .clipShape(Capsule())
+    }
+
+    // MARK: - Summary window
+
+    private var summaryWindow: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if summaryLoading {
+                phosphorLoader(label: "loading summary")
+            } else if let s = summary, !s.isEmpty {
+                Text(s)
+                    .font(Theme.body())
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineSpacing(Theme.bodyLineSpacing)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                emptyState(text: "summary unavailable")
+            }
+
+            if tagsLoading {
+                phosphorLoader(label: "loading tags", compact: true)
+                    .padding(.top, 4)
+            } else if !profileTags.isEmpty {
+                FlowLayout(spacing: 6) {
+                    ForEach(profileTags, id: \.self) { tag in
+                        tagChip(tag)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 4)
+            }
+        }
+        .padding()
+        .windowedCard(title: "Summary")
+    }
+
+    private func tagChip(_ tag: String) -> some View {
+        Text("[\(tag.lowercased())]")
+            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+            .tracking(0.4)
+            .foregroundStyle(Theme.chromeTeal)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Theme.surface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(Theme.chromeTeal.opacity(0.5), lineWidth: 1)
+            )
+    }
+
+    // MARK: - Similar window
+
+    private var similarWindow: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if similarLoading {
+                HStack(spacing: 12) {
+                    ForEach(0..<3, id: \.self) { _ in
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Theme.surface)
+                            .frame(width: 52, height: 52 * 1.5)
+                            .overlay(
+                                Text(SpinesGlyphs.phosphorFade)
+                                    .font(.system(size: 12, weight: .regular, design: .monospaced))
+                                    .foregroundStyle(Theme.chromeTeal.opacity(0.7))
+                            )
+                    }
+                }
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 14) {
+                        ForEach(similarBooks) { similar in
+                            VStack(spacing: 6) {
+                                BookCoverView(book: similar, size: 52, onTap: onBookTap != nil ? { onBookTap?(similar) } : nil)
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                                Text(similar.title)
+                                    .font(.system(size: 10, weight: .regular, design: .monospaced))
+                                    .foregroundStyle(Theme.textSecondary)
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.center)
+                                    .frame(width: 64)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+        }
+        .padding()
+        .windowedCard(title: "Similar Books")
+    }
+
+    // MARK: - Quote window
+
+    private var quoteWindow: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if quoteLoading {
+                phosphorLoader(label: "loading quote")
+            } else if let q = notableQuote, !q.isEmpty {
+                HStack(alignment: .top, spacing: 8) {
+                    Text("\u{201C}")
+                        .font(.system(size: 28, weight: .bold, design: .monospaced))
+                        .foregroundStyle(Theme.chromeTeal)
+                        .offset(y: -2)
+                        .accessibilityHidden(true)
+                    Text(q)
+                        .font(Theme.body())
+                        .italic()
+                        .foregroundStyle(Theme.textPrimary)
+                        .lineSpacing(Theme.bodyLineSpacing)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            } else {
+                emptyState(text: "no notable quote available")
+            }
+        }
+        .padding()
+        .windowedCard(title: "Notable Quote", chrome: Theme.chromeNavy)
+    }
+
+    // MARK: - Loading / empty helpers
+
+    private func phosphorLoader(label: String, compact: Bool = false) -> some View {
+        HStack(spacing: 8) {
+            Text(SpinesGlyphs.phosphorFade)
+                .font(.system(size: compact ? 12 : 14, weight: .regular, design: .monospaced))
+                .foregroundStyle(Theme.chromeTeal)
+            Text(label)
+                .font(.system(size: compact ? 11 : 13, weight: .regular, design: .monospaced))
+                .foregroundStyle(Theme.textTertiary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, compact ? 0 : 8)
+    }
+
+    private func emptyState(text: String) -> some View {
+        Text("[ \(text) ]")
+            .font(.system(size: 13, weight: .regular, design: .monospaced))
+            .tracking(0.5)
+            .foregroundStyle(Theme.textTertiary)
+    }
+
+    // MARK: - Action bar
+
     private var actionBar: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             if onNotInterested != nil {
                 Button(action: { onNotInterested?() }) {
-                    Label("Pass", systemImage: "xmark.circle.fill")
-                        .font(Theme.headline())
-                        .foregroundStyle(Theme.textSecondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(Theme.surface)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+                    actionLabel("[ PASS ]", foreground: Theme.textSecondary, background: Theme.surface, border: Theme.chromeTeal.opacity(0.5))
                 }
                 .buttonStyle(.plain)
             }
@@ -308,36 +369,18 @@ struct BookProfileView: View {
                 Group {
                     if isInQueue && onRemoveFromQueue != nil {
                         Button(action: { onRemoveFromQueue?() }) {
-                            Label("Remove", systemImage: "book.circle.fill")
-                                .font(Theme.headline())
-                                .foregroundStyle(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
-                                .background(Color(red: 0.95, green: 0.4, blue: 0.4))
-                                .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+                            actionLabel("[ REMOVE ]", foreground: Theme.phosphorWhite, background: Color(red: 0.86, green: 0.32, blue: 0.30), border: .clear)
                         }
                         .buttonStyle(.plain)
                     } else if isInQueue {
                         Button {} label: {
-                            Label("In queue", systemImage: "book.circle.fill")
-                                .font(Theme.headline())
-                                .foregroundStyle(Theme.textTertiary)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
-                                .background(Theme.surface)
-                                .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+                            actionLabel("[ IN QUEUE ]", foreground: Theme.textTertiary, background: Theme.surface, border: Theme.chromeTeal.opacity(0.3))
                         }
                         .buttonStyle(.plain)
                         .disabled(true)
                     } else {
                         Button(action: { onWantToRead?() }) {
-                            Label("Queue", systemImage: "book.circle.fill")
-                                .font(Theme.headline())
-                                .foregroundStyle(Theme.queuePowderBlueLabel)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
-                                .background(Theme.queuePowderBlue)
-                                .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+                            actionLabel("[ QUEUE ]", foreground: Theme.queuePowderBlueLabel, background: Theme.queuePowderBlue, border: .clear)
                         }
                         .buttonStyle(.plain)
                     }
@@ -348,21 +391,46 @@ struct BookProfileView: View {
                     if isOnReadList { return }
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showMarkAsReadModal = true }
                 }) {
-                    Label(isOnReadList ? "On read list" : "Read", systemImage: "checkmark.circle.fill")
-                        .font(Theme.headline())
-                        .foregroundStyle(Theme.background)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(Theme.accent)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+                    actionLabel(
+                        isOnReadList ? "[ READ \u{2714} ]" : "[ READ ]",
+                        foreground: Theme.phosphorWhite,
+                        background: isOnReadList ? Theme.textTertiary : Theme.accent,
+                        border: .clear
+                    )
                 }
                 .buttonStyle(.plain)
                 .disabled(isOnReadList)
             }
         }
         .padding(.horizontal)
-        .padding(.vertical, 10)
-        .padding(.bottom, 8)
+        .padding(.top, 18)
+        .padding(.bottom, 18)
+        .background(
+            VStack(spacing: 0) {
+                Rectangle()
+                    .fill(Theme.chromeTeal.opacity(0.45))
+                    .frame(height: Theme.chromeHairline)
+                Theme.background
+            }
+        )
+        .padding(.bottom, 12)
+    }
+
+    private func actionLabel(_ text: String, foreground: Color, background: Color, border: Color) -> some View {
+        Text(text)
+            .font(.system(size: 14, weight: .bold, design: .monospaced))
+            .tracking(1)
+            .foregroundStyle(foreground)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
+                    .fill(background)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
+                    .stroke(border, lineWidth: 1)
+            )
     }
 }
 

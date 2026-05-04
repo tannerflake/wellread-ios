@@ -1,8 +1,10 @@
 //
 //  CommentsView.swift
-//  WellRead
+//  Spine
 //
-//  Shows comments for a post and lets the user add a comment.
+//  Comments thread for a post. Listens to Firestore live updates; posts are
+//  optimistically merged so a freshly-sent comment doesn't disappear before
+//  the snapshot catches up.
 //
 
 import SwiftUI
@@ -26,10 +28,16 @@ struct CommentsView: View {
                 Theme.background.ignoresSafeArea()
                 VStack(spacing: 0) {
                     if viewModel.comments.isEmpty && !viewModel.isLoading {
-                        Text("No comments yet")
-                            .font(Theme.body())
-                            .foregroundStyle(Theme.textSecondary)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        VStack(spacing: 8) {
+                            Text(SpinesGlyphs.phosphorFade)
+                                .font(.system(size: 18, weight: .regular, design: .monospaced))
+                                .foregroundStyle(Theme.chromeTeal.opacity(0.7))
+                            Text("[ no comments yet ]")
+                                .font(.system(size: 13, weight: .regular, design: .monospaced))
+                                .tracking(0.5)
+                                .foregroundStyle(Theme.textTertiary)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
                         List {
                             ForEach(viewModel.comments) { comment in
@@ -38,7 +46,7 @@ struct CommentsView: View {
                                     profileImageURL: viewModel.profileImageURL(for: comment)
                                 )
                                     .listRowBackground(Theme.background)
-                                    .listRowSeparatorTint(Theme.textTertiary.opacity(0.3))
+                                    .listRowSeparatorTint(Theme.chromeTeal.opacity(0.3))
                             }
                         }
                         .listStyle(.plain)
@@ -50,7 +58,7 @@ struct CommentsView: View {
             .navigationTitle("Comments")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Theme.background, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -78,12 +86,21 @@ struct CommentsView: View {
     }
 
     private var commentInputBar: some View {
-        HStack(spacing: 12) {
-            TextField("Add a comment…", text: $viewModel.commentText, axis: .vertical)
+        HStack(spacing: 10) {
+            TextField("> add a comment…", text: $viewModel.commentText, axis: .vertical)
                 .textFieldStyle(.plain)
-                .padding(12)
-                .background(Theme.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 20))
+                .font(Theme.body())
+                .foregroundStyle(Theme.textPrimary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Theme.surfaceElevated)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Theme.chromeTeal.opacity(0.4), lineWidth: 1)
+                )
                 .lineLimit(1...4)
             Button {
                 Task {
@@ -102,7 +119,14 @@ struct CommentsView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
-        .background(Theme.background)
+        .background(
+            VStack(spacing: 0) {
+                Rectangle()
+                    .fill(Theme.chromeTeal.opacity(0.35))
+                    .frame(height: Theme.chromeHairline)
+                Theme.background
+            }
+        )
     }
 }
 
@@ -119,14 +143,15 @@ struct CommentRow: View {
                 NavigationLink(value: comment.userId) {
                     HStack(alignment: .top, spacing: 10) {
                         commentAvatar
-                        HStack(spacing: 6) {
+                        HStack(spacing: 8) {
                             Text(comment.displayName ?? "User")
-                                .font(Theme.headline())
+                                .font(.system(size: 13, weight: .bold, design: .monospaced))
                                 .foregroundStyle(Theme.textPrimary)
                             TimelineView(.periodic(from: .now, by: 15)) { context in
-                                Text(Theme.commentRelativeTimestamp(comment.createdAt, now: context.date))
-                                    .font(Theme.caption())
-                                    .foregroundStyle(Theme.textTertiary)
+                                Text("[ \(Theme.commentRelativeTimestamp(comment.createdAt, now: context.date)) ]")
+                                    .font(.system(size: 10, weight: .regular, design: .monospaced))
+                                    .tracking(0.5)
+                                    .foregroundStyle(Theme.chromeTeal)
                             }
                         }
                     }
@@ -137,6 +162,7 @@ struct CommentRow: View {
             Text(comment.text)
                 .font(Theme.body())
                 .foregroundStyle(Theme.textPrimary)
+                .lineSpacing(Theme.bodyLineSpacing)
                 .padding(.leading, Self.avatarSize + 10)
         }
         .padding(.vertical, 6)
@@ -151,6 +177,10 @@ struct CommentRow: View {
                 }
                 .frame(width: Self.avatarSize, height: Self.avatarSize)
                 .clipShape(Circle())
+                .overlay(
+                    Circle()
+                        .strokeBorder(Theme.chromeTeal.opacity(0.5), lineWidth: 1)
+                )
             } else {
                 commentAvatarPlaceholder(initial: initial)
             }
@@ -159,12 +189,12 @@ struct CommentRow: View {
 
     private func commentAvatarPlaceholder(initial: String) -> some View {
         Circle()
-            .fill(Theme.surface)
+            .fill(Theme.chromeTeal)
             .frame(width: Self.avatarSize, height: Self.avatarSize)
             .overlay(
-                Text(initial)
-                    .font(Theme.headline())
-                    .foregroundStyle(Theme.textSecondary)
+                Text(initial.uppercased())
+                    .font(.system(size: 14, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Theme.phosphorWhite)
             )
     }
 }

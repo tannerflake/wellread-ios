@@ -114,6 +114,8 @@ private let queueRowPadding: CGFloat = 1
 
 private enum QueueSectionEmptyKind {
     case none
+    /// Dashed drop zone + “Drag the book(s) you’re currently reading here.”
+    case readingNow
     /// Dashed drop zone + “Drag your next reads here!”
     case upNext
     /// Dashed area + backlog explainer (drops still accepted on overlay slot).
@@ -122,6 +124,7 @@ private enum QueueSectionEmptyKind {
     var emptyPlaceholderMessage: String? {
         switch self {
         case .none: return nil
+        case .readingNow: return "Drag the books you're currently reading here."
         case .upNext: return "Drag your next reads here!"
         case .backlog: return "When you add a book to your queue, it'll land here."
         }
@@ -193,7 +196,7 @@ private struct QueueSectionGrid: View {
                 Array(books[start..<min(start + queueBooksPerRow, books.count)])
             }
 
-        LazyVStack(alignment: .leading, spacing: 2) {
+        LazyVStack(alignment: .leading, spacing: 14) {
             if rows.isEmpty {
                 HStack(spacing: 0) {
                     QueueShelfDropSlot(shelf: shelf, insertionIndex: 0, onUpdate: onUpdateShelfAndOrder, fillsRow: true, minHeight: slotHeight, readOnly: readOnly)
@@ -206,24 +209,15 @@ private struct QueueSectionGrid: View {
                         ForEach(Array(rowBooks.enumerated()), id: \.element.id) { i, ub in
                             QueueShelfDropSlot(shelf: shelf, insertionIndex: startIndex + i, onUpdate: onUpdateShelfAndOrder, minHeight: slotHeight, readOnly: readOnly)
                             if ub.book != nil {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    QueueBookCell(
-                                        userBook: ub,
-                                        shelf: shelf,
-                                        insertionIndex: startIndex + i,
-                                        bookSize: bookSize,
-                                        onUpdate: onUpdateShelfAndOrder,
-                                        onBookTap: onBookTap,
-                                        readOnly: readOnly
-                                    )
-                                    if let book = ub.book {
-                                        Text(book.title)
-                                            .font(Theme.caption())
-                                            .foregroundStyle(Theme.textPrimary)
-                                            .lineLimit(2)
-                                            .frame(width: bookSize, alignment: .leading)
-                                    }
-                                }
+                                QueueBookCell(
+                                    userBook: ub,
+                                    shelf: shelf,
+                                    insertionIndex: startIndex + i,
+                                    bookSize: bookSize,
+                                    onUpdate: onUpdateShelfAndOrder,
+                                    onBookTap: onBookTap,
+                                    readOnly: readOnly
+                                )
                                 .frame(width: bookSize, alignment: .leading)
                             }
                         }
@@ -240,6 +234,7 @@ private struct QueueSectionGrid: View {
 // MARK: - Public
 
 struct QueueLibraryView: View {
+    let readingNow: [UserBook]
     let upNext: [UserBook]
     let backlog: [UserBook]
     let onUpdateShelfAndOrder: (UUID, QueueShelf, Int?) -> Void
@@ -255,6 +250,17 @@ struct QueueLibraryView: View {
             let contentWidth = max(0, geo.size.width - Self.horizontalPadding)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 24) {
+                    QueueSectionGrid(
+                        title: "Reading now",
+                        shelf: .readingNow,
+                        books: readingNow,
+                        emptyKind: .readingNow,
+                        contentWidth: contentWidth,
+                        onUpdateShelfAndOrder: onUpdateShelfAndOrder,
+                        onBookTap: onBookTap,
+                        readOnly: readOnly
+                    )
+
                     QueueSectionGrid(
                         title: "Up next",
                         shelf: .upNext,

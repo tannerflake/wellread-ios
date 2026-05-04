@@ -1,8 +1,10 @@
 //
 //  FeedView.swift
-//  WellRead
+//  Spine
 //
-//  Instagram-style feed: finished book, review, recommendation, tier list update.
+//  Vertical feed of posts. Friends row up top, then a feed of finished books,
+//  reviews, and recommendations from people you follow. Themed for the new
+//  cream/teal palette with mono type and receipt-style row separators.
 //
 
 import SwiftUI
@@ -26,6 +28,7 @@ struct FeedView: View {
                 Theme.background.ignoresSafeArea()
                 ScrollView {
                     VStack(spacing: 0) {
+                        spinesHeader
                         friendsSection
                         feedFriendsDivider
                         feedSectionLabel
@@ -72,7 +75,7 @@ struct FeedView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Theme.background, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbarColorScheme(.light, for: .navigationBar)
             .navigationDestination(for: String.self) { userId in
                 UserLibraryDetailView(userId: userId)
                     .environmentObject(authService)
@@ -179,20 +182,38 @@ struct FeedView: View {
         }
     }
 
-    /// Subtle rule between “Your friends” and the “Feed” posts block.
+    /// Top brand banner — terminal-style "SPINES // FEED" with an ASCII rule below.
+    private var spinesHeader: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("SPINE // SOCIAL")
+                .font(.system(size: 22, weight: .bold, design: .monospaced))
+                .tracking(2)
+                .foregroundStyle(Theme.textPrimary)
+            Text(SpinesGlyphs.rule(width: 32))
+                .font(.system(size: 12, weight: .regular, design: .monospaced))
+                .foregroundStyle(Theme.chromeTeal)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, Theme.horizontalPadding)
+        .padding(.top, 8)
+        .padding(.bottom, 12)
+    }
+
+    /// Hairline rule between "Friends" row and posts.
     private var feedFriendsDivider: some View {
         Rectangle()
-            .fill(Theme.textTertiary.opacity(0.22))
-            .frame(height: 0.5)
+            .fill(Theme.chromeTeal.opacity(0.35))
+            .frame(height: Theme.chromeHairline)
             .padding(.horizontal, Theme.horizontalPadding)
             .padding(.vertical, 10)
     }
 
     private var feedSectionLabel: some View {
         HStack {
-            Text("Feed")
-                .font(Theme.feedBlockTitle())
-                .foregroundStyle(Theme.textPrimary)
+            Text("[ FEED ]")
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .tracking(1)
+                .foregroundStyle(Theme.chromeTeal)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, Theme.horizontalPadding)
@@ -202,18 +223,23 @@ struct FeedView: View {
     @ViewBuilder
     private var friendsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Your friends")
-                .font(Theme.feedSectionHeader())
-                .foregroundStyle(Theme.textPrimary)
+            Text("[ FRIENDS ]")
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .tracking(1)
+                .foregroundStyle(Theme.chromeTeal)
                 .padding(.horizontal, Theme.horizontalPadding)
 
             if isLoadingOtherReaders {
-                HStack {
-                    Spacer(minLength: 0)
-                    ProgressView()
-                        .tint(Theme.accent)
+                HStack(spacing: 8) {
+                    Text(SpinesGlyphs.phosphorFade)
+                        .font(.system(size: 14, weight: .regular, design: .monospaced))
+                        .foregroundStyle(Theme.chromeTeal)
+                    Text("loading readers")
+                        .font(.system(size: 13, weight: .regular, design: .monospaced))
+                        .foregroundStyle(Theme.textTertiary)
                     Spacer(minLength: 0)
                 }
+                .padding(.horizontal, Theme.horizontalPadding)
                 .frame(height: 88)
                 .padding(.bottom, 8)
             } else if otherReaders.isEmpty {
@@ -226,7 +252,7 @@ struct FeedView: View {
                                 VStack(spacing: 8) {
                                     otherReaderCircleAvatar(user: item.user, size: 64)
                                     Text(item.user.displayName)
-                                        .font(Theme.caption())
+                                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
                                         .foregroundStyle(Theme.textSecondary)
                                         .lineLimit(2)
                                         .multilineTextAlignment(.center)
@@ -261,17 +287,17 @@ struct FeedView: View {
         .clipShape(Circle())
         .overlay(
             Circle()
-                .strokeBorder(Theme.textTertiary.opacity(0.25), lineWidth: 1)
+                .strokeBorder(Theme.chromeTeal.opacity(0.55), lineWidth: 1.5)
         )
     }
 
     private func otherReaderPlaceholder(initial: String, size: CGFloat) -> some View {
         Circle()
-            .fill(Theme.surface)
+            .fill(Theme.chromeTeal)
             .overlay(
-                Text(initial)
-                    .font(.system(size: size * 0.38, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Theme.textSecondary)
+                Text(initial.uppercased())
+                    .font(.system(size: size * 0.42, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Theme.phosphorWhite)
             )
     }
 }
@@ -290,7 +316,7 @@ struct FeedPostRow: View {
         VStack(alignment: .leading, spacing: 12) {
             feedAuthorHeader
                 .padding(.horizontal)
-            
+
             if let book = post.book {
                 HStack(alignment: .top, spacing: 14) {
                     BookCoverView(book: book, size: 80, onTap: onBookTap != nil ? { onBookTap?(book) } : nil)
@@ -298,19 +324,26 @@ struct FeedPostRow: View {
                         Text(book.title)
                             .font(Theme.headline())
                             .foregroundStyle(Theme.textPrimary)
+                            .lineLimit(2)
                         Text(book.author)
                             .font(Theme.callout())
                             .foregroundStyle(Theme.textSecondary)
+                            .lineLimit(1)
                         if post.rating != nil || post.dateFinished != nil {
                             HStack(spacing: 8) {
                                 if let r = post.rating {
-                                    Text(Theme.formatRatingOutOfTen(r))
-                                        .font(Theme.callout())
-                                        .foregroundStyle(Theme.textSecondary)
+                                    Text("[ \(Theme.formatRatingOutOfTen(r))/10 ]")
+                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                        .tracking(0.5)
+                                        .foregroundStyle(Theme.phosphorWhite)
+                                        .padding(.horizontal, 7)
+                                        .padding(.vertical, 3)
+                                        .background(Theme.accent)
+                                        .clipShape(Capsule())
                                 }
                                 if let date = post.dateFinished {
                                     Text(date, style: .date)
-                                        .font(.caption2)
+                                        .font(.system(size: 10, weight: .regular, design: .monospaced))
                                         .foregroundStyle(Theme.textTertiary)
                                 }
                             }
@@ -320,35 +353,36 @@ struct FeedPostRow: View {
                 }
                 .padding(.horizontal)
             }
-            
+
             if let caption = post.caption, !caption.isEmpty {
                 Text(caption)
                     .font(Theme.body())
                     .foregroundStyle(Theme.textPrimary)
+                    .lineSpacing(Theme.bodyLineSpacing)
                     .padding(.horizontal)
             }
-            
-            HStack(spacing: 20) {
-                HStack(spacing: 4) {
-                    Button {
-                        onLikeToggle?(!isLiked)
-                    } label: {
+
+            HStack(spacing: 22) {
+                Button {
+                    onLikeToggle?(!isLiked)
+                } label: {
+                    HStack(spacing: 5) {
                         Image(systemName: isLiked ? "heart.fill" : "heart")
-                            .foregroundStyle(isLiked ? Theme.accent : Theme.textSecondary)
+                            .foregroundStyle(isLiked ? Theme.magentaPunch : Theme.textSecondary)
+                        Text("\(post.likeCount)")
+                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(Theme.textSecondary)
                     }
-                    .buttonStyle(.plain)
-                    Text("\(post.likeCount)")
-                        .font(Theme.caption())
-                        .foregroundStyle(Theme.textSecondary)
                 }
+                .buttonStyle(.plain)
                 Button {
                     onCommentTap?()
                 } label: {
-                    HStack(spacing: 4) {
+                    HStack(spacing: 5) {
                         Image(systemName: "bubble.right")
                             .foregroundStyle(Theme.textSecondary)
                         Text("\(post.commentCount)")
-                            .font(Theme.caption())
+                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
                             .foregroundStyle(Theme.textSecondary)
                     }
                 }
@@ -356,9 +390,15 @@ struct FeedPostRow: View {
                 Spacer()
             }
             .padding(.horizontal)
-            .padding(.bottom, 16)
+            .padding(.bottom, 14)
+
+            // Receipt-style hairline between posts
+            Rectangle()
+                .fill(Theme.chromeTeal.opacity(0.25))
+                .frame(height: Theme.chromeHairline)
+                .padding(.horizontal, Theme.horizontalPadding)
         }
-        .padding(.top, 12)
+        .padding(.top, 14)
     }
 
     private var showEditReviewButton: Bool {
@@ -375,11 +415,12 @@ struct FeedPostRow: View {
                     feedAvatar
                     VStack(alignment: .leading, spacing: 2) {
                         Text(post.user?.displayName ?? "User")
-                            .font(Theme.headline())
+                            .font(.system(size: 14, weight: .bold, design: .monospaced))
                             .foregroundStyle(Theme.textPrimary)
-                        Text(Theme.commentRelativeTimestamp(post.createdAt))
-                            .font(Theme.caption())
-                            .foregroundStyle(Theme.textTertiary)
+                        Text("[ \(Theme.commentRelativeTimestamp(post.createdAt)) ]")
+                            .font(.system(size: 10, weight: .regular, design: .monospaced))
+                            .tracking(0.5)
+                            .foregroundStyle(Theme.chromeTeal)
                     }
                 }
             }
@@ -407,6 +448,10 @@ struct FeedPostRow: View {
             }
             .frame(width: 40, height: 40)
             .clipShape(Circle())
+            .overlay(
+                Circle()
+                    .strokeBorder(Theme.chromeTeal.opacity(0.55), lineWidth: 1)
+            )
         } else {
             feedAvatarPlaceholder(initial: initial)
         }
@@ -414,12 +459,12 @@ struct FeedPostRow: View {
 
     private func feedAvatarPlaceholder(initial: String) -> some View {
         Circle()
-            .fill(Theme.surface)
+            .fill(Theme.chromeTeal)
             .frame(width: 40, height: 40)
             .overlay(
-                Text(initial)
-                    .font(Theme.headline())
-                    .foregroundStyle(Theme.textSecondary)
+                Text(initial.uppercased())
+                    .font(.system(size: 16, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Theme.phosphorWhite)
             )
     }
 }

@@ -29,8 +29,10 @@ enum ReadingStatus: String, Codable, CaseIterable {
     }
 }
 
-/// Sub-queue within "Want to read": only **Up next** is explicit; everything else is **Backlog** (default).
+/// Sub-queue within "Want to read": **Reading now**, **Up next**, or **Backlog** (default).
+/// Existing books with no shelf set are treated as backlog.
 enum QueueShelf: String, Codable, CaseIterable {
+    case readingNow
     case upNext
     case backlog
 }

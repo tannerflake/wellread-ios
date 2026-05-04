@@ -45,14 +45,16 @@ struct AddBookFlowView: View {
                     }
                 }
             }
-            .navigationTitle(stepTitle)
+            .navigationTitle(step == .search ? "" : stepTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Theme.background, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                        .foregroundStyle(Theme.accent)
+                if step != .search {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { dismiss() }
+                            .foregroundStyle(Theme.accent)
+                    }
                 }
             }
             .navigationDestination(item: $selectedBookForProfile) { book in
@@ -82,23 +84,49 @@ struct AddBookFlowView: View {
     
     private var searchStep: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(Theme.textSecondary)
-                TextField("Search by title or author", text: $query)
-                    .font(Theme.body())
-                    .foregroundStyle(Theme.textPrimary)
-                    .textContentType(.none)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-                    .focused($isSearchFocused)
-                    .onSubmit { runSearch() }
+            HStack(spacing: 10) {
+                HStack {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(Theme.textSecondary)
+                    TextField(
+                        "",
+                        text: $query,
+                        prompt: Text("Search by title or author")
+                            .foregroundColor(Theme.textTertiary)
+                    )
+                        .font(Theme.body())
+                        .foregroundStyle(Theme.textPrimary)
+                        .textContentType(.none)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .focused($isSearchFocused)
+                        .onSubmit { runSearch() }
+                }
+                .padding()
+                .background(Theme.surface)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Theme.textSecondary)
+                        .frame(width: 36, height: 36)
+                        .background(
+                            Circle()
+                                .fill(Theme.surface)
+                        )
+                        .overlay(
+                            Circle()
+                                .strokeBorder(Theme.chromeTeal.opacity(0.4), lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close")
             }
-            .padding()
-            .background(Theme.surface)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
             .padding(.horizontal)
-            
+
             ZStack {
                 Theme.accent
                 Text("Search")
@@ -113,14 +141,6 @@ struct AddBookFlowView: View {
             .onTapGesture {
                 isSearchFocused = false
                 runSearch()
-            }
-
-            if !hasSearched && !isSearching && searchError == nil {
-                Text("Tap Search or press Return to find books.")
-                    .font(Theme.caption())
-                    .foregroundStyle(Theme.textSecondary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
             }
 
             if isSearching {
@@ -163,7 +183,13 @@ struct AddBookFlowView: View {
                 .padding()
             }
         }
-        .padding(.top, 8)
+        .padding(.top, 28)
+        .task {
+            // Sheet presentation animations interfere with focus assignment if it
+            // happens too early; a small delay reliably brings up the keyboard.
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            isSearchFocused = true
+        }
     }
     
     private func runSearch() {
