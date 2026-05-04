@@ -196,7 +196,7 @@ struct EditReadReviewSheet: View {
             .navigationTitle("Edit review")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Theme.background, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }

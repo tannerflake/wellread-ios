@@ -1,8 +1,10 @@
 //
 //  MarkAsReadInlineOverlay.swift
-//  WellRead
+//  Spine
 //
-//  Inline “Mark as read” card with local state so typing does not re-render BookProfileView’s scroll content.
+//  Inline "Mark as read" card. Local state so typing does not re-render
+//  BookProfileView's scroll content. Themed to match the new Spine palette
+//  (cream foundation, mono typography, windowed card with teal title bar).
 //
 
 import SwiftUI
@@ -48,7 +50,7 @@ struct MarkAsReadInlineOverlay: View {
                             }
                             .scrollDismissesKeyboard(.interactively)
                             .frame(maxHeight: min(UIScreen.main.bounds.height * 0.78, 640))
-                            /// Scroll once on focus only — per-keystroke scroll caused lag and “variant selector cell index” errors.
+                            /// Scroll once on focus only — per-keystroke scroll caused lag and "variant selector cell index" errors.
                             .onChange(of: isThoughtsFocused) { _, focused in
                                 if focused {
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
@@ -82,56 +84,51 @@ struct MarkAsReadInlineOverlay: View {
     }
 
     private var card: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Mark as read")
-                .font(Theme.title2())
-                .foregroundStyle(Theme.textPrimary)
-            VStack(alignment: .leading, spacing: 6) {
-                Text("When did you finish?")
-                    .font(Theme.caption())
-                    .foregroundStyle(Theme.textSecondary)
-                DatePicker("", selection: $markAsReadDate, displayedComponents: .date)
-                    .datePickerStyle(.compact)
-                    .labelsHidden()
-                    .tint(Theme.accent)
-            }
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Rating: \(markAsReadRatingLabel) / 10")
-                    .font(Theme.caption())
-                    .foregroundStyle(Theme.textSecondary)
-                Slider(value: markAsReadRatingSliderBinding, in: 1...10, step: 0.1)
-                    .tint(Theme.accent)
-            }
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Thoughts")
-                    .font(Theme.caption())
-                    .foregroundStyle(Theme.textSecondary)
-                ZStack(alignment: .topLeading) {
-                    if markAsReadThoughts.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Text("Thoughts on this book…")
-                            .font(Theme.body())
-                            .foregroundStyle(Theme.textSecondary.opacity(0.7))
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 10)
-                    }
-                    TextEditor(text: $markAsReadThoughts)
+        VStack(alignment: .leading, spacing: 18) {
+            sectionLabel("Date Finished")
+            DatePicker("", selection: $markAsReadDate, displayedComponents: .date)
+                .datePickerStyle(.compact)
+                .labelsHidden()
+                .tint(Theme.accent)
+
+            sectionLabel("Rating  \(markAsReadRatingLabel) / 10")
+            Slider(value: markAsReadRatingSliderBinding, in: 1...10, step: 0.1)
+                .tint(Theme.accent)
+
+            sectionLabel("Thoughts")
+            ZStack(alignment: .topLeading) {
+                if markAsReadThoughts.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text("> Thoughts on this book…")
                         .font(Theme.body())
-                        .foregroundStyle(Theme.textPrimary)
-                        .scrollContentBackground(.hidden)
-                        .frame(minHeight: 140, maxHeight: 280)
-                        .focused($isThoughtsFocused)
+                        .foregroundStyle(Theme.textTertiary)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 10)
                 }
-                .padding(12)
-                .background(Theme.background.opacity(0.6))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                TextEditor(text: $markAsReadThoughts)
+                    .font(Theme.body())
+                    .foregroundStyle(Theme.textPrimary)
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 140, maxHeight: 280)
+                    .focused($isThoughtsFocused)
             }
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Theme.background)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Theme.chromeTeal.opacity(0.4), lineWidth: 1)
+            )
             .id("inlineThoughts")
+
             Toggle(isOn: $markAsReadPostToFeed) {
                 Text("Post to feed")
                     .font(Theme.callout())
                     .foregroundStyle(Theme.textPrimary)
             }
             .tint(Theme.accent)
+
             Button {
                 let date = markAsReadDate
                 let rating: Double? = hasExplicitMarkReadRating
@@ -142,19 +139,29 @@ struct MarkAsReadInlineOverlay: View {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { isPresented = false }
                 onConfirm(date, rating, post, thoughts.isEmpty ? nil : thoughts)
             } label: {
-                Text("Mark as read")
-                    .font(Theme.headline())
-                    .foregroundStyle(Theme.background)
+                Text("[ MARK AS READ ]")
+                    .font(.system(size: 14, weight: .bold, design: .monospaced))
+                    .tracking(1)
+                    .foregroundStyle(Theme.phosphorWhite)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
-                    .background(Theme.accent)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+                    .background(
+                        RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
+                            .fill(Theme.accent)
+                    )
             }
             .buttonStyle(.plain)
+            .padding(.top, 4)
         }
         .padding(20)
-        .background(Theme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
-        .shadow(color: .black.opacity(0.25), radius: 20, y: 8)
+        .windowedCard(title: "Mark As Read")
+    }
+
+    /// Bracketed mono section label, e.g. "[ DATE FINISHED ]".
+    private func sectionLabel(_ text: String) -> some View {
+        Text("[ \(text.uppercased()) ]")
+            .font(.system(size: 11, weight: .bold, design: .monospaced))
+            .tracking(1)
+            .foregroundStyle(Theme.chromeTeal)
     }
 }

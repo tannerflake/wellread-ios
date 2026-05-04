@@ -40,8 +40,10 @@ struct MainTabView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             tabBar
         }
-        // BookProfileView reads `mainTabBarOverlapExtraHeight`; keep 0 here—`.safeAreaInset` already reserves space above the tab bar (extra padding duplicated the gap on Discover).
-        .environment(\.mainTabBarOverlapExtraHeight, 0)
+        // BookProfileView reads `mainTabBarOverlapExtraHeight` and adds it as bottom padding so its action
+        // bar clears the custom tab bar. With the parent safeAreaInset reserving the tab bar, this gives
+        // the action bar a clean breathing-room gap above the tab bar.
+        .environment(\.mainTabBarOverlapExtraHeight, Theme.mainTabBarChromeHeight)
         .sheet(isPresented: $showAddBook) {
             AddBookFlowView()
                 .environment(\.mainTabBarOverlapExtraHeight, 0)
@@ -229,23 +231,22 @@ struct MainTabView: View {
 
     private var tabBar: some View {
         HStack(spacing: 0) {
-            tabButton(.feed, icon: "book.closed.fill", label: "Feed")
+            tabButton(.feed, icon: "book.closed.fill", label: "Social")
             tabButton(.discover, icon: "sparkles", label: "Discover")
             tabButton(.profile, icon: "books.vertical.fill", label: "Profile")
             searchButton
         }
         .padding(.horizontal, 8)
-        .padding(.top, 4)
-        .padding(.bottom, 6)
+        .padding(.top, 14)
+        .padding(.bottom, 12)
         .background(Theme.background.opacity(0.95))
-        .overlay(
+        .overlay(alignment: .top) {
             Rectangle()
-                .fill(Theme.textTertiary.opacity(0.2))
-                .frame(height: 1),
-            alignment: .top
-        )
+                .fill(Theme.chromeTeal.opacity(0.35))
+                .frame(height: Theme.chromeHairline)
+        }
     }
-    
+
     private func tabButton(_ tab: Tab, icon: String, label: String) -> some View {
         Button {
             if tab == .add {
@@ -254,7 +255,7 @@ struct MainTabView: View {
                 selectedTab = tab
             }
         } label: {
-            VStack(spacing: 2) {
+            VStack(spacing: 4) {
                 Image(systemName: icon)
                     .font(.system(size: 20, weight: .medium))
                 Text(label)
@@ -265,12 +266,12 @@ struct MainTabView: View {
         }
         .buttonStyle(.plain)
     }
-    
+
     private var searchButton: some View {
         Button {
             showAddBook = true
         } label: {
-            VStack(spacing: 2) {
+            VStack(spacing: 4) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 20, weight: .medium))
                 Text("Search")

@@ -41,7 +41,7 @@ struct ProfileView: View {
             .navigationTitle("Profile")
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(Theme.background, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {

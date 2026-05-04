@@ -1,41 +1,107 @@
 //
 //  Theme.swift
-//  WellRead
+//  Spine
 //
-//  Design system: deep indigo primary, soft green accent, near-black background.
+//  Design system: terminal-paper foundation, CRT-black ink, teal chrome.
+//  Translated from the Spine moodboard for iOS — keeps rounded corners,
+//  gradients, and shadows; uses ASCII as accent only (never book covers);
+//  preserves the universal tier-list colors (defined in TierListView.swift).
 //
 
 import SwiftUI
 
 enum Theme {
-    // MARK: - Colors
-    static let primary = Color(red: 0.29, green: 0.24, blue: 0.55)      // Deep indigo
-    static let accent = Color(red: 0.45, green: 0.78, blue: 0.58)        // Soft green
-    static let background = Color(red: 0.08, green: 0.08, blue: 0.10)   // Near black
-    static let surface = Color(red: 0.12, green: 0.12, blue: 0.14)
-    static let surfaceElevated = Color(red: 0.16, green: 0.16, blue: 0.18)
-    static let textPrimary = Color.white
-    static let textSecondary = Color(white: 0.65)
-    static let textTertiary = Color(white: 0.45)
-    /// Book profile Queue button — light powder blue.
-    static let queuePowderBlue = Color(red: 0.78, green: 0.88, blue: 0.96)
-    /// Text on `queuePowderBlue` (enough contrast on light blue).
-    static let queuePowderBlueLabel = Color(red: 0.16, green: 0.30, blue: 0.44)
+    // MARK: - Colors — Foundation
+
+    /// Terminal paper — primary background. (#E8E4DB)
+    static let background = Color(red: 0.910, green: 0.894, blue: 0.859)
+    /// CRT black — primary text and ink. (#0A0A0A)
+    static let textPrimary = Color(red: 0.039, green: 0.039, blue: 0.039)
+    /// Phosphor white — for inverted surfaces (teal/navy/black chrome). (#FFFFFF)
+    static let phosphorWhite = Color.white
+
+    // Surfaces stay close to background; differentiation comes from borders and
+    // type, not big fill jumps.
+    /// Cards / sheets — slightly cooler/darker than `background`. (#DCD7CC)
+    static let surface = Color(red: 0.863, green: 0.843, blue: 0.800)
+    /// Elevated cards — flips slightly lighter (paper-on-paper). (#F2EFE8)
+    static let surfaceElevated = Color(red: 0.949, green: 0.937, blue: 0.910)
+
+    // Text hierarchy — fades of CRT black on terminal paper.
+    static let textSecondary = Color(red: 0.34, green: 0.32, blue: 0.30)
+    static let textTertiary = Color(red: 0.55, green: 0.53, blue: 0.50)
+
+    // MARK: - Colors — Chrome (load-bearing UI frames)
+
+    /// Win95 desktop teal — window frames, dividers, badges, primary border. (#1B7B7E)
+    static let chromeTeal = Color(red: 0.106, green: 0.482, blue: 0.494)
+    /// Classic title-bar navy — OS-shell title bars / emphatic chrome. (#000080)
+    static let chromeNavy = Color(red: 0.000, green: 0.000, blue: 0.502)
+    /// Win95 system gray — retro button surfaces, used sparingly. (#C0C0C0)
+    static let chromeGray = Color(red: 0.753, green: 0.753, blue: 0.753)
+
+    // MARK: - Colors — One-shot accents (used rarely; they hit hard)
+
+    /// "BANG BANG BANG" magenta — reserve for truly singular punches. (#E8408F)
+    static let magentaPunch = Color(red: 0.910, green: 0.251, blue: 0.561)
+    /// ASICS blue — primary CTA / "the real brand color moment". (#0F4FB8)
+    static let asicsBlue = Color(red: 0.059, green: 0.310, blue: 0.722)
+
+    // MARK: - Colors — Semantic aliases (stable API for existing views)
+
+    /// Brand chrome (was deep indigo) — now teal.
+    static let primary = chromeTeal
+    /// Primary CTA color (Read button, rating pills) (was soft green) — now ASICS blue.
+    static let accent = asicsBlue
+
+    /// Queue button background — pale ASICS-blue tint.
+    static let queuePowderBlue = Color(red: 0.815, green: 0.870, blue: 0.965)
+    /// Text on `queuePowderBlue` — full-strength ASICS blue.
+    static let queuePowderBlueLabel = asicsBlue
+
+    /// Fallback "spine" color for books with no cover image — Win98-friendly indigo plum
+    /// that harmonizes with chromeNavy and magentaPunch. Use phosphorWhite for text on it.
+    static let defaultCoverFill = Color(red: 0.290, green: 0.240, blue: 0.550)
+
+    // Tier list colors (S/A/B/C/D) are universal and live in TierListView.swift.
+    // They are intentionally *not* re-themed here.
 
     // MARK: - Typography
-    static func largeTitle() -> Font { .system(size: 28, weight: .bold, design: .default) }
-    static func title() -> Font { .system(size: 22, weight: .bold, design: .default) }
-    static func title2() -> Font { .system(size: 18, weight: .semibold, design: .default) }
-    /// Feed screen section label for “Your friends” (and similar).
-    static func feedSectionHeader() -> Font { .system(size: 17, weight: .semibold, design: .default) }
-    /// The “Feed” title above the post list.
-    static func feedBlockTitle() -> Font { .system(size: 22, weight: .semibold, design: .default) }
-    static func headline() -> Font { .system(size: 16, weight: .semibold, design: .default) }
-    /// Section titles on book profile (Summary, Notable quote, etc.) — ~2× headline for emphasis.
-    static func profileSectionHeader() -> Font { .system(size: 32, weight: .bold, design: .default) }
-    static func body() -> Font { .system(size: 16, weight: .regular, design: .default) }
-    static func callout() -> Font { .system(size: 14, weight: .regular, design: .default) }
-    static func caption() -> Font { .system(size: 12, weight: .regular, design: .default) }
+    //
+    // Almost everything is monospace: titles, labels, buttons, metadata, ratings,
+    // captions — the moodboard's "terminal cadence" stays where short labels live.
+    // The exception is body() — used for long-form prose (book summaries, notable
+    // quotes, review captions, comments). Mono walls of paragraph text fight the
+    // reader; serif (New York) reads like a printed page and is on-brand for a
+    // book app. Translates the moodboard rather than transcribing it.
+
+    private static func mono(_ size: CGFloat, weight: Font.Weight) -> Font {
+        .system(size: size, weight: weight, design: .monospaced)
+    }
+
+    private static func serif(_ size: CGFloat, weight: Font.Weight) -> Font {
+        .system(size: size, weight: weight, design: .serif)
+    }
+
+    static func largeTitle() -> Font { mono(28, weight: .bold) }
+    static func title() -> Font { mono(22, weight: .bold) }
+    static func title2() -> Font { mono(18, weight: .semibold) }
+    /// Feed section label ("Your friends", etc.).
+    static func feedSectionHeader() -> Font { mono(17, weight: .semibold) }
+    /// "Feed" title above the post list.
+    static func feedBlockTitle() -> Font { mono(22, weight: .semibold) }
+    static func headline() -> Font { mono(16, weight: .semibold) }
+    /// Book profile section titles (Summary, Notable quote) — ~2× headline.
+    static func profileSectionHeader() -> Font { mono(32, weight: .bold) }
+    /// Long-form prose — serif for readability. UI chrome should NOT use this; use callout/caption/headline.
+    static func body() -> Font { serif(17, weight: .regular) }
+    static func callout() -> Font { mono(14, weight: .regular) }
+    static func caption() -> Font { mono(12, weight: .regular) }
+
+    /// Tracking applied to display type for "terminal cadence."
+    static let displayTracking: CGFloat = 0.5
+    /// Line spacing for body prose. Serif at 17pt reads well with a small extra leading.
+    static let bodyLineSpacing: CGFloat = 3
 
     /// Comment rows and feed post timestamps: seconds only under one minute; otherwise minutes and hours until 24 h; then whole days/weeks—no hour remainder once a post is a day old.
     static func commentRelativeTimestamp(_ date: Date, now: Date = Date()) -> String {
@@ -66,7 +132,7 @@ enum Theme {
         }
         return date.formatted(date: .abbreviated, time: .omitted)
     }
-    
+
     // MARK: - Ratings (out of 10, one decimal — e.g. 8.8)
     static func formatRatingOutOfTen(_ value: Double) -> String {
         String(format: "%.1f", value)
@@ -107,8 +173,100 @@ enum Theme {
     static let cardPadding: CGFloat = 16
     static let gridSpacing: CGFloat = 12
     static let horizontalPadding: CGFloat = 20
-    /// Approximate height of `MainTabView`’s custom tab bar (icons, labels, padding). Used to inset pushed views that don’t inherit the parent’s safe area.
+    /// Approximate height of `MainTabView`'s custom tab bar (icons, labels, padding). Used to inset pushed views that don't inherit the parent's safe area.
     static let mainTabBarChromeHeight: CGFloat = 56
+    /// Stroke width for teal "window" frames around hero surfaces.
+    static let windowBorderWidth: CGFloat = 2
+    /// Hairline width for inline chrome (dividers, list separators, card outlines).
+    static let chromeHairline: CGFloat = 1
+}
+
+// MARK: - ASCII / glyph decoration (accents only — never book covers)
+
+enum SpinesGlyphs {
+    /// Solid square — window close-button glyph.
+    static let closeBox = "■"
+    /// Phosphor-fade ramp — useful for empty/loading state decoration.
+    static let phosphorFade = "█▓▒░"
+    /// "─" — single horizontal-rule character; multiply for a divider line.
+    static let ruleUnit = "─"
+
+    /// Wraps a short label in mono-style brackets: `[ STATUS ]`.
+    static func bracketed(_ s: String) -> String { "[ \(s.uppercased()) ]" }
+
+    /// Builds a horizontal rule of the given character width, e.g. "────────".
+    static func rule(width: Int) -> String { String(repeating: ruleUnit, count: max(1, width)) }
+}
+
+// MARK: - Card & window styles
+
+/// Default card surface — paper background, subtle teal hairline, soft shadow.
+struct ThemeCardStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .background(
+                RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
+                    .fill(Theme.surface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
+                    .stroke(Theme.chromeTeal.opacity(0.35), lineWidth: Theme.chromeHairline)
+            )
+            .shadow(color: Theme.textPrimary.opacity(0.06), radius: 6, x: 0, y: 2)
+    }
+}
+
+/// Spines "window" — teal (or navy) title bar with optional title text and a
+/// close-box glyph; framed body. Use on hero surfaces (book profile sections,
+/// modals) — too many on one screen reads as costume.
+struct WindowedCardStyle: ViewModifier {
+    let title: String?
+    let chromeColor: Color
+
+    func body(content: Content) -> some View {
+        VStack(spacing: 0) {
+            if let title {
+                HStack(spacing: 0) {
+                    Text(title.uppercased())
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .tracking(1)
+                        .foregroundStyle(Theme.phosphorWhite)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 10)
+                    Text(SpinesGlyphs.closeBox)
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .foregroundStyle(Theme.phosphorWhite)
+                        .padding(.trailing, 10)
+                }
+                .padding(.vertical, 6)
+                .background(chromeColor)
+            }
+            content
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Theme.surfaceElevated)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
+                .stroke(chromeColor, lineWidth: Theme.windowBorderWidth)
+        )
+        .shadow(color: Theme.textPrimary.opacity(0.10), radius: 8, x: 0, y: 3)
+    }
+}
+
+extension View {
+    /// Plain Spines card (paper surface, hairline teal border).
+    func wellReadCard() -> some View {
+        modifier(ThemeCardStyle())
+    }
+
+    /// Spines card framed as a Win95-style window with an optional title bar.
+    /// - Parameters:
+    ///   - title: Title-bar text. Pass `nil` to render just a teal-bordered frame.
+    ///   - chrome: Title-bar color. Defaults to teal; use `.chromeNavy` for "system" emphasis.
+    func windowedCard(title: String? = nil, chrome: Color = Theme.chromeTeal) -> some View {
+        modifier(WindowedCardStyle(title: title, chromeColor: chrome))
+    }
 }
 
 // MARK: - Main tab bar (custom)
@@ -118,30 +276,9 @@ private struct MainTabBarOverlapKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
-    /// Extra bottom padding for views (e.g. book profile) when the tab bar doesn’t inset them. With `.safeAreaInset(tabBar)` on `MainTabView`, use `0`—otherwise you double the gap.
+    /// Extra bottom padding for views (e.g. book profile) when the tab bar doesn't inset them. With `.safeAreaInset(tabBar)` on `MainTabView`, use `0`—otherwise you double the gap.
     var mainTabBarOverlapExtraHeight: CGFloat {
         get { self[MainTabBarOverlapKey.self] }
         set { self[MainTabBarOverlapKey.self] = newValue }
-    }
-}
-
-// Card style with subtle blur / elevation
-struct ThemeCardStyle: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .background(
-                RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
-                    .fill(Theme.surfaceElevated.opacity(0.9))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
-                    .stroke(Theme.textTertiary.opacity(0.2), lineWidth: 1)
-            )
-    }
-}
-
-extension View {
-    func wellReadCard() -> some View {
-        modifier(ThemeCardStyle())
     }
 }

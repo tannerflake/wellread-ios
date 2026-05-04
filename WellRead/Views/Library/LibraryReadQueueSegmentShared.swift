@@ -87,17 +87,17 @@ struct LibraryReadQueueSegmentControlReadOnly: View {
         .padding(3)
         .background {
             ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 10).fill(Color(white: 0.16))
+                RoundedRectangle(cornerRadius: 10).fill(Theme.surface)
                 GeometryReader { geo in
                     let half = geo.size.width / 2
                     let pillW = max(0, half - 6)
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(Color(white: 0.24))
+                        .fill(Theme.surfaceElevated)
                         .overlay(
                             RoundedRectangle(cornerRadius: 8)
-                                .strokeBorder(Theme.textTertiary.opacity(0.55), lineWidth: 1.25)
+                                .strokeBorder(Theme.chromeTeal.opacity(0.55), lineWidth: 1.25)
                         )
-                        .shadow(color: Color.black.opacity(0.45), radius: 4, y: 1)
+                        .shadow(color: Theme.textPrimary.opacity(0.12), radius: 4, y: 1)
                         .frame(width: pillW)
                         .offset(x: 3 + (segment == .read ? 0 : half))
                         .animation(LibrarySegmentControlAnimation.selection, value: segment)
@@ -117,7 +117,7 @@ struct LibraryReadQueueSegmentControlReadOnly: View {
                 .font(Theme.callout().weight(isSelected ? .semibold : .regular))
                 .foregroundStyle(isSelected ? Theme.textPrimary : Theme.textSecondary)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 11)
+                .padding(.vertical, 6)
                 .padding(.horizontal, 8)
         }
         .buttonStyle(.plain)
@@ -136,7 +136,7 @@ struct LibraryReadQueueSegmentControlReadOnly: View {
                 .font(Theme.callout().weight(isSelected ? .semibold : .regular))
                 .foregroundStyle(isSelected ? Theme.textPrimary : Theme.textSecondary)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 11)
+                .padding(.vertical, 6)
                 .padding(.horizontal, 8)
         }
         .buttonStyle(.plain)

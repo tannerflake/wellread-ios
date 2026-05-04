@@ -68,6 +68,8 @@ struct ProfileLibraryView: View {
             ZStack {
                 Theme.background.ignoresSafeArea()
                 VStack(spacing: 0) {
+                    spineProfileHeader
+
                     if let goal = activeReadingGoal {
                         LibraryReadingGoalProgressStrip(
                             calendarYear: calendarYear,
@@ -93,7 +95,7 @@ struct ProfileLibraryView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Theme.background, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbarColorScheme(.light, for: .navigationBar)
             .navigationDestination(item: $selectedBookForProfile) { book in
                 BookProfileView(
                     book: book,
@@ -107,19 +109,6 @@ struct ProfileLibraryView: View {
                     readEntryForReview: appState.userReadBook(forBookId: book.id),
                     canEditReadReview: true
                 )
-                .padding(.horizontal)
-                .padding(.bottom, 24)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Text("Your Library")
-                        .font(Theme.title())
-                        .foregroundStyle(Theme.textPrimary)
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    toolbarProfilePhoto
-                }
             }
             .sheet(isPresented: $showEditProfile) {
                 ProfileCompletionView(
@@ -221,6 +210,26 @@ struct ProfileLibraryView: View {
         queueDragCoordinator.isDraggingQueueBook || queueDragCoordinator.isDraggingReadBook
     }
 
+    /// Brand banner at the top of the Profile/Library tab — matches the Feed's `SPINE // FEED` treatment exactly so the header doesn't visually move when switching tabs. The avatar menu is rendered inline on the right (rather than in the toolbar) so the nav bar stays empty and the same height as on Feed/Discover.
+    private var spineProfileHeader: some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("SPINE // PROFILE")
+                    .font(.system(size: 22, weight: .bold, design: .monospaced))
+                    .tracking(2)
+                    .foregroundStyle(Theme.textPrimary)
+                Text(SpinesGlyphs.rule(width: 32))
+                    .font(.system(size: 12, weight: .regular, design: .monospaced))
+                    .foregroundStyle(Theme.chromeTeal)
+            }
+            Spacer(minLength: 8)
+            toolbarProfilePhoto
+        }
+        .padding(.horizontal, Theme.horizontalPadding)
+        .padding(.top, 8)
+        .padding(.bottom, 12)
+    }
+
     /// Custom Read / Queue control: **Read** = mark read from queue (green +) or remove from read shelf (red −); **Queue** = remove from queue (red −). Chrome follows UIKit drag sessions.
     private var librarySegmentControl: some View {
         HStack(spacing: 0) {
@@ -230,18 +239,18 @@ struct ProfileLibraryView: View {
         .padding(3)
         .background {
             ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 10).fill(Color(white: 0.16))
+                RoundedRectangle(cornerRadius: 10).fill(Theme.surface)
                 if !isDraggingBooksForChrome {
                     GeometryReader { geo in
                         let half = geo.size.width / 2
                         let pillW = max(0, half - 6)
                         RoundedRectangle(cornerRadius: 8)
-                            .fill(Color(white: 0.24))
+                            .fill(Theme.surfaceElevated)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 8)
-                                    .strokeBorder(Theme.textTertiary.opacity(0.55), lineWidth: 1.25)
+                                    .strokeBorder(Theme.chromeTeal.opacity(0.55), lineWidth: 1.25)
                             )
-                            .shadow(color: Color.black.opacity(0.45), radius: 4, y: 1)
+                            .shadow(color: Theme.textPrimary.opacity(0.12), radius: 4, y: 1)
                             .frame(width: pillW)
                             .offset(x: 3 + (segment == .read ? 0 : half))
                             .animation(LibrarySegmentControlAnimation.selection, value: segment)
@@ -277,14 +286,14 @@ struct ProfileLibraryView: View {
         let readFill: Color = {
             if showReadMarkReadChrome { return Theme.accent.opacity(emphasizeReadHover ? 0.58 : 0.5) }
             if showReadRemoveChrome { return Color.red.opacity(emphasizeReadHover ? 0.58 : 0.5) }
-            if readStaticSelectedWhileDragging { return Color(white: 0.24) }
+            if readStaticSelectedWhileDragging { return Theme.surfaceElevated }
             if isSelected && !isDraggingBooksForChrome { return .clear }
             return .clear
         }()
         let readStrokeColor: Color = {
             if showReadMarkReadChrome { return Theme.accent.opacity(emphasizeReadHover ? 1.0 : 0.95) }
             if showReadRemoveChrome { return Color.red.opacity(emphasizeReadHover ? 1.0 : 0.95) }
-            if readStaticSelectedWhileDragging { return Theme.textTertiary.opacity(0.55) }
+            if readStaticSelectedWhileDragging { return Theme.chromeTeal.opacity(0.55) }
             if isSelected && !isDraggingBooksForChrome { return .clear }
             return .clear
         }()
@@ -297,7 +306,7 @@ struct ProfileLibraryView: View {
         let readShadowColor: Color = {
             if showReadMarkReadChrome { return Theme.accent.opacity(emphasizeReadHover ? 0.55 : 0.45) }
             if showReadRemoveChrome { return Color.red.opacity(emphasizeReadHover ? 0.55 : 0.45) }
-            if readStaticSelectedWhileDragging { return Color.black.opacity(0.45) }
+            if readStaticSelectedWhileDragging { return Theme.textPrimary.opacity(0.12) }
             if isSelected && !isDraggingBooksForChrome { return .clear }
             return .clear
         }()
@@ -325,7 +334,7 @@ struct ProfileLibraryView: View {
                     .foregroundStyle(readLabelColor)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 11)
+            .padding(.vertical, 6)
             .padding(.horizontal, 8)
             .background(
                 RoundedRectangle(cornerRadius: 8)
@@ -363,13 +372,13 @@ struct ProfileLibraryView: View {
         }()
         let queueFill: Color = {
             if showQueueRemoveChrome { return Color.red.opacity(emphasizeQueueHover ? 0.58 : 0.5) }
-            if queueStaticSelectedWhileDragging { return Color(white: 0.24) }
+            if queueStaticSelectedWhileDragging { return Theme.surfaceElevated }
             if isSelected && !isDraggingBooksForChrome { return .clear }
             return .clear
         }()
         let queueStrokeColor: Color = {
             if showQueueRemoveChrome { return Color.red.opacity(emphasizeQueueHover ? 1.0 : 0.95) }
-            if queueStaticSelectedWhileDragging { return Theme.textTertiary.opacity(0.55) }
+            if queueStaticSelectedWhileDragging { return Theme.chromeTeal.opacity(0.55) }
             if isSelected && !isDraggingBooksForChrome { return .clear }
             return .clear
         }()
@@ -381,7 +390,7 @@ struct ProfileLibraryView: View {
         }()
         let queueShadowColor: Color = {
             if showQueueRemoveChrome { return Color.red.opacity(emphasizeQueueHover ? 0.55 : 0.45) }
-            if queueStaticSelectedWhileDragging { return Color.black.opacity(0.45) }
+            if queueStaticSelectedWhileDragging { return Theme.textPrimary.opacity(0.12) }
             if isSelected && !isDraggingBooksForChrome { return .clear }
             return .clear
         }()
@@ -405,7 +414,7 @@ struct ProfileLibraryView: View {
                     .foregroundStyle(queueLabelColor)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 11)
+            .padding(.vertical, 6)
             .padding(.horizontal, 8)
             .background(
                 RoundedRectangle(cornerRadius: 8)
@@ -489,10 +498,15 @@ struct ProfileLibraryView: View {
                         avatarPlaceholder(initial: String(user.displayName.prefix(1)), compact: true)
                     }
                 }
-                .frame(width: 36, height: 36)
+                .frame(width: 40, height: 40)
                 .clipShape(Circle())
+                .overlay(
+                    Circle()
+                        .strokeBorder(Theme.chromeTeal.opacity(0.55), lineWidth: 1.5)
+                )
             }
             .buttonStyle(.plain)
+            .menuStyle(.button)
         } else {
             Menu {
                 Button {
@@ -520,11 +534,11 @@ struct ProfileLibraryView: View {
 
     private func avatarPlaceholder(initial: String, compact: Bool = false) -> some View {
         Circle()
-            .fill(Theme.surface)
+            .fill(Theme.chromeTeal)
             .overlay(
-                Text(initial)
-                    .font(compact ? Theme.headline() : Theme.largeTitle())
-                    .foregroundStyle(Theme.textSecondary)
+                Text(initial.uppercased())
+                    .font(.system(size: compact ? 18 : 28, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Theme.phosphorWhite)
             )
     }
 
@@ -559,6 +573,7 @@ struct ProfileLibraryView: View {
             }, onBookTap: { selectedBookForProfile = $0 })
         } else {
             QueueLibraryView(
+                readingNow: appState.wantToReadReadingNow,
                 upNext: appState.wantToReadUpNext,
                 backlog: appState.wantToReadBacklog,
                 onUpdateShelfAndOrder: { id, shelf, idx in

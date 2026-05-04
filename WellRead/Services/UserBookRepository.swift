@@ -115,7 +115,9 @@ final class UserBookRepository {
             for doc in snapshot.documents {
                 let d = doc.data()
                 let shelfRaw = d["queueShelf"] as? String
+                // Don't bump order for books on the explicit shelves (Reading Now / Up Next) — only backlog gets pushed down by the new arrival.
                 if shelfRaw == QueueShelf.upNext.rawValue { continue }
+                if shelfRaw == QueueShelf.readingNow.rawValue { continue }
                 let ord = (d["queueOrder"] as? Int) ?? 1_000_000
                 batch.updateData([
                     "queueOrder": ord + 1,

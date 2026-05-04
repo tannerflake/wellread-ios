@@ -313,7 +313,11 @@ struct BookCoverView: View {
         }
         .frame(width: size, height: size * 1.5)
         .clipShape(RoundedRectangle(cornerRadius: 6))
-        .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .strokeBorder(Theme.chromeTeal.opacity(0.35), lineWidth: 0.75)
+        )
+        .shadow(color: Theme.textPrimary.opacity(0.12), radius: 3, x: 0, y: 2)
         .modifier(CoverTapModifier(onTap: onTap))
     }
 }
@@ -342,12 +346,12 @@ private struct TitleOnlyBookCover: View {
 
     var body: some View {
         ZStack {
-            Theme.primary
+            Theme.defaultCoverFill
             VStack(spacing: 0) {
                 Spacer(minLength: 0)
                 Text(title)
                     .font(.system(size: fontSize, weight: .semibold, design: .serif))
-                    .foregroundStyle(Theme.textPrimary)
+                    .foregroundStyle(Theme.phosphorWhite)
                     .multilineTextAlignment(.center)
                     .lineLimit(5)
                     .padding(.horizontal, padding)
@@ -355,7 +359,7 @@ private struct TitleOnlyBookCover: View {
                 if let author = trimmedAuthor {
                     Text(author)
                         .font(.system(size: authorFontSize, weight: .medium, design: .serif))
-                        .foregroundStyle(Theme.textSecondary)
+                        .foregroundStyle(Theme.phosphorWhite.opacity(0.75))
                         .multilineTextAlignment(.center)
                         .lineLimit(2)
                         .padding(.horizontal, padding)
@@ -422,11 +426,7 @@ private struct FallbackCoverImage: View {
                     .frame(width: size, height: size * 1.5)
                     .clipped()
             } else {
-                ZStack {
-                    genericPlaceholder
-                    ProgressView()
-                        .tint(Theme.accent)
-                }
+                CoverShimmer()
             }
         }
         .frame(width: size, height: size * 1.5)
@@ -469,5 +469,42 @@ private struct FallbackCoverImage: View {
                 .foregroundStyle(Theme.textTertiary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// Loading-state shimmer for book covers — a teal band sweeps across a paper surface
+/// and repeats while we wait for the image. Replaces ProgressView spinners on covers.
+private struct CoverShimmer: View {
+    @State private var animate = false
+
+    var body: some View {
+        GeometryReader { geo in
+            let width = geo.size.width
+            // Band is ~60% of cover width; travels from fully off-left to fully off-right.
+            let bandWidth = width * 0.6
+            let startX = -bandWidth
+            let endX = width + bandWidth
+            ZStack {
+                Theme.surface
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0.0),
+                        .init(color: Theme.chromeTeal.opacity(0.32), location: 0.5),
+                        .init(color: .clear, location: 1.0)
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .frame(width: bandWidth)
+                .offset(x: animate ? endX - bandWidth / 2 : startX - bandWidth / 2)
+                .animation(
+                    .linear(duration: 1.4).repeatForever(autoreverses: false),
+                    value: animate
+                )
+            }
+            .frame(width: width, height: geo.size.height)
+            .clipped()
+        }
+        .onAppear { animate = true }
     }
 }

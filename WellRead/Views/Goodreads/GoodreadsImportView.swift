@@ -53,7 +53,7 @@ struct GoodreadsImportView: View {
             .navigationTitle("Import from Goodreads")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Theme.background, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -166,7 +166,7 @@ struct GoodreadsImportView: View {
                             }
                             GridRow {
                                 goodreadsStepNumberBadge(2)
-                                goodreadsStepBody("Come back to Spines and tap \"Allow Paste\".")
+                                goodreadsStepBody("Come back to Spine and tap \"Allow Paste\".")
                             }
                             GridRow {
                                 goodreadsStepNumberBadge(3)
@@ -316,7 +316,7 @@ struct GoodreadsImportView: View {
 
         return ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                Text("Import \(toImport.count) books into Spines?")
+                Text("Import \(toImport.count) books into Spine?")
                     .font(Theme.title2())
                     .foregroundStyle(Theme.textPrimary)
                 summarySection(matched: toImport.count, unmatched: preview.unmatched.count, duplicates: duplicateCount)

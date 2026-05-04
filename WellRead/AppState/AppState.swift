@@ -248,13 +248,20 @@ final class AppState: ObservableObject {
 
         func belongsToShelf(_ ub: UserBook, _ s: QueueShelf) -> Bool {
             switch s {
+            case .readingNow: return ub.queueShelf == .readingNow
             case .upNext: return ub.queueShelf == .upNext
             case .backlog: return ub.queueShelf == nil || ub.queueShelf == .backlog
             }
         }
 
         var moved = userBooks[moveIndex]
-        let sourceShelf: QueueShelf = (moved.queueShelf == .upNext) ? .upNext : .backlog
+        let sourceShelf: QueueShelf = {
+            switch moved.queueShelf {
+            case .readingNow: return .readingNow
+            case .upNext: return .upNext
+            default: return .backlog
+            }
+        }()
         moved.queueShelf = shelf
         moved.updatedAt = now
 
@@ -322,7 +329,7 @@ final class AppState: ObservableObject {
 
     private static func sortQueueMembers(_ books: [UserBook], shelf: QueueShelf) -> [UserBook] {
         switch shelf {
-        case .upNext:
+        case .readingNow, .upNext:
             return books.sorted { ($0.queueOrder ?? 999) < ($1.queueOrder ?? 999) }
         case .backlog:
             return sortedBacklog(books)
@@ -339,6 +346,13 @@ final class AppState: ObservableObject {
 
     var wantToRead: [UserBook] {
         userBooks.filter { $0.status == .wantToRead }
+    }
+
+    /// Queue → **Reading now** (explicit shelf only).
+    var wantToReadReadingNow: [UserBook] {
+        userBooks
+            .filter { $0.status == .wantToRead && $0.queueShelf == .readingNow }
+            .sorted { ($0.queueOrder ?? 999) < ($1.queueOrder ?? 999) }
     }
 
     /// Queue → **Up next** (explicit shelf only).

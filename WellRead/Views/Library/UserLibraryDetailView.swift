@@ -34,6 +34,12 @@ struct UserLibraryDetailView: View {
         books.filter { $0.status == .wantToRead }
     }
 
+    private var wantToReadReadingNow: [UserBook] {
+        wantToReadList
+            .filter { $0.queueShelf == .readingNow }
+            .sorted { ($0.queueOrder ?? 999) < ($1.queueOrder ?? 999) }
+    }
+
     private var wantToReadUpNext: [UserBook] {
         wantToReadList
             .filter { $0.queueShelf == .upNext }
@@ -119,7 +125,7 @@ struct UserLibraryDetailView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Theme.background, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarColorScheme(.light, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .principal) {
                 Text(libraryTitle)
@@ -147,9 +153,6 @@ struct UserLibraryDetailView: View {
                 readEntryForReview: books.first(where: { $0.bookId == book.id && $0.status == .read }),
                 reviewSectionHeading: "Review"
             )
-            .padding(.horizontal)
-            .padding(.bottom, 24)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .onAppear {
             Task {
@@ -294,6 +297,7 @@ struct UserLibraryDetailView: View {
             )
         } else {
             QueueLibraryView(
+                readingNow: wantToReadReadingNow,
                 upNext: wantToReadUpNext,
                 backlog: wantToReadBacklog,
                 onUpdateShelfAndOrder: { _, _, _ in },
