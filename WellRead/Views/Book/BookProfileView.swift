@@ -52,14 +52,14 @@ struct BookProfileView: View {
         onNotInterested != nil || onWantToRead != nil || onConfirmRead != nil || onRemoveFromQueue != nil
     }
 
-    /// Show review card when this read row has review text and/or a rating.
+    /// Show review card when this read row has review text and/or a tier.
     private var showReviewSection: Bool {
         guard let ub = readEntryForReview else { return false }
         guard ub.status == .read else { return false }
         let trimmed = ub.reviewText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let hasText = !trimmed.isEmpty
-        let hasRating = ub.rating != nil
-        return hasText || hasRating
+        let hasTier = ub.tier != nil
+        return hasText || hasTier
     }
 
     /// Hide the Notable Quote card entirely when no quote was found. Still shown while loading.
@@ -173,7 +173,7 @@ struct BookProfileView: View {
 
     private func reviewWindow(ub: UserBook) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            if canEditReadReview || ub.rating != nil {
+            if canEditReadReview || ub.tier != nil {
                 HStack(alignment: .center, spacing: 12) {
                     Spacer(minLength: 0)
                     if canEditReadReview {
@@ -186,8 +186,8 @@ struct BookProfileView: View {
                         }
                         .buttonStyle(.plain)
                     }
-                    if let r = ub.rating {
-                        ratingPill(rating: r)
+                    if let t = ub.tier {
+                        TierBadge(tier: t)
                     }
                 }
             }
@@ -201,17 +201,6 @@ struct BookProfileView: View {
         }
         .padding()
         .windowedCard(title: reviewSectionHeading)
-    }
-
-    private func ratingPill(rating: Double) -> some View {
-        Text("[ \(Theme.formatRatingOutOfTen(rating))/10 ]")
-            .font(.system(size: 12, weight: .bold, design: .monospaced))
-            .tracking(0.5)
-            .foregroundStyle(Theme.phosphorWhite)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(Theme.accent)
-            .clipShape(Capsule())
     }
 
     // MARK: - Summary window

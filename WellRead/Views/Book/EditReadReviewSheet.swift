@@ -29,8 +29,6 @@ struct EditReadReviewSheet: View {
     @EnvironmentObject private var appState: AppState
 
     @State private var dateFinished: Date
-    @State private var hasRating: Bool
-    @State private var sliderValue: Double
     @State private var thoughts: String
     @State private var postToFeed: Bool
     @State private var loadedFeedToggle: Bool = false
@@ -44,9 +42,6 @@ struct EditReadReviewSheet: View {
         self.userBook = userBook
         self.feedCaption = feedCaption
         _dateFinished = State(initialValue: userBook.dateFinished ?? Date())
-        let r = userBook.rating
-        _hasRating = State(initialValue: r != nil)
-        _sliderValue = State(initialValue: r ?? 5.5)
         _thoughts = State(initialValue: Self.initialThoughts(userBook: userBook, feedCaption: feedCaption))
         _postToFeed = State(initialValue: true)
     }
@@ -56,11 +51,6 @@ struct EditReadReviewSheet: View {
         if !fromBook.isEmpty { return fromBook }
         let fromFeed = feedCaption?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return fromFeed
-    }
-
-    private var ratingLabel: String {
-        guard hasRating else { return "—" }
-        return Theme.formatRatingOutOfTen(sliderValue)
     }
 
     var body: some View {
@@ -98,17 +88,17 @@ struct EditReadReviewSheet: View {
                             .tint(Theme.accent)
                     }
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        Toggle("Include rating", isOn: $hasRating)
-                            .font(Theme.callout())
-                            .foregroundStyle(Theme.textPrimary)
-                            .tint(Theme.accent)
-                        if hasRating {
-                            Text("Rating: \(ratingLabel) / 10")
+                    if let t = userBook.tier {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Tier")
                                 .font(Theme.caption())
                                 .foregroundStyle(Theme.textSecondary)
-                            Slider(value: $sliderValue, in: 1...10, step: 0.1)
-                                .tint(Theme.accent)
+                            HStack(spacing: 8) {
+                                TierBadge(tier: t)
+                                Text("Change in your tier list.")
+                                    .font(Theme.caption())
+                                    .foregroundStyle(Theme.textTertiary)
+                            }
                         }
                     }
 
@@ -227,11 +217,10 @@ struct EditReadReviewSheet: View {
         saveError = nil
         isSaving = true
         defer { isSaving = false }
-        let rating: Double? = hasRating ? Theme.normalizeRatingOutOfTen(sliderValue) : nil
         let err = await appState.updateReadReview(
             userBook: userBook,
             dateFinished: dateFinished,
-            rating: rating,
+            rating: userBook.rating,
             thoughts: thoughts,
             postToFeed: postToFeed
         )

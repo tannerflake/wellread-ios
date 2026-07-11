@@ -15,24 +15,8 @@ struct MarkAsReadInlineOverlay: View {
 
     @FocusState private var isThoughtsFocused: Bool
     @State private var markAsReadDate = Date()
-    @State private var markAsReadSliderValue: Double = 5.5
-    @State private var hasExplicitMarkReadRating = false
     @State private var markAsReadPostToFeed = true
     @State private var markAsReadThoughts = ""
-
-    private var markAsReadRatingSliderBinding: Binding<Double> {
-        Binding(
-            get: { markAsReadSliderValue },
-            set: { newValue in
-                markAsReadSliderValue = newValue
-                hasExplicitMarkReadRating = true
-            }
-        )
-    }
-
-    private var markAsReadRatingLabel: String {
-        hasExplicitMarkReadRating ? Theme.formatRatingOutOfTen(markAsReadSliderValue) : "—"
-    }
 
     var body: some View {
         Group {
@@ -76,8 +60,6 @@ struct MarkAsReadInlineOverlay: View {
         .onChange(of: isPresented) { _, new in
             guard new else { return }
             markAsReadDate = Date()
-            markAsReadSliderValue = 5.5
-            hasExplicitMarkReadRating = false
             markAsReadPostToFeed = true
             markAsReadThoughts = ""
         }
@@ -89,10 +71,6 @@ struct MarkAsReadInlineOverlay: View {
             DatePicker("", selection: $markAsReadDate, displayedComponents: .date)
                 .datePickerStyle(.compact)
                 .labelsHidden()
-                .tint(Theme.accent)
-
-            sectionLabel("Rating  \(markAsReadRatingLabel) / 10")
-            Slider(value: markAsReadRatingSliderBinding, in: 1...10, step: 0.1)
                 .tint(Theme.accent)
 
             sectionLabel("Thoughts")
@@ -131,13 +109,10 @@ struct MarkAsReadInlineOverlay: View {
 
             Button {
                 let date = markAsReadDate
-                let rating: Double? = hasExplicitMarkReadRating
-                    ? Theme.normalizeRatingOutOfTen(markAsReadSliderValue)
-                    : nil
                 let post = markAsReadPostToFeed
                 let thoughts = markAsReadThoughts.trimmingCharacters(in: .whitespacesAndNewlines)
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { isPresented = false }
-                onConfirm(date, rating, post, thoughts.isEmpty ? nil : thoughts)
+                onConfirm(date, nil, post, thoughts.isEmpty ? nil : thoughts)
             } label: {
                 Text("[ MARK AS READ ]")
                     .font(.system(size: 14, weight: .bold, design: .monospaced))

@@ -11,19 +11,11 @@ import UniformTypeIdentifiers
 /// Match queue grid: wider slots so drops register between covers.
 private let tierDropSlotWidth: CGFloat = 16
 
-private let tierLabels = ["S", "A", "B", "C", "D"]
+/// Tier rows rendered top-to-bottom, plus an Unranked row appended after.
+private let tierLabels: [String] = spineTierLabels
 
-/// Traditional tier list colors (S → D).
 private func tierColor(for tier: String?) -> Color {
-    guard let tier else { return Theme.surface }
-    switch tier {
-    case "S": return Color(red: 0.95, green: 0.55, blue: 0.50)   // salmon / light red
-    case "A": return Color(red: 0.98, green: 0.72, blue: 0.55)   // light orange / peach
-    case "B": return Color(red: 0.98, green: 0.78, blue: 0.45)   // yellow-orange
-    case "C": return Color(red: 0.98, green: 0.92, blue: 0.55)   // light yellow
-    case "D": return Color(red: 0.65, green: 0.85, blue: 0.60)   // light green
-    default: return Theme.surface
-    }
+    spineTierColor(for: tier)
 }
 
 /// Invisible drop slot between or around books so the user can drop at a specific position (front, between, or back) in a tier. Fixed width so rows stay left-aligned; use fillsRow: true for empty tiers so the whole row accepts drops.
@@ -86,6 +78,8 @@ struct TierListView: View {
     var onBookTap: ((Book) -> Void)? = nil
     /// When true (viewing someone else's library), hide drag-and-drop.
     var readOnly: Bool = false
+    /// `Book.id` of a book to pulse-glow + scroll into view (e.g. just-reviewed book sitting in Unranked).
+    var highlightedBookId: String? = nil
 
     @EnvironmentObject private var queueDragCoordinator: QueueBookDragCoordinator
 
@@ -98,35 +92,56 @@ struct TierListView: View {
             let listWidth = geo.size.width
             let contentAreaWidth = max(0, listWidth - Self.horizontalPadding - Self.tierLabelWidth)
 
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(tierLabels, id: \.self) { tier in
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 8) {
+                        ForEach(tierLabels, id: \.self) { tier in
+                            TierRowView(
+                                tier: tier,
+                                books: sortedBooks(for: tier),
+                                contentAreaWidth: contentAreaWidth,
+                                onUpdateTierAndOrder: onUpdateTierAndOrder,
+                                onBookTap: onBookTap,
+                                readOnly: readOnly,
+                                highlightedBookId: highlightedBookId
+                            )
+                        }
                         TierRowView(
-                            tier: tier,
-                            books: sortedBooks(for: tier),
+                            tier: nil,
+                            books: sortedBooks(for: nil),
                             contentAreaWidth: contentAreaWidth,
                             onUpdateTierAndOrder: onUpdateTierAndOrder,
                             onBookTap: onBookTap,
-                            readOnly: readOnly
+                            readOnly: readOnly,
+                            highlightedBookId: highlightedBookId
                         )
+                        .id("unranked")
                     }
-                    TierRowView(
-                        tier: nil,
-                        books: sortedBooks(for: nil),
-                        contentAreaWidth: contentAreaWidth,
-                        onUpdateTierAndOrder: onUpdateTierAndOrder,
-                        onBookTap: onBookTap,
-                        readOnly: readOnly
-                    )
+                    .background(alignment: .topLeading) {
+                        LibraryScrollViewAnchor(dragCoordinator: queueDragCoordinator)
+                            .frame(width: 1, height: 1)
+                            .accessibilityHidden(true)
+                    }
+                    .padding(.horizontal, 4)
+                    .padding(.top, 10)
+                    .padding(.bottom, 88)
                 }
-                .background(alignment: .topLeading) {
-                    LibraryScrollViewAnchor(dragCoordinator: queueDragCoordinator)
-                        .frame(width: 1, height: 1)
-                        .accessibilityHidden(true)
+                .onChange(of: highlightedBookId) { _, newValue in
+                    guard newValue != nil else { return }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                        withAnimation(.easeInOut(duration: 0.45)) {
+                            proxy.scrollTo("unranked", anchor: .bottom)
+                        }
+                    }
                 }
-                .padding(.horizontal, 4)
-                .padding(.top, 10)
-                .padding(.bottom, 88)
+                .onAppear {
+                    guard highlightedBookId != nil else { return }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        withAnimation(.easeInOut(duration: 0.45)) {
+                            proxy.scrollTo("unranked", anchor: .bottom)
+                        }
+                    }
+                }
             }
         }
     }
@@ -155,6 +170,7 @@ struct TierRowView: View {
     let onUpdateTierAndOrder: (UUID, String?, Int?) -> Void
     var onBookTap: ((Book) -> Void)? = nil
     var readOnly: Bool = false
+    var highlightedBookId: String? = nil
 
     var header: String {
         tier ?? "Unranked"
@@ -212,7 +228,7 @@ struct TierRowView: View {
                         ForEach(Array(rowBooks.enumerated()), id: \.element.id) { i, ub in
                             TierRowDropSlot(tier: tier, insertionIndex: startIndex + i, onUpdateTierAndOrder: onUpdateTierAndOrder, minHeight: slotHeight, readOnly: readOnly)
                             if ub.book != nil {
-                                TierBookCell(userBook: ub, tier: tier, insertionIndex: startIndex + i, bookSize: bookSize, onUpdateTierAndOrder: onUpdateTierAndOrder, onBookTap: onBookTap, readOnly: readOnly)
+                                TierBookCell(userBook: ub, tier: tier, insertionIndex: startIndex + i, bookSize: bookSize, onUpdateTierAndOrder: onUpdateTierAndOrder, onBookTap: onBookTap, readOnly: readOnly, isHighlighted: highlightedBookId != nil && ub.book?.id == highlightedBookId)
                             }
                         }
                         TierRowDropSlot(tier: tier, insertionIndex: startIndex + rowBooks.count, onUpdateTierAndOrder: onUpdateTierAndOrder, fillsRow: true, minHeight: slotHeight, readOnly: readOnly)
@@ -239,6 +255,10 @@ struct TierBookCell: View {
     let onUpdateTierAndOrder: (UUID, String?, Int?) -> Void
     var onBookTap: ((Book) -> Void)? = nil
     var readOnly: Bool = false
+    /// True when this is the just-reviewed book sitting in Unranked — pulses a tier-color glow until tiered.
+    var isHighlighted: Bool = false
+
+    @State private var pulseOn = false
 
     var body: some View {
         Group {
@@ -268,8 +288,29 @@ struct TierBookCell: View {
                             .frame(width: bookSize, height: bookSize * 1.5)
                         }
                     }
+                    .overlay(highlightOverlay)
+                    .scaleEffect(isHighlighted && pulseOn ? 1.04 : 1.0)
+                    .animation(.easeInOut(duration: 0.95).repeatForever(autoreverses: true), value: pulseOn)
+                    .onAppear {
+                        if isHighlighted { pulseOn = true }
+                    }
+                    .onChange(of: isHighlighted) { _, newValue in
+                        pulseOn = newValue
+                    }
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var highlightOverlay: some View {
+        if isHighlighted {
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(Theme.accent, lineWidth: 2.5)
+                .shadow(color: Theme.accent.opacity(pulseOn ? 0.95 : 0.3), radius: pulseOn ? 14 : 4)
+                .shadow(color: Theme.accent.opacity(pulseOn ? 0.7 : 0.2), radius: pulseOn ? 22 : 8)
+                .frame(width: bookSize, height: bookSize * 1.5)
+                .allowsHitTesting(false)
         }
     }
 

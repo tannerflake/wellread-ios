@@ -28,6 +28,8 @@ final class AppState: ObservableObject {
     @Published var isFetchingGoodreadsFromURL = false
     /// Set when opening a feed post from a push or `wellread://` URL; Feed opens comments when resolved.
     @Published var deepLinkFeedPostId: String?
+    /// `Book.id` of a freshly-reviewed book the tier list should pulse-glow until the user tiers it. Cleared automatically once the corresponding `UserBook.tier` becomes non-nil.
+    @Published var pendingTierHighlightBookId: String?
 
     /// True only after we've loaded dismissed book IDs from Firestore, so discover suggestions exclude them from the first fetch.
     private var dismissedBookIdsLoaded = false
@@ -61,6 +63,7 @@ final class AppState: ObservableObject {
             self.userBooks = list
             Task { @MainActor in
                 self.dropExcludedFromDiscoverQueue()
+                self.clearTierHighlightIfTiered()
             }
             if let uid = self.currentUserId {
                 let copy = list
@@ -110,7 +113,22 @@ final class AppState: ObservableObject {
         discoverSuggestionQueue = []
         likedPostIds = []
         deepLinkFeedPostId = nil
+        pendingTierHighlightBookId = nil
         BookRepository.shared.clearCache()
+    }
+
+    /// Clear the pending tier-list highlight once the user has actually tiered the book.
+    private func clearTierHighlightIfTiered() {
+        guard let bid = pendingTierHighlightBookId else { return }
+        if let ub = userBooks.first(where: { $0.bookId == bid && $0.status == .read }), ub.tier != nil {
+            pendingTierHighlightBookId = nil
+        }
+    }
+
+    /// Switch to the Profile tab → Read segment, then pulse-glow this book in Unranked. Cleared once the user assigns a tier.
+    func startTierHighlight(forBookId bookId: String) {
+        pendingTierHighlightBookId = bookId
+        NotificationCenter.default.post(name: .spineHighlightTierBook, object: nil, userInfo: ["bookId": bookId])
     }
 
     func addUserBook(_ userBook: UserBook) {
@@ -131,6 +149,8 @@ final class AppState: ObservableObject {
     func setTierAndOrder(for userBookId: UUID, tier: String?, order: Int?) {
         guard let moveIndex = userBooks.firstIndex(where: { $0.id == userBookId }) else { return }
         let now = Date()
+        let movedBookId = userBooks[moveIndex].bookId
+        let movedTierBefore = userBooks[moveIndex].tier
         func sameTier(_ a: String?, _ b: String?) -> Bool {
             switch (a, b) {
             case (nil, nil): return true
@@ -202,6 +222,17 @@ final class AppState: ObservableObject {
                 try? await userBookRepo.updateUserBook(ub)
             }
         }
+
+        if movedTierBefore != tier {
+            Task { [weak self] in
+                guard let self = self, let uid = self.currentUserId else { return }
+                let posts = await self.postRepo.fetchPostsForUserAndBook(userId: uid, bookId: movedBookId)
+                let finished = posts.filter { $0.type == .finishedBook }
+                for p in finished {
+                    try? await self.postRepo.updatePostTier(postId: p.id.uuidString, tier: tier)
+                }
+            }
+        }
     }
 
     /// Updates the **existing** queue `userBook` document to Read with rating, optional thoughts as `reviewText`, and optional feed post. Does not create a duplicate row.
@@ -225,6 +256,7 @@ final class AppState: ObservableObject {
         updated.queueOrder = nil
         updated.updatedAt = Date()
         updateUserBook(updated)
+        startTierHighlight(forBookId: userBook.bookId)
         Task {
             try? await userBookRepo.updateUserBook(updated)
             if postToFeed {
@@ -234,7 +266,8 @@ final class AppState: ObservableObject {
                     bookId: userBook.bookId,
                     caption: review,
                     rating: stored,
-                    dateFinished: dateFinished
+                    dateFinished: dateFinished,
+                    tier: nil
                 )
             }
         }
@@ -440,10 +473,11 @@ final class AppState: ObservableObject {
         guard let uid = currentUserId else { return }
         let stored: Double? = rating.map { Theme.normalizeRatingOutOfTen($0) }
         let thoughts = (caption?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
+        startTierHighlight(forBookId: book.id)
         Task {
             _ = try? await userBookRepo.addUserBook(userId: uid, book: book, status: .read, rating: stored, reviewText: thoughts, dateStarted: nil, dateFinished: dateFinished)
             if postToFeed {
-                _ = try? await postRepo.createPost(userId: uid, type: .finishedBook, bookId: book.id, caption: thoughts, rating: stored, dateFinished: dateFinished)
+                _ = try? await postRepo.createPost(userId: uid, type: .finishedBook, bookId: book.id, caption: thoughts, rating: stored, dateFinished: dateFinished, tier: nil)
             }
         }
     }
@@ -487,6 +521,7 @@ final class AppState: ObservableObject {
             await MainActor.run { self.updateUserBook(updated) }
             let posts = await postRepo.fetchPostsForUserAndBook(userId: uid, bookId: userBook.bookId)
             let finished = posts.filter { $0.type == .finishedBook }.sorted { $0.createdAt > $1.createdAt }
+            let currentTier = updated.tier
             if postToFeed {
                 if finished.isEmpty {
                     _ = try await postRepo.createPost(
@@ -495,7 +530,8 @@ final class AppState: ObservableObject {
                         bookId: userBook.bookId,
                         caption: reviewText,
                         rating: storedRating,
-                        dateFinished: dateFinished
+                        dateFinished: dateFinished,
+                        tier: currentTier
                     )
                 } else {
                     for p in finished {
@@ -503,7 +539,8 @@ final class AppState: ObservableObject {
                             postId: p.id.uuidString,
                             caption: reviewText,
                             rating: storedRating,
-                            dateFinished: dateFinished
+                            dateFinished: dateFinished,
+                            tier: currentTier
                         )
                     }
                 }

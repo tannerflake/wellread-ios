@@ -23,15 +23,17 @@ struct Post: Identifiable, Codable {
     var likeCount: Int
     var commentCount: Int
     var user: User?
-    /// Rating out of 10 (e.g. 8.8). Legacy `ratingPercent` 1–100 in Firestore is migrated to ÷10 when loading.
+    /// Legacy decimal rating (e.g. 8.8). Hidden in the UI now that ratings are tier-only, but kept on disk for back-compat.
     var rating: Double?
     /// Date the user finished the book (shown in feed with minimal weight).
     var dateFinished: Date?
-    
+    /// Tier letter (S/A/B/C/D/F) the author has assigned to this book. `nil` until they tier it; updates as they re-tier.
+    var tier: String?
+
     static let demoFeed: [Post] = {
         let b = Book(id: "1", title: "Atomic Habits", author: "James Clear", coverURL: "https://books.google.com/books/content?id=wRqtDwAAQBAJ&printsec=frontcover&img=1", pageCount: 320, publishedDate: nil, description: nil, genres: [])
         return [
-            Post(id: UUID(), userId: "demo-user-id", type: .finishedBook, bookId: b.id, book: b, caption: "Just finished. Highly recommend.", createdAt: Date(), likeCount: 4, commentCount: 1, user: .demo, rating: 8.5, dateFinished: Date())
+            Post(id: UUID(), userId: "demo-user-id", type: .finishedBook, bookId: b.id, book: b, caption: "Just finished. Highly recommend.", createdAt: Date(), likeCount: 4, commentCount: 1, user: .demo, rating: 8.5, dateFinished: Date(), tier: "S")
         ]
     }()
 }

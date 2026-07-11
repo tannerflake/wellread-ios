@@ -2,7 +2,7 @@
 //  AddBookFlowView.swift
 //  WellRead
 //
-//  Fast add flow: search → select → status → (if finished) rating + review.
+//  Fast add flow: search → select → status → (if finished) review.
 //
 
 import SwiftUI
@@ -22,7 +22,6 @@ struct AddBookFlowView: View {
     @State private var selectedBook: Book?
     @State private var selectedBookForProfile: Book?
     @State private var status: ReadingStatus = .read
-    @State private var rating: Double = 7.0
     @State private var step: Step = .search
     
     enum Step {
@@ -78,7 +77,7 @@ struct AddBookFlowView: View {
         switch step {
         case .search: return "Add Book"
         case .status: return "Status"
-        case .rating: return "Rating"
+        case .rating: return "Review"
         }
     }
     
@@ -275,10 +274,9 @@ struct AddBookFlowView: View {
     
     private var ratingStep: some View {
         AddBookRatingStepView(
-            rating: $rating,
             isSaving: isSaving,
             saveError: saveError,
-            onSave: { _, review in saveAndDismiss(ratingStepReview: review) }
+            onSave: { review in saveAndDismiss(ratingStepReview: review) }
         )
     }
 
@@ -286,7 +284,7 @@ struct AddBookFlowView: View {
         guard let book = selectedBook, let uid = authService.firebaseUser?.uid else { dismiss(); return }
         let now = Date()
         let tempId = UUID()
-        let ratingValue = status == .read ? Theme.normalizeRatingOutOfTen(rating) : nil
+        let ratingValue: Double? = nil
         let review: String?
         if status == .read {
             let trimmed = ratingStepReview?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -316,6 +314,9 @@ struct AddBookFlowView: View {
             queueOrder: status == .wantToRead ? 0 : nil
         )
         appState.addUserBook(optimistic)
+        if status == .read {
+            appState.startTierHighlight(forBookId: book.id)
+        }
         isSaving = true
         saveError = nil
         Task {
@@ -354,24 +355,22 @@ struct AddBookFlowView: View {
 }
 
 private struct AddBookRatingStepView: View {
-    @Binding var rating: Double
     let isSaving: Bool
     let saveError: String?
-    let onSave: (Double, String?) -> Void
+    let onSave: (String?) -> Void
 
     @State private var reviewText = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
-            Text("Rating: \(Theme.formatRatingOutOfTen(rating)) / 10")
-                .font(Theme.title2())
-                .foregroundStyle(Theme.textPrimary)
-            Slider(value: $rating, in: 1...10, step: 0.1)
-                .tint(Theme.accent)
+            Text("You'll rank this book in your tier list after saving.")
+                .font(Theme.callout())
+                .foregroundStyle(Theme.textSecondary)
                 .padding(.horizontal)
             Text("Review (optional)")
                 .font(Theme.headline())
                 .foregroundStyle(Theme.textSecondary)
+                .padding(.horizontal)
             TextEditor(text: $reviewText)
                 .font(Theme.body())
                 .foregroundStyle(Theme.textPrimary)
@@ -383,7 +382,7 @@ private struct AddBookRatingStepView: View {
                 .padding(.horizontal)
             Button("Save") {
                 let t = reviewText.trimmingCharacters(in: .whitespacesAndNewlines)
-                onSave(rating, t.isEmpty ? nil : t)
+                onSave(t.isEmpty ? nil : t)
             }
             .font(Theme.headline())
             .foregroundStyle(Theme.background)

@@ -62,7 +62,7 @@ final class PostRepository {
     }
 
     /// Creates a post (e.g. when user finishes a book or writes a review).
-    func createPost(userId: String, type: PostType, bookId: String?, caption: String?, rating: Double? = nil, dateFinished: Date? = nil) async throws -> Post {
+    func createPost(userId: String, type: PostType, bookId: String?, caption: String?, rating: Double? = nil, dateFinished: Date? = nil, tier: String? = nil) async throws -> Post {
         let id = UUID()
         let ref = db.collection(posts).document(id.uuidString)
         var data: [String: Any] = [
@@ -76,6 +76,7 @@ final class PostRepository {
         ]
         if let r = rating { data["rating"] = Theme.normalizeRatingOutOfTen(r) }
         if let d = dateFinished { data["dateFinished"] = Timestamp(date: d) }
+        if let t = tier { data["tier"] = t }
         try await ref.setData(data)
         var post = Post(
             id: id,
@@ -89,7 +90,8 @@ final class PostRepository {
             commentCount: 0,
             user: nil,
             rating: rating.map { Theme.normalizeRatingOutOfTen($0) },
-            dateFinished: dateFinished
+            dateFinished: dateFinished,
+            tier: tier
         )
         if let bid = bookId { post.book = await bookRepo.getBook(id: bid) }
         post.user = await userRepo.getUser(uid: userId)
@@ -150,6 +152,7 @@ final class PostRepository {
         let commentCount = data["commentCount"] as? Int ?? 0
         let rating = decodePostRating(from: data)
         let dateFinished = (data["dateFinished"] as? Timestamp)?.dateValue()
+        let tier = (data["tier"] as? String).flatMap { spineTierLabels.contains($0) ? $0 : nil }
         var post = Post(
             id: id,
             userId: userId,
@@ -162,7 +165,8 @@ final class PostRepository {
             commentCount: commentCount,
             user: nil,
             rating: rating,
-            dateFinished: dateFinished
+            dateFinished: dateFinished,
+            tier: tier
         )
         if let bid = bookId { post.book = await bookRepo.getBook(id: bid) }
         post.user = await userRepo.getUser(uid: userId)
@@ -218,8 +222,8 @@ final class PostRepository {
         }
     }
 
-    /// Updates caption, rating, and date finished on an existing post.
-    func updatePost(postId: String, caption: String?, rating: Double?, dateFinished: Date?) async throws {
+    /// Updates caption, rating, date finished, and tier on an existing post.
+    func updatePost(postId: String, caption: String?, rating: Double?, dateFinished: Date?, tier: String?) async throws {
         let ref = db.collection(posts).document(postId)
         var data: [String: Any] = [:]
         if let c = caption {
@@ -237,7 +241,18 @@ final class PostRepository {
         } else {
             data["dateFinished"] = NSNull()
         }
+        if let t = tier {
+            data["tier"] = t
+        } else {
+            data["tier"] = NSNull()
+        }
         try await ref.updateData(data)
+    }
+
+    /// Updates only the tier field on an existing post (e.g. when user re-tiers a book and we want feed posts to stay in sync).
+    func updatePostTier(postId: String, tier: String?) async throws {
+        let ref = db.collection(posts).document(postId)
+        try await ref.updateData(["tier": tier as Any? ?? NSNull()])
     }
 
     /// Removes comments, likes, then the post document.

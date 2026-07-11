@@ -150,4 +150,6 @@ extension Notification.Name {
     /// Opens the Feed tab without scrolling to a post or opening comments.
     static let wellreadOpenFeed = Notification.Name("wellreadOpenFeed")
     static let wellreadOpenFeedPost = Notification.Name("wellreadOpenFeedPost")
+    /// After a user marks a book as read: switch to Profile tab → Read segment, scroll the tier list to Unranked, and pulse-glow the just-reviewed book until they tier it. `userInfo["bookId"]` is the `Book.id`.
+    static let spineHighlightTierBook = Notification.Name("spineHighlightTierBook")
 }

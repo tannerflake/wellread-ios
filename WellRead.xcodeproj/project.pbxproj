@@ -38,6 +38,7 @@
 		B0010013 /* GridLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010013 /* GridLibraryView.swift */; };
 		B0010014 /* RatingLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010014 /* RatingLibraryView.swift */; };
 		B0010015 /* TierListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010015 /* TierListView.swift */; };
+		B00100F0 /* TierBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100F0 /* TierBadge.swift */; };
 		B0010016 /* TimelineLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010016 /* TimelineLibraryView.swift */; };
 		B0010017 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010017 /* ProfileView.swift */; };
 		B0010018 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F0010019 /* Assets.xcassets */; };
@@ -140,6 +141,7 @@
 		F0010013 /* GridLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GridLibraryView.swift; sourceTree = "<group>"; };
 		F0010014 /* RatingLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RatingLibraryView.swift; sourceTree = "<group>"; };
 		F0010015 /* TierListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TierListView.swift; sourceTree = "<group>"; };
+		F00100F0 /* TierBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TierBadge.swift; sourceTree = "<group>"; };
 		F0010016 /* TimelineLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineLibraryView.swift; sourceTree = "<group>"; };
 		F0010017 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		F0010018 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -414,6 +416,7 @@
 				F0010016 /* TimelineLibraryView.swift */,
 				F0010014 /* RatingLibraryView.swift */,
 				F0010015 /* TierListView.swift */,
+				F00100F0 /* TierBadge.swift */,
 			);
 			path = Library;
 			sourceTree = "<group>";
@@ -608,6 +611,7 @@
 				B001003F /* LibraryDragHaptics.swift in Sources */,
 				B0010014 /* RatingLibraryView.swift in Sources */,
 				B0010015 /* TierListView.swift in Sources */,
+				B00100F0 /* TierBadge.swift in Sources */,
 				B0010016 /* TimelineLibraryView.swift in Sources */,
 				B0010017 /* ProfileView.swift in Sources */,
 				B0010020 /* AuthService.swift in Sources */,
@@ -856,7 +860,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.6.3;
+				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.wellread.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -884,7 +888,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.6.3;
+				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.wellread.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;

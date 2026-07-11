@@ -124,6 +124,9 @@ struct MainTabView: View {
                 appState.deepLinkFeedPostId = id
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .spineHighlightTierBook)) { _ in
+            selectedTab = .profile
+        }
         .onAppear {
             appState.loadDiscoverSuggestionsIfNeeded()
             PushNotificationService.registerForRemoteNotificationsOnly()

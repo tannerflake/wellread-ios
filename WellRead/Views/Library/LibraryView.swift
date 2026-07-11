@@ -180,6 +180,9 @@ struct ProfileLibraryView: View {
                     Text(msg)
                 }
             }
+            .onReceive(NotificationCenter.default.publisher(for: .spineHighlightTierBook)) { _ in
+                segment = .read
+            }
             .sheet(item: $pendingMarkReadFromQueue) { userBook in
                 MarkAsReadQueueSheet(
                     userBook: userBook,
@@ -570,7 +573,7 @@ struct ProfileLibraryView: View {
         if segment == .read {
             TierListView(userBooks: readBooksFilteredByYear, onUpdateTierAndOrder: { id, tier, order in
                 appState.setTierAndOrder(for: id, tier: tier, order: order)
-            }, onBookTap: { selectedBookForProfile = $0 })
+            }, onBookTap: { selectedBookForProfile = $0 }, highlightedBookId: appState.pendingTierHighlightBookId)
         } else {
             QueueLibraryView(
                 readingNow: appState.wantToReadReadingNow,
@@ -595,25 +598,8 @@ private struct MarkAsReadQueueSheet: View {
     @Environment(\.dismiss) private var dismiss
     @FocusState private var isThoughtsFocused: Bool
     @State private var markAsReadDate = Date()
-    /// Visual middle of 1…10; label shows "—" until the user moves the slider.
-    @State private var markAsReadSliderValue: Double = 5.5
-    @State private var hasExplicitMarkReadRating = false
     @State private var markAsReadPostToFeed = true
     @State private var markAsReadThoughts = ""
-
-    private var markAsReadRatingSliderBinding: Binding<Double> {
-        Binding(
-            get: { markAsReadSliderValue },
-            set: { newValue in
-                markAsReadSliderValue = newValue
-                hasExplicitMarkReadRating = true
-            }
-        )
-    }
-
-    private var markAsReadRatingLabel: String {
-        hasExplicitMarkReadRating ? Theme.formatRatingOutOfTen(markAsReadSliderValue) : "—"
-    }
 
     private var bookTitle: String {
         userBook.book?.title ?? "Book"
@@ -639,13 +625,6 @@ private struct MarkAsReadQueueSheet: View {
                                 DatePicker("", selection: $markAsReadDate, displayedComponents: .date)
                                     .datePickerStyle(.compact)
                                     .labelsHidden()
-                                    .tint(Theme.accent)
-                            }
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text("Rating: \(markAsReadRatingLabel) / 10")
-                                    .font(Theme.caption())
-                                    .foregroundStyle(Theme.textSecondary)
-                                Slider(value: markAsReadRatingSliderBinding, in: 1...10, step: 0.1)
                                     .tint(Theme.accent)
                             }
                             VStack(alignment: .leading, spacing: 6) {
@@ -682,12 +661,9 @@ private struct MarkAsReadQueueSheet: View {
 
                             Button {
                                 let date = markAsReadDate
-                                let rating: Double? = hasExplicitMarkReadRating
-                                    ? Theme.normalizeRatingOutOfTen(markAsReadSliderValue)
-                                    : nil
                                 let post = markAsReadPostToFeed
                                 let thoughts = markAsReadThoughts.trimmingCharacters(in: .whitespacesAndNewlines)
-                                onConfirm(date, rating, post, thoughts.isEmpty ? nil : thoughts)
+                                onConfirm(date, nil, post, thoughts.isEmpty ? nil : thoughts)
                                 dismiss()
                             } label: {
                                 Text("Mark as read")
@@ -729,8 +705,6 @@ private struct MarkAsReadQueueSheet: View {
         .presentationDetents([.large])
         .onAppear {
             markAsReadDate = Date()
-            markAsReadSliderValue = 5.5
-            hasExplicitMarkReadRating = false
             markAsReadPostToFeed = true
             markAsReadThoughts = ""
         }

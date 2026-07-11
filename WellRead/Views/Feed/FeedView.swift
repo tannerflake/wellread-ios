@@ -47,7 +47,8 @@ struct FeedView: View {
                                               post.userId == authService.firebaseUser?.uid,
                                               let ub = appState.userReadBook(forBookId: bid) else { return }
                                         editReviewFromFeed = EditReadReviewSheetPayload(userBook: ub, feedCaption: post.caption)
-                                    }
+                                    },
+                                    displayTier: effectiveTier(for: post)
                                 )
                             }
                         }
@@ -120,6 +121,13 @@ struct FeedView: View {
                 Task { await loadOtherReaders() }
             }
         }
+    }
+
+    /// Tier shown on a feed post — prefer the post's own `tier` field; fall back to the current user's local tier for legacy posts that haven't been backfilled yet.
+    private func effectiveTier(for post: Post) -> String? {
+        if let t = post.tier { return t }
+        guard post.userId == authService.firebaseUser?.uid, let bid = post.bookId else { return nil }
+        return appState.userReadBook(forBookId: bid)?.tier
     }
 
     private func openDeepLinkedPostIfNeeded() {
@@ -311,6 +319,8 @@ struct FeedPostRow: View {
     var onCommentTap: (() -> Void)? = nil
     var onLikeToggle: ((Bool) -> Void)? = nil
     var onEditReviewTap: (() -> Void)? = nil
+    /// Tier to display on the post. Lets the feed pass a fallback (e.g. the current user's UserBook tier) for legacy posts where `post.tier` hasn't been backfilled yet.
+    var displayTier: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -329,17 +339,10 @@ struct FeedPostRow: View {
                             .font(Theme.callout())
                             .foregroundStyle(Theme.textSecondary)
                             .lineLimit(1)
-                        if post.rating != nil || post.dateFinished != nil {
+                        if displayTier != nil || post.dateFinished != nil {
                             HStack(spacing: 8) {
-                                if let r = post.rating {
-                                    Text("[ \(Theme.formatRatingOutOfTen(r))/10 ]")
-                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                        .tracking(0.5)
-                                        .foregroundStyle(Theme.phosphorWhite)
-                                        .padding(.horizontal, 7)
-                                        .padding(.vertical, 3)
-                                        .background(Theme.accent)
-                                        .clipShape(Capsule())
+                                if let t = displayTier {
+                                    TierBadge(tier: t, size: .small)
                                 }
                                 if let date = post.dateFinished {
                                     Text(date, style: .date)
