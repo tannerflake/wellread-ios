@@ -15,6 +15,9 @@ struct User: Identifiable, Codable, Equatable {
     /// When `false`, user must complete name + handle onboarding before the main app.
     var profileSetupCompleted: Bool
     var bio: String?
+    /// Normalized digits (see ContactSyncService.normalizePhoneNumber); used to match
+    /// synced contacts to existing members. Optional — captured at onboarding or in Edit Profile.
+    var phoneNumber: String?
     var profileImageURL: String?
     var joinedAt: Date
     /// Firebase Auth UIDs this user follows (`users/{id}/following` in Firestore). Used for push eligibility and profile.
@@ -30,6 +33,8 @@ struct User: Identifiable, Codable, Equatable {
     var readingGoal: Int?
     /// Tags the reader chose during onboarding (`Tags.csv` strings); empty for legacy accounts.
     var readingInterestTags: [String]
+    /// Discover tuning criteria (`discoverCriteria` map in Firestore); default = overall taste.
+    var discoverCriteria: DiscoverCriteria = .default
 
     static let demo = User(
         id: UUID(),
@@ -39,6 +44,7 @@ struct User: Identifiable, Codable, Equatable {
         lastName: nil,
         profileSetupCompleted: true,
         bio: "Building WellRead.",
+        phoneNumber: nil,
         profileImageURL: nil,
         joinedAt: Date(),
         following: [],

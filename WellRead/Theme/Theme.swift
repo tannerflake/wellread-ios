@@ -63,6 +63,36 @@ enum Theme {
     /// that harmonizes with chromeNavy and magentaPunch. Use phosphorWhite for text on it.
     static let defaultCoverFill = Color(red: 0.290, green: 0.240, blue: 0.550)
 
+    /// Generated-cover palette: 12 deep book-jacket hues, each verified ≥ 7:1 contrast
+    /// with `phosphorWhite` text (WCAG AA needs 4.5:1). A book picks one deterministically
+    /// (stable hash of title+author) so its color never changes between renders/launches,
+    /// and neighboring coverless books don't collapse into a wall of one color.
+    static let coverPalette: [Color] = [
+        Color(red: 74/255, green: 61/255, blue: 140/255),   // deep purple
+        Color(red: 49/255, green: 46/255, blue: 129/255),   // indigo
+        Color(red: 30/255, green: 58/255, blue: 110/255),   // navy
+        Color(red: 37/255, green: 78/255, blue: 112/255),   // steel blue
+        Color(red: 13/255, green: 92/255, blue: 99/255),    // petrol teal
+        Color(red: 28/255, green: 92/255, blue: 58/255),    // forest green
+        Color(red: 82/255, green: 78/255, blue: 26/255),    // dark olive
+        Color(red: 146/255, green: 60/255, blue: 18/255),   // rust
+        Color(red: 121/255, green: 68/255, blue: 34/255),   // sienna brown
+        Color(red: 146/255, green: 34/255, blue: 30/255),   // deep red
+        Color(red: 122/255, green: 28/255, blue: 56/255),   // burgundy
+        Color(red: 108/255, green: 40/255, blue: 96/255)    // plum
+    ]
+
+    /// Stable palette pick — uses an FNV-1a hash (not `hashValue`, which is
+    /// randomized per launch) so the same book always gets the same color.
+    static func coverPaletteColor(for seed: String) -> Color {
+        var hash: UInt64 = 0xcbf29ce484222325
+        for byte in seed.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x100000001b3
+        }
+        return coverPalette[Int(hash % UInt64(coverPalette.count))]
+    }
+
     // Tier list colors (S/A/B/C/D) are universal and live in TierListView.swift.
     // They are intentionally *not* re-themed here.
 
@@ -104,6 +134,14 @@ enum Theme {
     static let bodyLineSpacing: CGFloat = 3
 
     /// Comment rows and feed post timestamps: seconds only under one minute; otherwise minutes and hours until 24 h; then whole days/weeks—no hour remainder once a post is a day old.
+    /// Feed post timestamp: relative ("3 days") within the last week, otherwise an absolute date.
+    static func feedRelativeTimestamp(_ date: Date, now: Date = Date()) -> String {
+        if now.timeIntervalSince(date) >= 7 * 86400 {
+            return date.formatted(date: .abbreviated, time: .omitted)
+        }
+        return commentRelativeTimestamp(date, now: now)
+    }
+
     static func commentRelativeTimestamp(_ date: Date, now: Date = Date()) -> String {
         let interval = now.timeIntervalSince(date)
         if interval < 0 {
@@ -219,20 +257,23 @@ struct ThemeCardStyle: ViewModifier {
 /// Spines "window" — teal (or navy) title bar with optional title text and a
 /// close-box glyph; framed body. Use on hero surfaces (book profile sections,
 /// modals) — too many on one screen reads as costume.
-struct WindowedCardStyle: ViewModifier {
+struct WindowedCardStyle<TitleAccessory: View>: ViewModifier {
     let title: String?
     let chromeColor: Color
+    /// Optional trailing view in the title bar (e.g. a tier badge), before the close box.
+    let titleAccessory: TitleAccessory
 
     func body(content: Content) -> some View {
         VStack(spacing: 0) {
             if let title {
-                HStack(spacing: 0) {
+                HStack(spacing: 8) {
                     Text(title.uppercased())
                         .font(.system(size: 12, weight: .bold, design: .monospaced))
                         .tracking(1)
                         .foregroundStyle(Theme.phosphorWhite)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 10)
+                        .padding(.leading, 10)
+                    titleAccessory
                     Text(SpinesGlyphs.closeBox)
                         .font(.system(size: 12, weight: .bold, design: .monospaced))
                         .foregroundStyle(Theme.phosphorWhite)
@@ -265,7 +306,16 @@ extension View {
     ///   - title: Title-bar text. Pass `nil` to render just a teal-bordered frame.
     ///   - chrome: Title-bar color. Defaults to teal; use `.chromeNavy` for "system" emphasis.
     func windowedCard(title: String? = nil, chrome: Color = Theme.chromeTeal) -> some View {
-        modifier(WindowedCardStyle(title: title, chromeColor: chrome))
+        modifier(WindowedCardStyle(title: title, chromeColor: chrome, titleAccessory: EmptyView()))
+    }
+
+    /// Windowed card with a trailing view in the title bar (e.g. a tier badge on the review card).
+    func windowedCard<Accessory: View>(
+        title: String?,
+        chrome: Color = Theme.chromeTeal,
+        @ViewBuilder titleAccessory: () -> Accessory
+    ) -> some View {
+        modifier(WindowedCardStyle(title: title, chromeColor: chrome, titleAccessory: titleAccessory()))
     }
 }
 

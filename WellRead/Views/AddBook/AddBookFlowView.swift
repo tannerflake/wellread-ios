@@ -11,11 +11,13 @@ struct AddBookFlowView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var authService: AuthService
     @EnvironmentObject var appState: AppState
-    @FocusState private var isSearchFocused: Bool
+    @State private var isSearchFocused = false
     @State private var query = ""
     @State private var results: [Book] = []
     @State private var isSearching = false
     @State private var hasSearched = false
+    /// True after the user taps "show every edition" — search re-runs without the junk filter and edition dedup.
+    @State private var showingAllEditions = false
     @State private var searchError: String?
     @State private var isSaving = false
     @State private var saveError: String?
@@ -23,7 +25,27 @@ struct AddBookFlowView: View {
     @State private var selectedBookForProfile: Book?
     @State private var status: ReadingStatus = .read
     @State private var step: Step = .search
-    
+    @State private var searchTask: Task<Void, Never>?
+    /// Height the drawer is showing at. Starts compact and grows to `.large` once a search runs.
+    @Binding var detent: PresentationDetent
+    /// When set (opened from a queue shelf's "Add" tile), book profiles show a primary
+    /// CTA that adds the book straight onto this shelf.
+    var targetShelf: QueueShelf? = nil
+
+    /// Compact height the search drawer opens at before any books are loaded.
+    static let smallDetent: PresentationDetent = .fraction(0.5)
+
+    /// Height the drawer grows to once a search runs — stops short of the top so
+    /// there's room to tap out and dismiss.
+    static let expandedDetent: PresentationDetent = .fraction(0.8)
+
+    /// UIKit equivalent of `Theme.body()` (serif, size 17) for the search field.
+    private static var searchFieldUIFont: UIFont {
+        let size: CGFloat = 17
+        let base = UIFont.systemFont(ofSize: size, weight: .regular)
+        return base.fontDescriptor.withDesign(.serif).map { UIFont(descriptor: $0, size: size) } ?? base
+    }
+
     enum Step {
         case search
         case status
@@ -61,15 +83,33 @@ struct AddBookFlowView: View {
                     book: book,
                     readBooksForSimilar: appState.readBooks,
                     onNotInterested: nil,
-                    onWantToRead: { appState.addToWantToRead(book: book); selectedBookForProfile = nil },
-                    onConfirmRead: { date, rating, post, caption in appState.addAsRead(book: book, dateFinished: date, rating: rating, postToFeed: post, caption: caption); selectedBookForProfile = nil },
+                    // Adding to the queue should land the user on their queue (with the success
+                    // toast), not drop them back on the search bar. Dismiss the whole search sheet.
+                    onWantToRead: { appState.addToWantToRead(book: book); appState.openQueue(); dismiss() },
+                    // Marking read fires the tier-highlight flow (switches to Profile → Read and
+                    // scrolls to the book). Dismiss the whole search sheet so that lands in view,
+                    // rather than popping back to the search bar.
+                    onConfirmRead: { date, rating, post, caption, tier in appState.addAsRead(book: book, dateFinished: date, rating: rating, postToFeed: post, caption: caption, tier: tier); dismiss() },
                     isOnReadList: appState.isBookOnReadList(bookId: book.id),
                     isInQueue: appState.isBookInQueue(bookId: book.id),
                     onRemoveFromQueue: { appState.removeFromQueue(book: book); selectedBookForProfile = nil },
                     readEntryForReview: appState.userReadBook(forBookId: book.id),
-                    canEditReadReview: true
+                    canEditReadReview: true,
+                    shelfActionTitle: targetShelf.map(Self.shelfCTATitle),
+                    onAddToShelf: targetShelf.map { shelf in
+                        // Same landing behavior as Queue: dismiss the search sheet onto the queue.
+                        { appState.addToQueue(book: book, shelf: shelf); appState.openQueue(); dismiss() }
+                    }
                 )
             }
+        }
+    }
+
+    private static func shelfCTATitle(_ shelf: QueueShelf) -> String {
+        switch shelf {
+        case .readingNow: return "[ + READING NOW ]"
+        case .upNext: return "[ + UP NEXT ]"
+        case .backlog: return "[ + BACKLOG ]"
         }
     }
     
@@ -87,60 +127,25 @@ struct AddBookFlowView: View {
                 HStack {
                     Image(systemName: "magnifyingglass")
                         .foregroundStyle(Theme.textSecondary)
-                    TextField(
-                        "",
+                    NoSuggestionsTextField(
                         text: $query,
-                        prompt: Text("Search by title or author")
-                            .foregroundColor(Theme.textTertiary)
+                        isFocused: $isSearchFocused,
+                        placeholder: "Search by title or author",
+                        font: Self.searchFieldUIFont,
+                        textColor: UIColor(Theme.textPrimary),
+                        placeholderColor: UIColor(Theme.textTertiary),
+                        onSubmit: { runSearch() }
                     )
-                        .font(Theme.body())
-                        .foregroundStyle(Theme.textPrimary)
-                        .textContentType(.none)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                        .focused($isSearchFocused)
-                        .onSubmit { runSearch() }
+                        .frame(height: 24)
+                        .onChange(of: query) { _, newValue in
+                            scheduleSearch(for: newValue)
+                        }
                 }
                 .padding()
                 .background(Theme.surface)
                 .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
-
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(Theme.textSecondary)
-                        .frame(width: 36, height: 36)
-                        .background(
-                            Circle()
-                                .fill(Theme.surface)
-                        )
-                        .overlay(
-                            Circle()
-                                .strokeBorder(Theme.chromeTeal.opacity(0.4), lineWidth: 1)
-                        )
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Close")
             }
             .padding(.horizontal)
-
-            ZStack {
-                Theme.accent
-                Text("Search")
-                    .font(Theme.headline())
-                    .foregroundStyle(Theme.background)
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 48)
-            .contentShape(Rectangle())
-            .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
-            .padding(.horizontal)
-            .onTapGesture {
-                isSearchFocused = false
-                runSearch()
-            }
 
             if isSearching {
                 HStack {
@@ -164,13 +169,20 @@ struct AddBookFlowView: View {
                 .frame(maxWidth: .infinity)
                 .padding()
             } else if hasSearched && !isSearching && results.isEmpty {
-                Text("No results. Try different keywords.")
-                    .font(Theme.callout())
-                    .foregroundStyle(Theme.textSecondary)
-                    .frame(maxWidth: .infinity)
-                    .padding()
+                VStack(spacing: 12) {
+                    Text("No results. Try different keywords.")
+                        .font(Theme.callout())
+                        .foregroundStyle(Theme.textSecondary)
+                    if !showingAllEditions {
+                        Button("Show every edition") { showAllEditions() }
+                            .font(Theme.callout())
+                            .foregroundStyle(Theme.accent)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding()
             }
-            
+
             ScrollView {
                 LazyVStack(spacing: 12) {
                     ForEach(results) { book in
@@ -178,11 +190,30 @@ struct AddBookFlowView: View {
                             selectedBookForProfile = book
                         }
                     }
+                    if hasSearched && !isSearching && !results.isEmpty && !showingAllEditions {
+                        VStack(spacing: 4) {
+                            Text("Can't find what you're looking for?")
+                                .font(Theme.caption())
+                                .foregroundStyle(Theme.textSecondary)
+                            Button("Show every edition") { showAllEditions() }
+                                .font(Theme.callout())
+                                .foregroundStyle(Theme.accent)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 8)
+                    }
                 }
                 .padding()
             }
         }
         .padding(.top, 28)
+        // Grow the drawer once books start loading; stay compact until then.
+        .onChange(of: isSearching) { _, searching in
+            if searching { withAnimation(.easeInOut(duration: 0.25)) { detent = Self.expandedDetent } }
+        }
+        .onChange(of: results.isEmpty) { _, empty in
+            if !empty { withAnimation(.easeInOut(duration: 0.25)) { detent = Self.expandedDetent } }
+        }
         .task {
             // Sheet presentation animations interfere with focus assignment if it
             // happens too early; a small delay reliably brings up the keyboard.
@@ -191,27 +222,72 @@ struct AddBookFlowView: View {
         }
     }
     
+    /// Debounces keystrokes so results populate automatically as the user types,
+    /// without firing a request on every character.
+    private func scheduleSearch(for value: String) {
+        searchTask?.cancel()
+        // A new query goes back to curated results; "every edition" is per-search.
+        showingAllEditions = false
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            // Clear stale results when the field is emptied, and shrink back to compact.
+            results = []
+            hasSearched = false
+            searchError = nil
+            isSearching = false
+            withAnimation(.easeInOut(duration: 0.25)) { detent = Self.smallDetent }
+            return
+        }
+        searchTask = Task {
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard !Task.isCancelled else { return }
+            await performSearch(trimmed)
+        }
+    }
+
     private func runSearch() {
         isSearchFocused = false
+        searchTask?.cancel()
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        isSearching = true
-        searchError = nil
-        results = []
-        Task {
-            do {
-                let books = try await GoogleBooksService.shared.search(query: trimmed)
-                await MainActor.run {
-                    results = books
-                    hasSearched = true
-                    isSearching = false
-                }
-            } catch {
-                await MainActor.run {
-                    hasSearched = true
-                    isSearching = false
-                    searchError = error.localizedDescription.isEmpty ? "Search failed. Check your connection and try again." : error.localizedDescription
-                }
+        searchTask = Task { await performSearch(trimmed) }
+    }
+
+    /// Re-runs the current search with the junk filter and edition dedup off.
+    private func showAllEditions() {
+        showingAllEditions = true
+        searchTask?.cancel()
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        searchTask = Task { await performSearch(trimmed) }
+    }
+
+    private func performSearch(_ trimmed: String) async {
+        // Authors already in the library get a small ranking boost.
+        let libraryAuthors = Set(appState.userBooks.compactMap { $0.book?.author })
+        let includeAll = showingAllEditions
+        await MainActor.run {
+            isSearching = true
+            searchError = nil
+        }
+        do {
+            let books = try await GoogleBooksService.shared.search(
+                query: trimmed,
+                includeAllEditions: includeAll,
+                libraryAuthors: libraryAuthors
+            )
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                results = books
+                hasSearched = true
+                isSearching = false
+            }
+        } catch {
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                hasSearched = true
+                isSearching = false
+                searchError = error.localizedDescription.isEmpty ? "Search failed. Check your connection and try again." : error.localizedDescription
             }
         }
     }
@@ -342,7 +418,17 @@ struct AddBookFlowView: View {
                         dateFinished: dateFinished
                     )
                 }
-                await MainActor.run { dismiss() }
+                await MainActor.run {
+                    switch status {
+                    case .read:
+                        ToastCenter.shared.show(.markedAsRead(bookTitle: book.title, sharedToFeed: true))
+                    case .wantToRead:
+                        ToastCenter.shared.show(.addedToQueue(bookTitle: book.title))
+                    case .currentlyReading:
+                        ToastCenter.shared.show(.startedReading(bookTitle: book.title))
+                    }
+                    dismiss()
+                }
             } catch {
                 await MainActor.run {
                     appState.userBooks.removeAll { $0.id == tempId }

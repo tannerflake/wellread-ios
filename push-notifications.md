@@ -384,3 +384,15 @@ The highest priority and most differentiated one is the **friend review posted**
 - teaser review text
 
 That one should feel sharp, personal, and curiosity-inducing, with the review preview always cut to about 8 words so the user wants to tap in and read more.
+
+---
+
+## Implementation notes: rich cover thumbnails + tap-to-review (July 2026)
+
+**Book-cover thumbnails.** Every push tied to a single book now carries the book's cover as a rich-notification image:
+
+- Cloud Functions (`functions/src/index.ts`) read `coverURL` from `books/{bookId}`, upgrade it to https, and send it via APNs `fcm_options.image` with `mutable-content: 1` (plus a `coverImageURL` data key as fallback).
+- The `WellReadNotificationService` Notification Service Extension downloads the cover and attaches it, so the banner shows a cover thumbnail next to the alert text. Any failure (no URL, download error, timeout) falls back to the plain notification.
+- Diagnostics test pushes use a fixed sample cover so the rich path can be verified from Push Diagnostics.
+
+**Tap behavior for `friend_review_posted`.** Tapping now lands on the Feed tab scrolled to the exact review, which pulses with a brief accent highlight (`wellreadOpenFeedScrollToPost` → `AppState.scrollToFeedPostId` → `FeedView` ScrollViewReader). Like/comment/thread pushes still open the post's comment thread directly.

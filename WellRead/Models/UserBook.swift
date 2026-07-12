@@ -57,6 +57,22 @@ struct UserBook: Identifiable, Codable, Equatable {
     var queueShelf: QueueShelf?
     /// Order within the shelf (0 = first / top-left). `nil` only for legacy backlog rows before migration.
     var queueOrder: Int?
+    /// Re-read dates beyond `dateFinished` (which stays the most recent read).
+    /// One library/tier entry per book; each date counts toward that year's reading goal.
+    var additionalReadDates: [Date]? = nil
+
+    /// Every recorded finished date — primary `dateFinished` plus re-reads, newest first.
+    var allReadDates: [Date] {
+        var dates = additionalReadDates ?? []
+        if let d = dateFinished { dates.append(d) }
+        return dates.sorted(by: >)
+    }
+
+    /// True when any recorded read date falls in `year` — a book read in 2022 and
+    /// 2025 counts toward both years.
+    func wasRead(inYear year: Int, calendar: Calendar = .current) -> Bool {
+        allReadDates.contains { calendar.component(.year, from: $0) == year }
+    }
 
     static let demoList: [UserBook] = {
         let b1 = Book(id: "1", title: "Atomic Habits", author: "James Clear", coverURL: "https://books.google.com/books/content?id=wRqtDwAAQBAJ&printsec=frontcover&img=1", pageCount: 320, publishedDate: nil, description: nil, genres: ["Self-Help"])

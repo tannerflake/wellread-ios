@@ -40,11 +40,23 @@ function teaser8Words(text: string): string {
   return `${head}...`;
 }
 
-async function bookTitle(bookId: string | undefined): Promise<string | null> {
-  if (!bookId) return null;
+/** APNs attachments require https; Google Books covers are often stored as http. */
+function httpsUpgraded(url: string | null): string | null {
+  if (!url) return null;
+  if (url.startsWith("https://")) return url;
+  if (url.startsWith("http://")) return `https://${url.slice("http://".length)}`;
+  return null;
+}
+
+async function bookInfo(
+  bookId: string | undefined
+): Promise<{ title: string | null; coverURL: string | null }> {
+  if (!bookId) return { title: null, coverURL: null };
   const snap = await db.collection("books").doc(bookId).get();
-  const t = snap.data()?.title as string | undefined;
-  return t?.trim() || null;
+  const data = snap.data();
+  const title = (data?.title as string | undefined)?.trim() || null;
+  const coverURL = httpsUpgraded((data?.coverURL as string | undefined)?.trim() || null);
+  return { title, coverURL };
 }
 
 async function tokensForUser(uid: string): Promise<string[]> {
@@ -56,7 +68,8 @@ async function sendToUser(
   uid: string,
   title: string,
   body: string,
-  data: Record<string, string>
+  data: Record<string, string>,
+  imageUrl?: string | null
 ): Promise<void> {
   const tokens = await tokensForUser(uid);
   if (!tokens.length) {
@@ -65,10 +78,15 @@ async function sendToUser(
   }
   // iOS often drops or mishandles alerts with an empty body; keep a short fallback.
   const bodyText = body.trim().length > 0 ? body.trim() : "Tap to open Spines";
+  // Book covers ride along as a rich-notification image: `fcmOptions.imageUrl` puts the URL in
+  // the APNs payload and `mutableContent` routes it through the app's Notification Service
+  // Extension, which downloads and attaches the thumbnail. `coverImageURL` in data is the
+  // extension's fallback key.
+  const dataPayload = imageUrl ? { ...data, coverImageURL: imageUrl } : data;
   const messages = tokens.map((token) => ({
     token,
     notification: { title, body: bodyText },
-    data,
+    data: dataPayload,
     apns: {
       payload: {
         aps: {
@@ -77,8 +95,10 @@ async function sendToUser(
             body: bodyText,
           },
           sound: "default",
+          ...(imageUrl ? { mutableContent: true } : {}),
         },
       },
+      ...(imageUrl ? { fcmOptions: { imageUrl } } : {}),
     },
   }));
   const resp = await messaging.sendEach(messages);
@@ -99,6 +119,9 @@ async function sendToUser(
 
 /** Fixed post id for diagnostics-only pushes (deep link may not resolve to a real post). */
 const TEST_PUSH_POST_ID = "00000000-0000-4000-8000-000000000001";
+
+/** Stable sample cover (Sapiens) so diagnostics pushes exercise the rich-notification path. */
+const TEST_PUSH_COVER_URL = "https://covers.openlibrary.org/b/isbn/9780062316097-L.jpg";
 
 const TEST_PUSH_TYPES = new Set([
   "friend_review_posted",
@@ -141,14 +164,18 @@ export const sendTestPushNotification = onCall(
           uid,
           "Alex gave Sample Book a 9.0",
           "Smart, ambitious, provocative, and way more readable than...",
-          { type: "friend_review_posted", postId: TEST_PUSH_POST_ID }
+          { type: "friend_review_posted", postId: TEST_PUSH_POST_ID },
+          TEST_PUSH_COVER_URL
         );
         break;
       case "review_liked":
-        await sendToUser(uid, "Alex liked your review of Sample Book", "", {
-          type: "review_liked",
-          postId: TEST_PUSH_POST_ID,
-        });
+        await sendToUser(
+          uid,
+          "Alex liked your review of Sample Book",
+          "",
+          { type: "review_liked", postId: TEST_PUSH_POST_ID },
+          TEST_PUSH_COVER_URL
+        );
         break;
       case "review_commented":
         await sendToUser(
@@ -196,7 +223,7 @@ export const onFriendReviewPosted = onDocumentCreated(
 
     const author = (await db.collection("users").doc(authorId).get()).data();
     const first = firstNameFromUser(author);
-    const book = await bookTitle(data.bookId as string | undefined);
+    const { title: book, coverURL } = await bookInfo(data.bookId as string | undefined);
     const bookPart = book ?? "a book";
     const rating = formatRating(data.rating);
     const caption = (data.caption as string | undefined)?.trim() ?? "";
@@ -212,7 +239,7 @@ export const onFriendReviewPosted = onDocumentCreated(
       postId,
     };
     for (const uid of recipients) {
-      await sendToUser(uid, title, body, payload);
+      await sendToUser(uid, title, body, payload, coverURL);
     }
   }
 );
@@ -238,15 +265,18 @@ export const onPostLiked = onDocumentCreated(
 
     const liker = (await db.collection("users").doc(likerId).get()).data();
     const first = firstNameFromUser(liker);
-    const book = await bookTitle(postData.bookId as string | undefined);
+    const { title: book, coverURL } = await bookInfo(postData.bookId as string | undefined);
     const title = book
       ? `${first} liked your review of ${book}`
       : `${first} liked your review`;
 
-    await sendToUser(authorId, title, "Tap to open Spines", {
-      type: "review_liked",
-      postId,
-    });
+    await sendToUser(
+      authorId,
+      title,
+      "Tap to open Spines",
+      { type: "review_liked", postId },
+      coverURL
+    );
   }
 );
 
@@ -272,7 +302,7 @@ export const onCommentCreated = onDocumentCreated(
 
     const commenter = (await db.collection("users").doc(commenterId).get()).data();
     const first = firstNameFromUser(commenter);
-    const book = await bookTitle(postData.bookId as string | undefined);
+    const { title: book, coverURL } = await bookInfo(postData.bookId as string | undefined);
 
     // Author: review_commented (not if self-comment)
     if (commenterId !== authorId) {
@@ -281,10 +311,13 @@ export const onCommentCreated = onDocumentCreated(
         : `${first} replied to your review`;
       const preview = teaser8Words(commentText);
       const body = preview.length > 0 ? preview : "";
-      await sendToUser(authorId, title, body, {
-        type: "review_commented",
-        postId,
-      });
+      await sendToUser(
+        authorId,
+        title,
+        body,
+        { type: "review_commented", postId },
+        coverURL
+      );
     }
 
     // Thread participants (exclude new commenter and post author — author already notified above)
@@ -303,10 +336,13 @@ export const onCommentCreated = onDocumentCreated(
     const threadBody = teaser8Words(commentText);
 
     for (const uid of participantIds) {
-      await sendToUser(uid, threadTitle, threadBody, {
-        type: "thread_commented",
-        postId,
-      });
+      await sendToUser(
+        uid,
+        threadTitle,
+        threadBody,
+        { type: "thread_commented", postId },
+        coverURL
+      );
     }
   }
 );

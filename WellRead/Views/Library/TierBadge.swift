@@ -2,7 +2,7 @@
 //  TierBadge.swift
 //  Spine
 //
-//  Shared tier color palette + the bracketed `[ S TIER ]` badge used wherever a
+//  Shared tier color palette + the `S TIER` badge used wherever a
 //  review's tier is displayed (book profile, feed posts).
 //
 
@@ -26,20 +26,102 @@ func spineTierColor(for tier: String?) -> Color {
     }
 }
 
-/// Bracketed mono badge `[ S TIER ]` filled with the tier color. Sized to match the old
-/// rating pill so layouts that previously showed `[ 8.8/10 ]` don't shift.
+/// Tap-to-pick tier row (UNRANKED chip + S–F buttons, no drag-and-drop). Used by the
+/// Goodreads import wizard and the mark-as-read card. `nil` selection = Unranked.
+struct InlineTierPicker: View {
+    @Binding var selection: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(SpinesGlyphs.bracketed("Tier · optional"))
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .tracking(0.5)
+                .foregroundStyle(Theme.chromeTeal)
+
+            HStack(spacing: 8) {
+                unrankedChip
+                ForEach(spineTierLabels, id: \.self) { tier in
+                    tierButton(tier)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var unrankedChip: some View {
+        let isSelected = selection == nil
+        return Button {
+            selection = nil
+        } label: {
+            Text("UNRANKED")
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .tracking(0.5)
+                .foregroundStyle(isSelected ? Theme.textPrimary : Theme.textTertiary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 9)
+                .background(Theme.surface)
+                .clipShape(Capsule())
+                .overlay(
+                    Capsule()
+                        .strokeBorder(isSelected ? Theme.chromeTeal : Theme.textTertiary.opacity(0.3), lineWidth: isSelected ? 2 : 1)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func tierButton(_ tier: String) -> some View {
+        let isSelected = selection == tier
+        return Button {
+            selection = tier
+        } label: {
+            Text(tier)
+                .font(.system(size: 15, weight: .bold, design: .monospaced))
+                .foregroundStyle(Color.black.opacity(0.78))
+                .frame(width: 34, height: 34)
+                .background(spineTierColor(for: tier))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(isSelected ? Theme.textPrimary : Color.clear, lineWidth: 2)
+                )
+                .scaleEffect(isSelected ? 1.08 : 1.0)
+                .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isSelected)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Mono badge `S TIER` filled with the tier color, shown wherever a review's tier appears.
 struct TierBadge: View {
     let tier: String
     var size: Size = .regular
 
-    enum Size { case small, regular }
+    enum Size { case mini, small, regular }
 
-    private var fontSize: CGFloat { size == .small ? 11 : 12 }
-    private var horizontalPadding: CGFloat { size == .small ? 7 : 10 }
-    private var verticalPadding: CGFloat { size == .small ? 3 : 5 }
+    private var fontSize: CGFloat {
+        switch size {
+        case .mini: return 11
+        case .small: return 13
+        case .regular: return 16
+        }
+    }
+    private var horizontalPadding: CGFloat {
+        switch size {
+        case .mini: return 8
+        case .small: return 10
+        case .regular: return 14
+        }
+    }
+    private var verticalPadding: CGFloat {
+        switch size {
+        case .mini: return 2
+        case .small: return 5
+        case .regular: return 8
+        }
+    }
 
     var body: some View {
-        Text("[ \(tier) TIER ]")
+        Text("\(tier) TIER")
             .font(.system(size: fontSize, weight: .bold, design: .monospaced))
             .tracking(0.5)
             .foregroundStyle(Color.black.opacity(0.78))

@@ -21,9 +21,13 @@ struct ProfileLibraryView: View {
     @State private var showGoodreadsImportErrorAlert = false
     /// Dropped a queue book onto the Read tab — show mark-as-read flow before updating Firestore.
     @State private var pendingMarkReadFromQueue: UserBook?
+    /// Shelf whose "Add" tile was tapped — presents the search sheet scoped to that shelf.
+    @State private var addToShelfTarget: ShelfAddTarget? = nil
+    @State private var addToShelfDetent: PresentationDetent = AddBookFlowView.smallDetent
     @State private var readTabDropTargeted = false
     @State private var queueTabDropTargeted = false
     @State private var showEditProfile = false
+    @State private var showFindFriends = false
     #if DEBUG
     @State private var showPushDiagnostics = false
     #endif
@@ -31,15 +35,12 @@ struct ProfileLibraryView: View {
     private var readBooksFilteredByYear: [UserBook] {
         let read = appState.readBooks
         guard let year = selectedYear else { return read }
-        return read.filter { ub in
-            guard let d = ub.dateFinished else { return false }
-            return Calendar.current.component(.year, from: d) == year
-        }
+        return read.filter { $0.wasRead(inYear: year) }
     }
 
     private var availableYears: [Int] {
-        let years = Set(appState.readBooks.compactMap { ub -> Int? in
-            ub.dateFinished.map { Calendar.current.component(.year, from: $0) }
+        let years = Set(appState.readBooks.flatMap { ub in
+            ub.allReadDates.map { Calendar.current.component(.year, from: $0) }
         })
         return years.sorted(by: >)
     }
@@ -48,13 +49,9 @@ struct ProfileLibraryView: View {
         Calendar.current.component(.year, from: Date())
     }
 
-    /// Books marked read with `dateFinished` in the current calendar year.
+    /// Books with any read date in the current calendar year (re-reads count toward each year's goal).
     private var booksFinishedThisCalendarYear: Int {
-        let y = calendarYear
-        return appState.readBooks.filter { ub in
-            guard let d = ub.dateFinished else { return false }
-            return Calendar.current.component(.year, from: d) == y
-        }.count
+        appState.readBooks.filter { $0.wasRead(inYear: calendarYear) }.count
     }
 
     private var activeReadingGoal: Int? {
@@ -89,6 +86,10 @@ struct ProfileLibraryView: View {
                     }
                     .padding(.vertical, 10)
 
+                    if segment == .read && appState.goodreadsWizardRemainingCount > 0 {
+                        goodreadsResumeCallout
+                    }
+
                     libraryContent
                 }
                 .padding(.horizontal, 4)
@@ -96,13 +97,14 @@ struct ProfileLibraryView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Theme.background, for: .navigationBar)
             .toolbarColorScheme(.light, for: .navigationBar)
+            .onAppear { appState.refreshGoodreadsWizardResumeState() }
             .navigationDestination(item: $selectedBookForProfile) { book in
                 BookProfileView(
                     book: book,
                     readBooksForSimilar: appState.readBooks,
                     onNotInterested: nil,
                     onWantToRead: { appState.addToWantToRead(book: book); selectedBookForProfile = nil },
-                    onConfirmRead: { date, rating, post, caption in appState.addAsRead(book: book, dateFinished: date, rating: rating, postToFeed: post, caption: caption); selectedBookForProfile = nil },
+                    onConfirmRead: { date, rating, post, caption, tier in appState.addAsRead(book: book, dateFinished: date, rating: rating, postToFeed: post, caption: caption, tier: tier); selectedBookForProfile = nil },
                     isOnReadList: appState.isBookOnReadList(bookId: book.id),
                     isInQueue: appState.isBookInQueue(bookId: book.id),
                     onRemoveFromQueue: { appState.removeFromQueue(book: book); selectedBookForProfile = nil },
@@ -124,7 +126,19 @@ struct ProfileLibraryView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
             }
-            .sheet(isPresented: $showGoodreadsImport) {
+            .sheet(isPresented: $showFindFriends) {
+                FindFriendsView()
+                    .environmentObject(appState)
+            }
+            .sheet(item: $addToShelfTarget, onDismiss: { addToShelfDetent = AddBookFlowView.smallDetent }) { target in
+                AddBookFlowView(detent: $addToShelfDetent, targetShelf: target.shelf)
+                    .environment(\.mainTabBarOverlapExtraHeight, 0)
+                    .presentationDetents([AddBookFlowView.smallDetent, AddBookFlowView.expandedDetent], selection: $addToShelfDetent)
+                    .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $showGoodreadsImport, onDismiss: {
+                appState.refreshGoodreadsWizardResumeState()
+            }) {
                 GoodreadsImportView(initialRows: goodreadsImportInitialRows)
                     .environmentObject(appState)
                     .onDisappear { goodreadsImportInitialRows = nil }
@@ -183,10 +197,13 @@ struct ProfileLibraryView: View {
             .onReceive(NotificationCenter.default.publisher(for: .spineHighlightTierBook)) { _ in
                 segment = .read
             }
+            .onReceive(NotificationCenter.default.publisher(for: .spineOpenQueue)) { _ in
+                segment = .wantToRead
+            }
             .sheet(item: $pendingMarkReadFromQueue) { userBook in
                 MarkAsReadQueueSheet(
                     userBook: userBook,
-                    onConfirm: { date, rating, postToFeed, caption in
+                    onConfirm: { date, rating, postToFeed, caption, tier in
                         guard let latest = appState.userBooks.first(where: { $0.id == userBook.id && $0.status == .wantToRead }) else {
                             pendingMarkReadFromQueue = nil
                             return
@@ -196,7 +213,8 @@ struct ProfileLibraryView: View {
                             dateFinished: date,
                             rating: rating,
                             postToFeed: postToFeed,
-                            caption: caption
+                            caption: caption,
+                            tier: tier
                         )
                         pendingMarkReadFromQueue = nil
                     },
@@ -217,15 +235,25 @@ struct ProfileLibraryView: View {
     private var spineProfileHeader: some View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
+                // Unlike Feed/Discover, the title shares its row with the fan stack + avatar — keep it on one line and scale down before wrapping.
                 Text("SPINE // PROFILE")
                     .font(.system(size: 22, weight: .bold, design: .monospaced))
                     .tracking(2)
                     .foregroundStyle(Theme.textPrimary)
-                Text(SpinesGlyphs.rule(width: 32))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Text(SpinesGlyphs.rule(width: 18))
                     .font(.system(size: 12, weight: .regular, design: .monospaced))
                     .foregroundStyle(Theme.chromeTeal)
+                    .lineLimit(1)
             }
             Spacer(minLength: 8)
+            // What you're reading right now, floating beside your avatar. Tap a cover for its profile.
+            ReadingNowFanStack(
+                books: appState.wantToReadReadingNow.compactMap(\.book),
+                coverWidth: 30,
+                onTap: { selectedBookForProfile = $0 }
+            )
             toolbarProfilePhoto
         }
         .padding(.horizontal, Theme.horizontalPadding)
@@ -476,6 +504,11 @@ struct ProfileLibraryView: View {
                     Label("Edit profile", systemImage: "person.crop.circle")
                 }
                 Button {
+                    showFindFriends = true
+                } label: {
+                    Label("Find friends", systemImage: "person.2.badge.plus")
+                }
+                Button {
                     showGoodreadsImport = true
                 } label: {
                     Label("Import from Goodreads", systemImage: "square.and.arrow.down")
@@ -568,6 +601,54 @@ struct ProfileLibraryView: View {
         }
     }
 
+    /// "Finish importing" callout above the tier list when a Goodreads wizard
+    /// session is paused. Tapping resumes exactly where the user left off.
+    private var goodreadsResumeCallout: some View {
+        Button {
+            goodreadsImportInitialRows = nil
+            showGoodreadsImport = true
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "square.and.arrow.down")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Theme.phosphorWhite)
+                    .frame(width: 30, height: 30)
+                    .background(Theme.accent)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(SpinesGlyphs.bracketed("Finish importing!"))
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .tracking(0.5)
+                        .foregroundStyle(Theme.accent)
+                    Text(goodreadsResumeMessage)
+                        .font(Theme.caption())
+                        .foregroundStyle(Theme.textPrimary)
+                        .lineLimit(2)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.textTertiary)
+            }
+            .padding(10)
+            .background(Theme.surfaceElevated)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
+                    .strokeBorder(Theme.accent.opacity(0.45), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, Theme.horizontalPadding - 4)
+        .padding(.bottom, 8)
+    }
+
+    private var goodreadsResumeMessage: String {
+        let n = appState.goodreadsWizardRemainingCount
+        let noun = n == 1 ? "book" : "books"
+        return "\(n) \(noun) remaining"
+    }
+
     @ViewBuilder
     private var libraryContent: some View {
         if segment == .read {
@@ -582,17 +663,29 @@ struct ProfileLibraryView: View {
                 onUpdateShelfAndOrder: { id, shelf, idx in
                     appState.setQueueShelfAndOrder(for: id, shelf: shelf, insertionIndex: idx)
                 },
-                onBookTap: { selectedBookForProfile = $0 }
+                onBookTap: { selectedBookForProfile = $0 },
+                onAddToShelf: { addToShelfTarget = ShelfAddTarget(shelf: $0) },
+                recommendations: appState.incomingRecommendations,
+                recommenderNames: appState.recommenderProfiles.mapValues(\.displayName),
+                onAcceptRecommendation: { appState.acceptRecommendation($0) },
+                onDismissRecommendation: { appState.dismissRecommendation($0) }
             )
         }
     }
+}
+
+/// Identifiable wrapper so `.sheet(item:)` can present the add-book search for a specific shelf.
+private struct ShelfAddTarget: Identifiable {
+    let shelf: QueueShelf
+    var id: String { shelf.rawValue }
 }
 
 // MARK: - Mark as read (queue → Read tab drop)
 
 private struct MarkAsReadQueueSheet: View {
     let userBook: UserBook
-    let onConfirm: (Date, Double?, Bool, String?) -> Void
+    /// (dateFinished, rating, postToFeed, thoughts, tier). Tier nil = Unranked → tier-list "Rank me" prompt.
+    let onConfirm: (Date, Double?, Bool, String?, String?) -> Void
     let onCancel: () -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -600,6 +693,7 @@ private struct MarkAsReadQueueSheet: View {
     @State private var markAsReadDate = Date()
     @State private var markAsReadPostToFeed = true
     @State private var markAsReadThoughts = ""
+    @State private var selectedTier: String? = nil
 
     private var bookTitle: String {
         userBook.book?.title ?? "Book"
@@ -652,6 +746,8 @@ private struct MarkAsReadQueueSheet: View {
                             }
                             .id("markReadThoughtsBlock")
 
+                            InlineTierPicker(selection: $selectedTier)
+
                             Toggle(isOn: $markAsReadPostToFeed) {
                                 Text("Post to feed")
                                     .font(Theme.callout())
@@ -663,7 +759,7 @@ private struct MarkAsReadQueueSheet: View {
                                 let date = markAsReadDate
                                 let post = markAsReadPostToFeed
                                 let thoughts = markAsReadThoughts.trimmingCharacters(in: .whitespacesAndNewlines)
-                                onConfirm(date, nil, post, thoughts.isEmpty ? nil : thoughts)
+                                onConfirm(date, nil, post, thoughts.isEmpty ? nil : thoughts, selectedTier)
                                 dismiss()
                             } label: {
                                 Text("Mark as read")
@@ -707,6 +803,7 @@ private struct MarkAsReadQueueSheet: View {
             markAsReadDate = Date()
             markAsReadPostToFeed = true
             markAsReadThoughts = ""
+            selectedTier = nil
         }
     }
 }

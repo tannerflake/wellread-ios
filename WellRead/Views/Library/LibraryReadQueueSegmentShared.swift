@@ -17,7 +17,7 @@ enum LibraryReadingGoalStripCopy {
     case other(displayFirstName: String?)
 }
 
-/// Skinny progress bar + compact caption under the nav title, above the Read/Queue control.
+/// Goal progress bar + compact caption under the nav title, above the Read/Queue control.
 struct LibraryReadingGoalProgressStrip: View {
     let calendarYear: Int
     let booksRead: Int
@@ -49,13 +49,21 @@ struct LibraryReadingGoalProgressStrip: View {
                 .lineLimit(2)
                 .minimumScaleFactor(0.85)
                 .fixedSize(horizontal: false, vertical: true)
-            ProgressView(value: min(Double(booksRead), goalTotal), total: goalTotal)
-                .progressViewStyle(.linear)
-                .tint(Theme.accent)
-                .scaleEffect(x: 1, y: 0.5, anchor: .center)
-                .frame(height: 3)
-                .accessibilityLabel("\(calendarYear) reading goal")
-                .accessibilityValue("\(booksRead) of \(goal) books")
+            GeometryReader { geo in
+                let fraction = min(Double(booksRead), goalTotal) / goalTotal
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Theme.textSecondary.opacity(0.18))
+                    if fraction > 0 {
+                        Capsule()
+                            .fill(Theme.accent)
+                            .frame(width: max(geo.size.height, geo.size.width * fraction))
+                    }
+                }
+            }
+            .frame(height: 6)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(calendarYear) reading goal")
+            .accessibilityValue("\(booksRead) of \(goal) books")
         }
         .padding(.top, 4)
         .padding(.bottom, 6)

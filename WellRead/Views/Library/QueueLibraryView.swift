@@ -107,6 +107,80 @@ private struct QueueBookCell: View {
     }
 }
 
+// MARK: - Add tiles
+
+/// Cover-sized dashed "Add" tile appended after the last book in a shelf. Tapping opens
+/// search scoped to that shelf.
+private struct QueueAddBookTile: View {
+    let bookSize: CGFloat
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(spacing: 6) {
+                Image(systemName: "plus")
+                    .font(.system(size: max(16, bookSize * 0.22), weight: .semibold))
+                Text("Add")
+                    .font(.system(size: max(10, bookSize * 0.12), weight: .semibold, design: .monospaced))
+                    .tracking(0.5)
+            }
+            .foregroundStyle(Theme.textTertiary)
+            .frame(width: bookSize, height: bookSize * 1.5)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.white.opacity(0.08))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
+                    .foregroundStyle(Theme.textTertiary.opacity(0.6))
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Full-width empty state for a shelf with zero books: one big dashed tile with a
+/// centered plus. Tap opens search for that shelf; drags still drop onto it.
+private struct QueueEmptyShelfAddTile: View {
+    let shelf: QueueShelf
+    let onUpdate: (UUID, QueueShelf, Int?) -> Void
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(spacing: 10) {
+                Image(systemName: "plus")
+                    .font(.system(size: 30, weight: .semibold))
+                Text("Add a book")
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .tracking(0.5)
+            }
+            .foregroundStyle(Theme.textTertiary)
+            .frame(maxWidth: .infinity, minHeight: 140)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
+                    .fill(Color.white.opacity(0.08))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
+                    .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [8, 6]))
+                    .foregroundStyle(Theme.textTertiary.opacity(0.5))
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .dropDestination(for: TierDragItem.self) { items, _ in
+            guard let payload = items.first else { return false }
+            onUpdate(payload.userBookId, shelf, 0)
+            return true
+        } isTargeted: { targeted in
+            if targeted { LibraryDragHaptics.dropTargetHoverEntered() }
+        }
+    }
+}
+
 // MARK: - Section grid (tier-list style rows of 4)
 
 private let queueBooksPerRow = 4
@@ -139,6 +213,9 @@ private struct QueueSectionGrid: View {
     let contentWidth: CGFloat
     let onUpdateShelfAndOrder: (UUID, QueueShelf, Int?) -> Void
     var onBookTap: ((Book) -> Void)?
+    /// When set (own library), shows an "Add" tile after the last book (or filling the
+    /// empty shelf) that opens search scoped to this shelf.
+    var onAddTap: (() -> Void)? = nil
     var readOnly: Bool = false
 
     var body: some View {
@@ -162,6 +239,8 @@ private struct QueueSectionGrid: View {
                         .foregroundStyle(Theme.textTertiary)
                         .frame(maxWidth: .infinity, minHeight: 100)
                         .multilineTextAlignment(.center)
+                } else if let onAddTap = onAddTap {
+                    QueueEmptyShelfAddTile(shelf: shelf, onUpdate: onUpdateShelfAndOrder, onTap: onAddTap)
                 } else {
                     ZStack {
                         RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
@@ -188,12 +267,27 @@ private struct QueueSectionGrid: View {
         .animation(.easeInOut(duration: 0.3), value: books.map(\.id))
     }
 
+    /// Grid cell: a book, or (own library) the trailing "Add" tile that wraps like another cover.
+    private enum QueueCell: Identifiable {
+        case book(UserBook, index: Int)
+        case addTile
+
+        var id: String {
+            switch self {
+            case .book(let ub, _): return ub.id.uuidString
+            case .addTile: return "add-tile"
+            }
+        }
+    }
+
     @ViewBuilder
     private func queueRows(bookSize: CGFloat, slotHeight: CGFloat) -> some View {
-        let rows: [[UserBook]] = books.isEmpty
+        let showAddTile = onAddTap != nil && !readOnly
+        let cells: [QueueCell] = books.enumerated().map { .book($1, index: $0) } + (showAddTile ? [.addTile] : [])
+        let rows: [[QueueCell]] = cells.isEmpty
             ? []
-            : stride(from: 0, to: books.count, by: queueBooksPerRow).map { start in
-                Array(books[start..<min(start + queueBooksPerRow, books.count)])
+            : stride(from: 0, to: cells.count, by: queueBooksPerRow).map { start in
+                Array(cells[start..<min(start + queueBooksPerRow, cells.count)])
             }
 
         LazyVStack(alignment: .leading, spacing: 14) {
@@ -203,31 +297,47 @@ private struct QueueSectionGrid: View {
                 }
                 .padding(.horizontal, 1)
             } else {
-                ForEach(Array(rows.enumerated()), id: \.offset) { rowIndex, rowBooks in
-                    let startIndex = rowIndex * queueBooksPerRow
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, rowCells in
                     HStack(alignment: .top, spacing: 0) {
-                        ForEach(Array(rowBooks.enumerated()), id: \.element.id) { i, ub in
-                            QueueShelfDropSlot(shelf: shelf, insertionIndex: startIndex + i, onUpdate: onUpdateShelfAndOrder, minHeight: slotHeight, readOnly: readOnly)
-                            if ub.book != nil {
-                                QueueBookCell(
-                                    userBook: ub,
-                                    shelf: shelf,
-                                    insertionIndex: startIndex + i,
-                                    bookSize: bookSize,
-                                    onUpdate: onUpdateShelfAndOrder,
-                                    onBookTap: onBookTap,
-                                    readOnly: readOnly
-                                )
-                                .frame(width: bookSize, alignment: .leading)
+                        ForEach(rowCells) { cell in
+                            switch cell {
+                            case .book(let ub, let index):
+                                QueueShelfDropSlot(shelf: shelf, insertionIndex: index, onUpdate: onUpdateShelfAndOrder, minHeight: slotHeight, readOnly: readOnly)
+                                if ub.book != nil {
+                                    QueueBookCell(
+                                        userBook: ub,
+                                        shelf: shelf,
+                                        insertionIndex: index,
+                                        bookSize: bookSize,
+                                        onUpdate: onUpdateShelfAndOrder,
+                                        onBookTap: onBookTap,
+                                        readOnly: readOnly
+                                    )
+                                    .frame(width: bookSize, alignment: .leading)
+                                }
+                            case .addTile:
+                                QueueShelfDropSlot(shelf: shelf, insertionIndex: books.count, onUpdate: onUpdateShelfAndOrder, minHeight: slotHeight, readOnly: readOnly)
+                                if let onAddTap = onAddTap {
+                                    QueueAddBookTile(bookSize: bookSize, onTap: onAddTap)
+                                        .frame(width: bookSize, alignment: .leading)
+                                }
                             }
                         }
-                        QueueShelfDropSlot(shelf: shelf, insertionIndex: startIndex + rowBooks.count, onUpdate: onUpdateShelfAndOrder, fillsRow: true, minHeight: slotHeight, readOnly: readOnly)
+                        // Trailing flexible slot drops at the end of the row's books.
+                        QueueShelfDropSlot(shelf: shelf, insertionIndex: rowEndInsertionIndex(rowCells), onUpdate: onUpdateShelfAndOrder, fillsRow: true, minHeight: slotHeight, readOnly: readOnly)
                     }
                     .padding(.horizontal, 1)
                 }
             }
         }
         .padding(.vertical, 2)
+    }
+
+    private func rowEndInsertionIndex(_ rowCells: [QueueCell]) -> Int {
+        for cell in rowCells.reversed() {
+            if case .book(_, let index) = cell { return index + 1 }
+        }
+        return 0
     }
 }
 
@@ -239,7 +349,16 @@ struct QueueLibraryView: View {
     let backlog: [UserBook]
     let onUpdateShelfAndOrder: (UUID, QueueShelf, Int?) -> Void
     var onBookTap: ((Book) -> Void)? = nil
+    /// When set (own library), each shelf shows an "Add" tile that calls this with its shelf.
+    var onAddToShelf: ((QueueShelf) -> Void)? = nil
     var readOnly: Bool = false
+    /// Pending books friends sent (own library only) — shown as a Recommended
+    /// shelf above the queue with add/dismiss actions.
+    var recommendations: [BookRecommendation] = []
+    /// Sender display names keyed by Firebase UID ("from {name}").
+    var recommenderNames: [String: String] = [:]
+    var onAcceptRecommendation: ((BookRecommendation) -> Void)? = nil
+    var onDismissRecommendation: ((BookRecommendation) -> Void)? = nil
 
     @EnvironmentObject private var queueDragCoordinator: QueueBookDragCoordinator
 
@@ -250,6 +369,10 @@ struct QueueLibraryView: View {
             let contentWidth = max(0, geo.size.width - Self.horizontalPadding)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 24) {
+                    if !readOnly && !recommendations.isEmpty {
+                        recommendedShelf
+                    }
+
                     QueueSectionGrid(
                         title: "Reading now",
                         shelf: .readingNow,
@@ -258,6 +381,7 @@ struct QueueLibraryView: View {
                         contentWidth: contentWidth,
                         onUpdateShelfAndOrder: onUpdateShelfAndOrder,
                         onBookTap: onBookTap,
+                        onAddTap: onAddToShelf.map { cb in { cb(.readingNow) } },
                         readOnly: readOnly
                     )
 
@@ -269,6 +393,7 @@ struct QueueLibraryView: View {
                         contentWidth: contentWidth,
                         onUpdateShelfAndOrder: onUpdateShelfAndOrder,
                         onBookTap: onBookTap,
+                        onAddTap: onAddToShelf.map { cb in { cb(.upNext) } },
                         readOnly: readOnly
                     )
 
@@ -280,6 +405,7 @@ struct QueueLibraryView: View {
                         contentWidth: contentWidth,
                         onUpdateShelfAndOrder: onUpdateShelfAndOrder,
                         onBookTap: onBookTap,
+                        onAddTap: onAddToShelf.map { cb in { cb(.backlog) } },
                         readOnly: readOnly
                     )
                 }
@@ -292,6 +418,96 @@ struct QueueLibraryView: View {
                 .padding(.top, 10)
                 .padding(.bottom, 88)
             }
+        }
+    }
+
+    // MARK: - Recommended shelf (books friends sent; accept → queue, or dismiss)
+
+    private var recommendedShelf: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Recommended by friends")
+                .font(Theme.headline())
+                .foregroundStyle(Theme.textSecondary)
+
+            ForEach(recommendations) { rec in
+                recommendationRow(rec)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func recommendationRow(_ rec: BookRecommendation) -> some View {
+        if let book = rec.book {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 12) {
+                    Button(action: { onBookTap?(book) }) {
+                        BookCoverView(book: book, size: 56)
+                    }
+                    .buttonStyle(.plain)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(book.title)
+                            .font(Theme.body())
+                            .foregroundStyle(Theme.textPrimary)
+                            .lineLimit(2)
+                        Text(book.author)
+                            .font(Theme.caption())
+                            .foregroundStyle(Theme.textSecondary)
+                            .lineLimit(1)
+                        Text("from \(recommenderNames[rec.fromUserId] ?? "a friend")")
+                            .font(Theme.caption())
+                            .foregroundStyle(Theme.accent)
+                        if let note = rec.note, !note.isEmpty {
+                            Text("\u{201C}\(note)\u{201D}")
+                                .font(Theme.caption())
+                                .foregroundStyle(Theme.textSecondary)
+                                .italic()
+                                .lineLimit(3)
+                        }
+                    }
+                    Spacer()
+                }
+                HStack(spacing: 10) {
+                    Button(action: { onAcceptRecommendation?(rec) }) {
+                        Text("[ + QUEUE ]")
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .tracking(0.5)
+                            .foregroundStyle(Theme.phosphorWhite)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(
+                                RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
+                                    .fill(Theme.accent)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    Button(action: { onDismissRecommendation?(rec) }) {
+                        Text("[ DISMISS ]")
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .tracking(0.5)
+                            .foregroundStyle(Theme.textSecondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(
+                                RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
+                                    .fill(Theme.surface)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
+                                    .stroke(Theme.chromeTeal.opacity(0.4), lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
+                    .fill(Color.white.opacity(0.08))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
+                    .stroke(Theme.chromeTeal.opacity(0.35), lineWidth: 1)
+            )
         }
     }
 }

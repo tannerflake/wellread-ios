@@ -11,12 +11,15 @@ import SwiftUI
 
 struct MarkAsReadInlineOverlay: View {
     @Binding var isPresented: Bool
-    let onConfirm: (Date, Double?, Bool, String?) -> Void
+    /// (dateFinished, rating, postToFeed, thoughts, tier). Tier nil = Unranked → tier-list "Rank me" prompt.
+    let onConfirm: (Date, Double?, Bool, String?, String?) -> Void
 
     @FocusState private var isThoughtsFocused: Bool
     @State private var markAsReadDate = Date()
     @State private var markAsReadPostToFeed = true
     @State private var markAsReadThoughts = ""
+    @State private var selectedTier: String? = nil
+    @State private var showDatePopover = false
 
     var body: some View {
         Group {
@@ -62,16 +65,54 @@ struct MarkAsReadInlineOverlay: View {
             markAsReadDate = Date()
             markAsReadPostToFeed = true
             markAsReadThoughts = ""
+            selectedTier = nil
+            showDatePopover = false
         }
     }
 
     private var card: some View {
         VStack(alignment: .leading, spacing: 18) {
             sectionLabel("Date Finished")
-            DatePicker("", selection: $markAsReadDate, displayedComponents: .date)
-                .datePickerStyle(.compact)
-                .labelsHidden()
-                .tint(Theme.accent)
+            Button {
+                isThoughtsFocused = false
+                showDatePopover = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "calendar")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text(markAsReadDate.formatted(date: .abbreviated, time: .omitted))
+                        .font(Theme.callout())
+                }
+                .foregroundStyle(Theme.textPrimary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Theme.background)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Theme.chromeTeal.opacity(0.4), lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+            .popover(isPresented: $showDatePopover) {
+                DatePicker("", selection: $markAsReadDate, displayedComponents: .date)
+                    .datePickerStyle(.graphical)
+                    .labelsHidden()
+                    .tint(Theme.accent)
+                    .padding(12)
+                    // The graphical calendar has no usable intrinsic width inside a
+                    // popover — without an explicit frame it collapses to a narrow
+                    // clipped column. Size it to the calendar's natural dimensions.
+                    .frame(width: 320, height: 360)
+                    .presentationCompactAdaptation(.popover)
+                    // Tapping a specific day changes the selection — close the calendar
+                    // immediately instead of waiting for the user to tap outside it.
+                    .onChange(of: markAsReadDate) { _, _ in
+                        showDatePopover = false
+                    }
+            }
 
             sectionLabel("Thoughts")
             ZStack(alignment: .topLeading) {
@@ -100,6 +141,8 @@ struct MarkAsReadInlineOverlay: View {
             )
             .id("inlineThoughts")
 
+            InlineTierPicker(selection: $selectedTier)
+
             Toggle(isOn: $markAsReadPostToFeed) {
                 Text("Post to feed")
                     .font(Theme.callout())
@@ -111,8 +154,9 @@ struct MarkAsReadInlineOverlay: View {
                 let date = markAsReadDate
                 let post = markAsReadPostToFeed
                 let thoughts = markAsReadThoughts.trimmingCharacters(in: .whitespacesAndNewlines)
+                let tier = selectedTier
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { isPresented = false }
-                onConfirm(date, nil, post, thoughts.isEmpty ? nil : thoughts)
+                onConfirm(date, nil, post, thoughts.isEmpty ? nil : thoughts, tier)
             } label: {
                 Text("[ MARK AS READ ]")
                     .font(.system(size: 14, weight: .bold, design: .monospaced))

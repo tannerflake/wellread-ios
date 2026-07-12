@@ -3,33 +3,27 @@
 //  WellRead
 //
 //  Fetches a batch of book suggestions for Discover (Claude + Google Books). Used by AppState for prefetch.
+//  When the user has set custom DiscoverCriteria (seed books, tiers, tags, free text), those replace the
+//  default taste signal — the Discover criteria strip shows exactly what goes into the prompt.
 //
 
 import Foundation
 
 enum DiscoverSuggestionsService {
     /// Fetches up to 5 suggested books, excluding read, queue, and dismissed. Call from background; updates go to caller via callback/state.
-    /// `readingInterestTags` are onboarding picks from `Tags.csv` (same universe as book tags); passed into the recommender when non-empty.
-    static func fetchBatch(readBooks: [UserBook], queueBookIds: Set<String>, dismissedBookIds: Set<String>, readingInterestTags: [String]) async -> [Book] {
+    /// `readingInterestTags` are onboarding picks from `Tags.csv` (same universe as book tags); used only when `criteria.isDefault`.
+    static func fetchBatch(readBooks: [UserBook], queueBookIds: Set<String>, dismissedBookIds: Set<String>, readingInterestTags: [String], criteria: DiscoverCriteria) async -> [Book] {
         let readBookIds = Set(readBooks.map(\.bookId))
         let excludedIds = readBookIds.union(queueBookIds).union(dismissedBookIds)
         let excludedTitles = readBooks.compactMap { $0.book?.title }
         if ApiKeys.claude != nil {
-            return await fetchBatchViaClaude(excludedTitles: Array(excludedTitles), excludedIds: excludedIds, readingInterestTags: readingInterestTags)
+            return await fetchBatchViaClaude(readBooks: readBooks, excludedTitles: Array(excludedTitles), excludedIds: excludedIds, readingInterestTags: readingInterestTags, criteria: criteria)
         } else {
-            return await fetchBatchViaGoogleOnly(excludedIds: excludedIds, readTitles: excludedTitles, readingInterestTags: readingInterestTags)
+            return await fetchBatchViaGoogleOnly(readBooks: readBooks, excludedIds: excludedIds, readTitles: excludedTitles, readingInterestTags: readingInterestTags, criteria: criteria)
         }
     }
 
-    private static func fetchBatchViaClaude(excludedTitles: [String], excludedIds: Set<String>, readingInterestTags: [String]) async -> [Book] {
-        let interestsLine: String
-        if readingInterestTags.isEmpty {
-            interestsLine = ""
-        } else {
-            let listed = readingInterestTags.prefix(16).joined(separator: ", ")
-            interestsLine = "The user’s reading interests (prioritize books that match these topics, genres, or vibes—use them as the main guide): \(listed). "
-        }
-
+    private static func fetchBatchViaClaude(readBooks: [UserBook], excludedTitles: [String], excludedIds: Set<String>, readingInterestTags: [String], criteria: DiscoverCriteria) async -> [Book] {
         let historyLine: String
         if excludedTitles.isEmpty {
             historyLine = "They have not finished logging any books in this app yet."
@@ -37,10 +31,22 @@ enum DiscoverSuggestionsService {
             historyLine = "Books they have already read here—do not suggest these titles: \(excludedTitles.prefix(15).joined(separator: ", "))."
         }
 
+        let criteriaLine: String
+        if criteria.isDefault {
+            if readingInterestTags.isEmpty {
+                criteriaLine = ""
+            } else {
+                let listed = readingInterestTags.prefix(16).joined(separator: ", ")
+                criteriaLine = "The user’s reading interests (prioritize books that match these topics, genres, or vibes—use them as the main guide): \(listed). "
+            }
+        } else {
+            criteriaLine = criteriaPromptSections(criteria: criteria, readBooks: readBooks).joined(separator: " ") + " "
+        }
+
         let system = """
-        You are a book recommendation assistant. Reply with exactly 5 book recommendations. Each line must be only the book title (and optionally ' by Author'). No numbering, no bullets, no extra text. One book per line. Do not suggest any book from the user's excluded list. When the user has stated reading interests, most or all of your picks should clearly fit those interests.
+        You are a book recommendation assistant. Reply with exactly 5 book recommendations. Each line must be only the book title (and optionally ' by Author'). No numbering, no bullets, no extra text. One book per line. Do not suggest any book from the user's excluded list. When the user has stated criteria or reading interests, most or all of your picks should clearly fit them.
         """
-        let userMessage = "\(interestsLine)\(historyLine) Suggest 5 books they might enjoy next. Reply with exactly 5 lines, each line one book title (optionally 'Title by Author')."
+        let userMessage = "\(criteriaLine)\(historyLine) Suggest 5 books they might enjoy next. Reply with exactly 5 lines, each line one book title (optionally 'Title by Author')."
         do {
             let response = try await ClaudeService.shared.sendMessage(system: system, userMessage: userMessage)
             let lines = parseClaudeBookLines(response)
@@ -54,23 +60,79 @@ enum DiscoverSuggestionsService {
             }
             return books
         } catch {
-            let q = googleFallbackQuery(readTitles: excludedTitles, readingInterestTags: readingInterestTags)
+            let q = googleFallbackQuery(readBooks: readBooks, readTitles: excludedTitles, readingInterestTags: readingInterestTags, criteria: criteria)
             let fallback = (try? await GoogleBooksService.shared.search(query: q))?
                 .filter { !excludedIds.contains($0.id) } ?? []
             return Array(fallback.prefix(5))
         }
     }
 
-    private static func fetchBatchViaGoogleOnly(excludedIds: Set<String>, readTitles: [String], readingInterestTags: [String]) async -> [Book] {
+    /// Prompt fragments for each active criterion; empty criteria sections are skipped.
+    private static func criteriaPromptSections(criteria: DiscoverCriteria, readBooks: [UserBook]) -> [String] {
+        var sections: [String] = []
+
+        if !criteria.seedBooks.isEmpty {
+            let seeds = criteria.seedBooks.prefix(12).map { seed -> String in
+                if let ub = readBooks.first(where: { $0.bookId == seed.bookId }), let r = ub.rating {
+                    return "\(seed.title) by \(seed.author) (they rated it \(String(format: "%.1f", r))/10)"
+                }
+                return "\(seed.title) by \(seed.author)"
+            }
+            sections.append("Base your recommendations primarily on these specific books the user picked as references: \(seeds.joined(separator: "; ")).")
+        }
+
+        if !criteria.tiers.isEmpty {
+            let tierBooks = readBooks
+                .filter { ub in ub.tier.map(criteria.tiers.contains) == true }
+                .compactMap { ub -> String? in
+                    guard let b = ub.book, let tier = ub.tier else { return nil }
+                    let rating = ub.rating.map { String(format: ", rated %.1f/10", $0) } ?? ""
+                    return "\(b.title) by \(b.author) (\(tier) tier\(rating))"
+                }
+                .prefix(20)
+            if !tierBooks.isEmpty {
+                sections.append("The user wants recommendations informed by their \(criteria.tiers.joined(separator: " and "))-tier favorites: \(tierBooks.joined(separator: "; ")).")
+            }
+        }
+
+        if !criteria.tags.isEmpty {
+            sections.append("Focus on these genres/topics: \(criteria.tags.prefix(16).joined(separator: ", ")).")
+        }
+
+        if !criteria.trimmedFreeText.isEmpty {
+            sections.append("The user gave this specific instruction — follow it closely: \"\(criteria.trimmedFreeText.prefix(300))\".")
+        }
+
+        return sections
+    }
+
+    private static func fetchBatchViaGoogleOnly(readBooks: [UserBook], excludedIds: Set<String>, readTitles: [String], readingInterestTags: [String], criteria: DiscoverCriteria) async -> [Book] {
         try? await Task.sleep(nanoseconds: 800_000_000)
-        let query = googleFallbackQuery(readTitles: readTitles, readingInterestTags: readingInterestTags)
+        let query = googleFallbackQuery(readBooks: readBooks, readTitles: readTitles, readingInterestTags: readingInterestTags, criteria: criteria)
         let books = (try? await GoogleBooksService.shared.search(query: query))?
             .filter { !excludedIds.contains($0.id) } ?? []
         return Array(books.prefix(5))
     }
 
-    /// Search string when Claude is unavailable or errors: prefer interest tags, then recent reads, then generic.
-    private static func googleFallbackQuery(readTitles: [String], readingInterestTags: [String]) -> String {
+    /// Search string when Claude is unavailable or errors: prefer the user's criteria (tags, free text, seed/tier books), then interest tags, then recent reads, then generic.
+    private static func googleFallbackQuery(readBooks: [UserBook], readTitles: [String], readingInterestTags: [String], criteria: DiscoverCriteria) -> String {
+        if !criteria.tags.isEmpty {
+            return criteria.tags.prefix(6).joined(separator: " ")
+        }
+        if !criteria.trimmedFreeText.isEmpty {
+            return String(criteria.trimmedFreeText.prefix(120))
+        }
+        if !criteria.seedBooks.isEmpty {
+            return criteria.seedBooks.prefix(2).map(\.title).joined(separator: " ")
+        }
+        if !criteria.tiers.isEmpty {
+            let tierTitles = readBooks
+                .filter { ub in ub.tier.map(criteria.tiers.contains) == true }
+                .compactMap { $0.book?.title }
+            if !tierTitles.isEmpty {
+                return tierTitles.prefix(2).joined(separator: " ")
+            }
+        }
         if !readingInterestTags.isEmpty {
             return readingInterestTags.prefix(6).joined(separator: " ")
         }

@@ -261,6 +261,24 @@ final class UserRepository {
         try await ref.updateData(data)
     }
 
+    /// Stores the user's phone number (normalized digits) for contact-sync
+    /// matching; pass nil/empty to remove it.
+    func updatePhoneNumber(uid: String, phoneNumber: String?) async throws {
+        let normalized = ContactSyncService.normalizePhoneNumber(phoneNumber ?? "")
+        try await db.collection(users).document(uid).updateData([
+            "phoneNumber": normalized.isEmpty ? FieldValue.delete() : normalized,
+        ])
+    }
+
+    /// Persist Discover tuning criteria as a map field on the user doc.
+    func updateDiscoverCriteria(uid: String, criteria: DiscoverCriteria) async throws {
+        var sanitized = criteria
+        sanitized.tags = WellReadTagCatalog.shared.whitelist(sanitized.tags)
+        try await db.collection(users).document(uid).updateData([
+            "discoverCriteria": sanitized.firestoreMap,
+        ])
+    }
+
     /// Update the user's profile image URL in Firestore.
     func updateProfileImageURL(uid: String, url: String) async throws {
         try await db.collection(users).document(uid).updateData([
@@ -440,6 +458,7 @@ final class UserRepository {
             lastName: lastName,
             profileSetupCompleted: profileSetupCompleted,
             bio: data["bio"] as? String,
+            phoneNumber: data["phoneNumber"] as? String,
             profileImageURL: data["profileImageURL"] as? String,
             joinedAt: joinedAt,
             following: following,
@@ -449,7 +468,8 @@ final class UserRepository {
             totalBooksRead: totalBooksRead,
             totalPagesRead: totalPagesRead,
             readingGoal: readingGoal,
-            readingInterestTags: data["readingInterestTags"] as? [String] ?? []
+            readingInterestTags: data["readingInterestTags"] as? [String] ?? [],
+            discoverCriteria: DiscoverCriteria(firestoreMap: data["discoverCriteria"] as? [String: Any])
         )
     }
 }

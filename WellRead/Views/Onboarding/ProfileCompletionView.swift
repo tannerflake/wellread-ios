@@ -72,6 +72,8 @@ struct ProfileCompletionView: View {
     @State private var handle = ""
     /// Plain digits; validated as 1…1000 for the calendar year goal (no default — user must enter).
     @State private var readingGoalText = ""
+    /// Optional; stored normalized so friends who sync contacts can find this user.
+    @State private var phoneText = ""
     /// Onboarding only: step 2 is reading-interest tags.
     @State private var onboardingWizardStep = 1
     @State private var selectedInterestTags: Set<String> = []
@@ -87,7 +89,7 @@ struct ProfileCompletionView: View {
     @State private var photoUploadError: String?
 
     private enum Field: Hashable {
-        case first, last, handle, goal
+        case first, last, handle, goal, phone
     }
 
     private var calendarYear: Int {
@@ -108,10 +110,6 @@ struct ProfileCompletionView: View {
         self.title = title
         self.subtitle = subtitle
         self.onDismiss = onDismiss
-    }
-
-    private var onboardingInterestSections: [(category: String, tags: [String])] {
-        WellReadTagCatalog.shared.onboardingSectionsOrdered()
     }
 
     private var profileBasicsScroll: some View {
@@ -178,6 +176,18 @@ struct ProfileCompletionView: View {
                             .textFieldStyle(.plain)
                             .focused($focusedField, equals: .goal)
                             .submitLabel(.done)
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        labeledField(title: "Phone number (optional)") {
+                            TextField("(555) 555-0199", text: $phoneText)
+                                .textContentType(.telephoneNumber)
+                                .keyboardType(.phonePad)
+                                .textFieldStyle(.plain)
+                                .focused($focusedField, equals: .phone)
+                        }
+                        Text("So friends who sync their contacts can find you on Spine.")
+                            .font(Theme.caption())
+                            .foregroundStyle(Theme.textTertiary)
                     }
                 }
 
@@ -272,19 +282,7 @@ struct ProfileCompletionView: View {
 
     /// Shared grid of catalog tags (onboarding step 2 + Edit profile).
     private var tasteTagsCatalogGrid: some View {
-        ForEach(onboardingInterestSections, id: \.category) { section in
-            VStack(alignment: .leading, spacing: 10) {
-                Text(section.category.uppercased())
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Theme.textTertiary)
-                    .tracking(0.6)
-                FlowLayout(spacing: 10) {
-                    ForEach(section.tags, id: \.self) { tag in
-                        interestTagChip(tag)
-                    }
-                }
-            }
-        }
+        TagCatalogPicker(selected: $selectedInterestTags)
     }
 
     private var editReadingTastesSection: some View {
@@ -299,30 +297,6 @@ struct ProfileCompletionView: View {
             }
             tasteTagsCatalogGrid
         }
-    }
-
-    private func interestTagChip(_ tag: String) -> some View {
-        Button {
-            if selectedInterestTags.contains(tag) {
-                selectedInterestTags.remove(tag)
-            } else {
-                selectedInterestTags.insert(tag)
-            }
-        } label: {
-            let selected = selectedInterestTags.contains(tag)
-            Text(tag)
-                .font(Theme.callout())
-                .foregroundStyle(selected ? Theme.accent : Theme.textPrimary)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(Theme.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 20))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20)
-                        .strokeBorder(selected ? Theme.accent : Color.white.opacity(0.12), lineWidth: selected ? 2 : 1)
-                )
-        }
-        .buttonStyle(.plain)
     }
 
     var body: some View {
@@ -479,6 +453,9 @@ struct ProfileCompletionView: View {
         if let g = u.readingGoal {
             readingGoalText = "\(g)"
         }
+        if phoneText.isEmpty, let p = u.phoneNumber, !p.isEmpty {
+            phoneText = p
+        }
         selectedInterestTags = Set(u.readingInterestTags)
     }
 
@@ -592,6 +569,7 @@ struct ProfileCompletionView: View {
         Task {
             do {
                 let tags = WellReadTagCatalog.shared.whitelist(Array(selectedInterestTags))
+                await savePhoneNumberIfNeeded()
                 try await authService.completeProfileSetup(
                     firstName: firstName.trimmingCharacters(in: .whitespacesAndNewlines),
                     lastName: lastName.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -621,6 +599,7 @@ struct ProfileCompletionView: View {
         isSubmitting = true
         Task {
             do {
+                await savePhoneNumberIfNeeded()
                 try await authService.completeProfileSetup(
                     firstName: firstName.trimmingCharacters(in: .whitespacesAndNewlines),
                     lastName: lastName.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -640,6 +619,16 @@ struct ProfileCompletionView: View {
                 }
             }
         }
+    }
+
+    /// Saves the phone field when it changed. Best-effort: a failure here must
+    /// not block finishing onboarding or profile edits.
+    private func savePhoneNumberIfNeeded() async {
+        guard let uid = authService.firebaseUser?.uid else { return }
+        let normalized = ContactSyncService.normalizePhoneNumber(phoneText)
+        let existing = authService.appUser?.phoneNumber ?? ""
+        guard normalized != existing else { return }
+        try? await UserRepository().updatePhoneNumber(uid: uid, phoneNumber: normalized)
     }
 
     private func scheduleHandleAvailabilityCheck() {

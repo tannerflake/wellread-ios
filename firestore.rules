@@ -65,6 +65,18 @@ service cloud.firestore {
       );
     }
 
+    // Book recommendations between members: sender creates; sender or recipient can read;
+    // only the recipient updates (accept/dismiss); sender may retract via delete.
+    match /recommendations/{recId} {
+      allow read: if request.auth != null && (
+        resource.data.fromUserId == request.auth.uid ||
+        resource.data.toUserId == request.auth.uid
+      );
+      allow create: if request.auth != null && request.resource.data.fromUserId == request.auth.uid;
+      allow update: if request.auth != null && resource.data.toUserId == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.fromUserId == request.auth.uid;
+    }
+
     // Dismissed suggestions (Pass): user can only read/write their own passed book IDs
     match /dismissedSuggestions/{docId} {
       allow read, delete: if request.auth != null && resource.data.userId == request.auth.uid;

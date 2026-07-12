@@ -10,8 +10,10 @@ import SwiftUI
 
 struct DiscoverView: View {
     @EnvironmentObject var appState: AppState
+    @EnvironmentObject private var queueDragCoordinator: QueueBookDragCoordinator
     @State private var selectedBookForProfile: Book?
     @State private var bookWeCameFrom: Book?
+    @State private var showCriteriaEditor = false
 
     var body: some View {
         NavigationStack {
@@ -19,6 +21,13 @@ struct DiscoverView: View {
                 Theme.background.ignoresSafeArea()
                 VStack(spacing: 0) {
                     spineDiscoverHeader
+
+                    DiscoverCriteriaStrip(
+                        criteria: appState.discoverCriteria,
+                        interestTagsCount: appState.currentUser?.readingInterestTags.count ?? 0,
+                        onRemove: { appState.setDiscoverCriteria($0) },
+                        onEdit: { showCriteriaEditor = true }
+                    )
 
                     Group {
                         if appState.isLoadingDiscoverSuggestions && appState.discoverCurrentSuggestion == nil {
@@ -42,7 +51,7 @@ struct DiscoverView: View {
                     readBooksForSimilar: appState.readBooks,
                     onNotInterested: { selectedBookForProfile = nil },
                     onWantToRead: { appState.addToWantToRead(book: book); selectedBookForProfile = nil },
-                    onConfirmRead: { date, rating, post, caption in appState.addAsRead(book: book, dateFinished: date, rating: rating, postToFeed: post, caption: caption); selectedBookForProfile = nil },
+                    onConfirmRead: { date, rating, post, caption, tier in appState.addAsRead(book: book, dateFinished: date, rating: rating, postToFeed: post, caption: caption, tier: tier); selectedBookForProfile = nil },
                     isOnReadList: appState.isBookOnReadList(bookId: book.id),
                     isInQueue: appState.isBookInQueue(bookId: book.id),
                     readEntryForReview: appState.userReadBook(forBookId: book.id),
@@ -68,6 +77,12 @@ struct DiscoverView: View {
                 } else if appState.discoverCurrentSuggestion == nil, appState.discoverSuggestionQueue.isEmpty, !appState.isLoadingDiscoverSuggestions {
                     appState.loadDiscoverSuggestionsIfNeeded()
                 }
+            }
+            .sheet(isPresented: $showCriteriaEditor) {
+                DiscoverCriteriaEditorSheet(initial: appState.discoverCriteria)
+                    .environmentObject(appState)
+                    .environmentObject(queueDragCoordinator)
+                    .presentationDetents([.large])
             }
         }
     }
@@ -140,7 +155,7 @@ struct DiscoverView: View {
             readBooksForSimilar: appState.readBooks,
             onNotInterested: { performNotInterested(book) },
             onWantToRead: { performWantToRead(book) },
-            onConfirmRead: { date, rating, post, caption in performHaveRead(book, dateFinished: date, rating: rating, postToFeed: post, caption: caption) },
+            onConfirmRead: { date, rating, post, caption, tier in performHaveRead(book, dateFinished: date, rating: rating, postToFeed: post, caption: caption, tier: tier) },
             onBookTap: { tappedBook in
                 bookWeCameFrom = appState.discoverCurrentSuggestion
                 selectedBookForProfile = tappedBook
@@ -163,8 +178,8 @@ struct DiscoverView: View {
         appState.advanceDiscoverSuggestion()
     }
 
-    private func performHaveRead(_ book: Book, dateFinished: Date, rating: Double?, postToFeed: Bool, caption: String?) {
-        appState.addAsRead(book: book, dateFinished: dateFinished, rating: rating, postToFeed: postToFeed, caption: caption)
+    private func performHaveRead(_ book: Book, dateFinished: Date, rating: Double?, postToFeed: Bool, caption: String?, tier: String?) {
+        appState.addAsRead(book: book, dateFinished: dateFinished, rating: rating, postToFeed: postToFeed, caption: caption, tier: tier)
         appState.advanceDiscoverSuggestion()
     }
 }

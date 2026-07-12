@@ -18,6 +18,8 @@ struct FeedView: View {
     @State private var otherReaders: [(uid: String, user: User)] = []
     @State private var isLoadingOtherReaders = true
     @State private var showFollowCommunityWelcome = false
+    /// Post briefly tinted after a push-tap scroll so the review the user tapped is unmistakable.
+    @State private var highlightedPostId: String? = nil
 
     private let userRepo = UserRepository()
     private let postRepo = PostRepository()
@@ -26,37 +28,51 @@ struct FeedView: View {
         NavigationStack {
             ZStack {
                 Theme.background.ignoresSafeArea()
-                ScrollView {
-                    VStack(spacing: 0) {
-                        spinesHeader
-                        friendsSection
-                        feedFriendsDivider
-                        feedSectionLabel
-                        LazyVStack(spacing: 0) {
-                            ForEach(appState.feedPosts) { post in
-                                FeedPostRow(
-                                    post: post,
-                                    currentUserFirebaseUid: authService.firebaseUser?.uid,
-                                    isLiked: appState.likedPostIds.contains(post.id.uuidString),
-                                    onBookTap: { selectedBookForProfile = $0 },
-                                    onCommentTap: { postForComments = post },
-                                    onLikeToggle: { appState.togglePostLike(postId: post.id.uuidString, liked: $0) },
-                                    onEditReviewTap: {
-                                        guard post.type == .finishedBook,
-                                              let bid = post.bookId,
-                                              post.userId == authService.firebaseUser?.uid,
-                                              let ub = appState.userReadBook(forBookId: bid) else { return }
-                                        editReviewFromFeed = EditReadReviewSheetPayload(userBook: ub, feedCaption: post.caption)
-                                    },
-                                    displayTier: effectiveTier(for: post)
-                                )
+                ScrollViewReader { scrollProxy in
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            spinesHeader
+                            friendsSection
+                            feedFriendsDivider
+                            feedSectionLabel
+                            LazyVStack(spacing: 0) {
+                                ForEach(appState.feedPosts) { post in
+                                    FeedPostRow(
+                                        post: post,
+                                        currentUserFirebaseUid: authService.firebaseUser?.uid,
+                                        isLiked: appState.likedPostIds.contains(post.id.uuidString),
+                                        onBookTap: { selectedBookForProfile = $0 },
+                                        onCommentTap: { postForComments = post },
+                                        onLikeToggle: { appState.togglePostLike(postId: post.id.uuidString, liked: $0) },
+                                        onEditReviewTap: {
+                                            guard post.type == .finishedBook,
+                                                  let bid = post.bookId,
+                                                  post.userId == authService.firebaseUser?.uid,
+                                                  let ub = appState.userReadBook(forBookId: bid) else { return }
+                                            editReviewFromFeed = EditReadReviewSheetPayload(userBook: ub, feedCaption: post.caption)
+                                        },
+                                        displayTier: effectiveTier(for: post)
+                                    )
+                                    .id(post.id.uuidString)
+                                    .background(Theme.accent.opacity(highlightedPostId == post.id.uuidString ? 0.14 : 0))
+                                }
                             }
+                            .animation(.easeInOut(duration: 0.35), value: highlightedPostId)
+                            .padding(.bottom, 100)
                         }
-                        .padding(.bottom, 100)
                     }
-                }
-                .refreshable {
-                    await loadOtherReaders()
+                    .refreshable {
+                        await loadOtherReaders()
+                    }
+                    .onAppear {
+                        scrollToPushedPostIfNeeded(proxy: scrollProxy)
+                    }
+                    .onChange(of: appState.scrollToFeedPostId) { _, _ in
+                        scrollToPushedPostIfNeeded(proxy: scrollProxy)
+                    }
+                    .onChange(of: appState.feedPosts.count) { _, _ in
+                        scrollToPushedPostIfNeeded(proxy: scrollProxy)
+                    }
                 }
 
                 if showFollowCommunityWelcome {
@@ -88,7 +104,7 @@ struct FeedView: View {
                     readBooksForSimilar: appState.readBooks,
                     onNotInterested: nil,
                     onWantToRead: { appState.addToWantToRead(book: book); selectedBookForProfile = nil },
-                    onConfirmRead: { date, rating, post, caption in appState.addAsRead(book: book, dateFinished: date, rating: rating, postToFeed: post, caption: caption); selectedBookForProfile = nil },
+                    onConfirmRead: { date, rating, post, caption, tier in appState.addAsRead(book: book, dateFinished: date, rating: rating, postToFeed: post, caption: caption, tier: tier); selectedBookForProfile = nil },
                     isOnReadList: appState.isBookOnReadList(bookId: book.id),
                     isInQueue: appState.isBookInQueue(bookId: book.id),
                     onRemoveFromQueue: { appState.removeFromQueue(book: book); selectedBookForProfile = nil },
@@ -128,6 +144,31 @@ struct FeedView: View {
         if let t = post.tier { return t }
         guard post.userId == authService.firebaseUser?.uid, let bid = post.bookId else { return nil }
         return appState.userReadBook(forBookId: bid)?.tier
+    }
+
+    /// A friend-review push was tapped: scroll the feed to that post and tint it briefly. Waits for the
+    /// feed listener to deliver posts (cold start); gives up once the feed has loaded without the post.
+    private func scrollToPushedPostIfNeeded(proxy: ScrollViewProxy) {
+        guard let id = appState.scrollToFeedPostId else { return }
+        guard appState.feedPosts.contains(where: { $0.id.uuidString == id }) else {
+            if !appState.feedPosts.isEmpty {
+                appState.scrollToFeedPostId = nil
+            }
+            return
+        }
+        appState.scrollToFeedPostId = nil
+        // Small delay so the tab switch settles before animating the scroll.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            withAnimation(.easeInOut(duration: 0.5)) {
+                proxy.scrollTo(id, anchor: .center)
+            }
+            highlightedPostId = id
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
+                if highlightedPostId == id {
+                    highlightedPostId = nil
+                }
+            }
+        }
     }
 
     private func openDeepLinkedPostIfNeeded() {
@@ -339,17 +380,8 @@ struct FeedPostRow: View {
                             .font(Theme.callout())
                             .foregroundStyle(Theme.textSecondary)
                             .lineLimit(1)
-                        if displayTier != nil || post.dateFinished != nil {
-                            HStack(spacing: 8) {
-                                if let t = displayTier {
-                                    TierBadge(tier: t, size: .small)
-                                }
-                                if let date = post.dateFinished {
-                                    Text(date, style: .date)
-                                        .font(.system(size: 10, weight: .regular, design: .monospaced))
-                                        .foregroundStyle(Theme.textTertiary)
-                                }
-                            }
+                        if let t = displayTier {
+                            TierBadge(tier: t)
                         }
                     }
                     Spacer()
@@ -420,7 +452,7 @@ struct FeedPostRow: View {
                         Text(post.user?.displayName ?? "User")
                             .font(.system(size: 14, weight: .bold, design: .monospaced))
                             .foregroundStyle(Theme.textPrimary)
-                        Text("[ \(Theme.commentRelativeTimestamp(post.createdAt)) ]")
+                        Text("[ \(Theme.feedRelativeTimestamp(post.createdAt)) ]")
                             .font(.system(size: 10, weight: .regular, design: .monospaced))
                             .tracking(0.5)
                             .foregroundStyle(Theme.chromeTeal)

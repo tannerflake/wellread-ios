@@ -19,7 +19,8 @@ struct BookProfileView: View {
     var onNotInterested: (() -> Void)? = nil
     var onWantToRead: (() -> Void)? = nil
     /// Called when user confirms "Mark as Read" with (dateFinished, rating out of 10 e.g. 8.8, postToFeed, thoughtsCaption). When set, tapping Read shows the inline modal instead of firing immediately.
-    var onConfirmRead: ((Date, Double?, Bool, String?) -> Void)? = nil
+    /// (dateFinished, rating, postToFeed, thoughts, tier). Tier nil = Unranked → tier-list "Rank me" prompt.
+    var onConfirmRead: ((Date, Double?, Bool, String?, String?) -> Void)? = nil
     /// When set, tapping a similar book opens that book (e.g. sets navigation selection). Used from Discover.
     var onBookTap: ((Book) -> Void)? = nil
     /// True when this book is already on the user's read list (affects Read button appearance).
@@ -34,6 +35,10 @@ struct BookProfileView: View {
     var reviewSectionHeading: String = "My review"
     /// When `true`, shows a pencil on the review card to edit date, rating, thoughts, feed visibility, or delete.
     var canEditReadReview: Bool = false
+    /// Shelf-scoped primary CTA (e.g. "[ + READING NOW ]") shown above the Queue/Read row
+    /// when the profile was opened from a shelf's "Add" tile. Hidden if already in queue.
+    var shelfActionTitle: String? = nil
+    var onAddToShelf: (() -> Void)? = nil
 
     @EnvironmentObject private var appState: AppState
 
@@ -47,9 +52,14 @@ struct BookProfileView: View {
     @State private var profileTags: [String] = []
     @State private var tagsLoading = false
     @State private var userBookToEdit: UserBook? = nil
+    @State private var showRecommendSheet = false
 
     private var showActionBar: Bool {
-        onNotInterested != nil || onWantToRead != nil || onConfirmRead != nil || onRemoveFromQueue != nil
+        onNotInterested != nil || onWantToRead != nil || onConfirmRead != nil || onRemoveFromQueue != nil || onAddToShelf != nil
+    }
+
+    private var showShelfAction: Bool {
+        shelfActionTitle != nil && onAddToShelf != nil && !isInQueue
     }
 
     /// Show review card when this read row has review text and/or a tier.
@@ -105,12 +115,16 @@ struct BookProfileView: View {
         .padding(.bottom, mainTabBarOverlapExtraHeight)
         .background(Theme.background)
         .overlay {
-            MarkAsReadInlineOverlay(isPresented: $showMarkAsReadModal) { date, rating, post, thoughts in
-                onConfirmRead?(date, rating, post, thoughts)
+            MarkAsReadInlineOverlay(isPresented: $showMarkAsReadModal) { date, rating, post, thoughts, tier in
+                onConfirmRead?(date, rating, post, thoughts, tier)
             }
         }
         .sheet(item: $userBookToEdit) { ub in
             EditReadReviewSheet(userBook: ub)
+                .environmentObject(appState)
+        }
+        .sheet(isPresented: $showRecommendSheet) {
+            RecommendBookSheet(book: book)
                 .environmentObject(appState)
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -173,24 +187,6 @@ struct BookProfileView: View {
 
     private func reviewWindow(ub: UserBook) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            if canEditReadReview || ub.tier != nil {
-                HStack(alignment: .center, spacing: 12) {
-                    Spacer(minLength: 0)
-                    if canEditReadReview {
-                        Button {
-                            userBookToEdit = ub
-                        } label: {
-                            Image(systemName: "pencil")
-                                .font(.body.weight(.semibold))
-                                .foregroundStyle(Theme.textSecondary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    if let t = ub.tier {
-                        TierBadge(tier: t)
-                    }
-                }
-            }
             if let text = ub.reviewText?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
                 Text(text)
                     .font(Theme.body())
@@ -198,10 +194,51 @@ struct BookProfileView: View {
                     .lineSpacing(Theme.bodyLineSpacing)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            if !ub.allReadDates.isEmpty || canEditReadReview {
+                reviewFooter(ub: ub)
+            }
         }
         .padding()
-        .windowedCard(title: reviewSectionHeading)
+        .windowedCard(title: reviewSectionHeading) {
+            if let t = ub.tier {
+                TierBadge(tier: t, size: .mini)
+            }
+        }
     }
+
+    /// Read date(s) on the left — every recorded read, so re-reads are visible — pencil on the right.
+    private func reviewFooter(ub: UserBook) -> some View {
+        let dates = ub.allReadDates
+        return HStack(alignment: .bottom, spacing: 12) {
+            if !dates.isEmpty {
+                (
+                    Text(dates.count > 1 ? "read \u{00D7}\(dates.count): " : "read: ")
+                        .foregroundColor(Theme.chromeTeal)
+                    + Text(dates.map { Self.readDateFormatter.string(from: $0) }.joined(separator: " \u{00B7} "))
+                        .foregroundColor(Theme.textTertiary)
+                )
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+            if canEditReadReview {
+                Button {
+                    userBookToEdit = ub
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private static let readDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMM d, yyyy"
+        return f
+    }()
 
     // MARK: - Summary window
 
@@ -347,6 +384,36 @@ struct BookProfileView: View {
     // MARK: - Action bar
 
     private var actionBar: some View {
+        VStack(spacing: 10) {
+            if showShelfAction, let title = shelfActionTitle {
+                Button(action: { onAddToShelf?() }) {
+                    actionLabel(title, foreground: Theme.phosphorWhite, background: Theme.accent, border: .clear)
+                }
+                .buttonStyle(.plain)
+            }
+            actionButtonRow
+            if appState.authUserId != nil {
+                Button(action: { showRecommendSheet = true }) {
+                    actionLabel("[ RECOMMEND TO A FRIEND ]", foreground: Theme.textSecondary, background: Theme.surface, border: Theme.chromeTeal.opacity(0.5))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal)
+        .padding(.top, 18)
+        .padding(.bottom, 18)
+        .background(
+            VStack(spacing: 0) {
+                Rectangle()
+                    .fill(Theme.chromeTeal.opacity(0.45))
+                    .frame(height: Theme.chromeHairline)
+                Theme.background
+            }
+        )
+        .padding(.bottom, 12)
+    }
+
+    private var actionButtonRow: some View {
         HStack(spacing: 10) {
             if onNotInterested != nil {
                 Button(action: { onNotInterested?() }) {
@@ -380,29 +447,23 @@ struct BookProfileView: View {
                     if isOnReadList { return }
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showMarkAsReadModal = true }
                 }) {
+                    // When a shelf CTA is the primary action, READ steps down to an outline
+                    // style so there's a single clear main button.
                     actionLabel(
                         isOnReadList ? "[ READ \u{2714} ]" : "[ READ ]",
-                        foreground: Theme.phosphorWhite,
-                        background: isOnReadList ? Theme.textTertiary : Theme.accent,
-                        border: .clear
+                        foreground: isOnReadList
+                            ? Theme.phosphorWhite
+                            : (showShelfAction ? Theme.textSecondary : Theme.phosphorWhite),
+                        background: isOnReadList
+                            ? Theme.textTertiary
+                            : (showShelfAction ? Theme.surface : Theme.accent),
+                        border: showShelfAction && !isOnReadList ? Theme.chromeTeal.opacity(0.5) : .clear
                     )
                 }
                 .buttonStyle(.plain)
                 .disabled(isOnReadList)
             }
         }
-        .padding(.horizontal)
-        .padding(.top, 18)
-        .padding(.bottom, 18)
-        .background(
-            VStack(spacing: 0) {
-                Rectangle()
-                    .fill(Theme.chromeTeal.opacity(0.45))
-                    .frame(height: Theme.chromeHairline)
-                Theme.background
-            }
-        )
-        .padding(.bottom, 12)
     }
 
     private func actionLabel(_ text: String, foreground: Color, background: Color, border: Color) -> some View {

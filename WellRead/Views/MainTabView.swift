@@ -13,6 +13,7 @@ struct MainTabView: View {
     @EnvironmentObject var authService: AuthService
     @State private var selectedTab: Tab = .profile
     @State private var showAddBook = false
+    @State private var searchDetent: PresentationDetent = AddBookFlowView.smallDetent
     @State private var showCompleteProfileSheet = false
     @State private var showWelcomeGoodreadsModal = false
     @State private var showGoodreadsImportFromWelcome = false
@@ -38,15 +39,21 @@ struct MainTabView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // Reserve space for the tab bar in layout (avoids full-screen content drawing under it).
         .safeAreaInset(edge: .bottom, spacing: 0) {
+            // Lock the tab bar to the bottom: don't let keyboard avoidance lift it
+            // above the keyboard — it should sit still and be covered by the keyboard.
             tabBar
+                .ignoresSafeArea(.keyboard, edges: .bottom)
         }
         // BookProfileView reads `mainTabBarOverlapExtraHeight` and adds it as bottom padding so its action
         // bar clears the custom tab bar. With the parent safeAreaInset reserving the tab bar, this gives
         // the action bar a clean breathing-room gap above the tab bar.
         .environment(\.mainTabBarOverlapExtraHeight, Theme.mainTabBarChromeHeight)
-        .sheet(isPresented: $showAddBook) {
-            AddBookFlowView()
+        .toastHost()
+        .sheet(isPresented: $showAddBook, onDismiss: { searchDetent = AddBookFlowView.smallDetent }) {
+            AddBookFlowView(detent: $searchDetent)
                 .environment(\.mainTabBarOverlapExtraHeight, 0)
+                .presentationDetents([AddBookFlowView.smallDetent, AddBookFlowView.expandedDetent], selection: $searchDetent)
+                .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showCompleteProfileSheet, onDismiss: {
             schedulePostProfileOnboardingFlow()
@@ -124,7 +131,16 @@ struct MainTabView: View {
                 appState.deepLinkFeedPostId = id
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .wellreadOpenFeedScrollToPost)) { note in
+            if let id = note.userInfo?["postId"] as? String {
+                selectedTab = .feed
+                appState.scrollToFeedPostId = id
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .spineHighlightTierBook)) { _ in
+            selectedTab = .profile
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .spineOpenQueue)) { _ in
             selectedTab = .profile
         }
         .onAppear {

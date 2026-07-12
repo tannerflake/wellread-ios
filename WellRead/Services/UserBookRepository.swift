@@ -17,13 +17,34 @@ final class UserBookRepository {
         self.bookRepo = bookRepository
     }
 
+    /// Serializes snapshot delivery: each event resolves books in its own async task,
+    /// so an older event finishing late must not overwrite a newer one.
+    private final class SnapshotSequencer: @unchecked Sendable {
+        private let lock = NSLock()
+        private var scheduled = 0
+        private var delivered = 0
+        func next() -> Int {
+            lock.lock(); defer { lock.unlock() }
+            scheduled += 1
+            return scheduled
+        }
+        func shouldDeliver(_ generation: Int) -> Bool {
+            lock.lock(); defer { lock.unlock() }
+            guard generation > delivered else { return false }
+            delivered = generation
+            return true
+        }
+    }
+
     /// Listens to all userBooks for a user (for real-time Library updates).
     func listenUserBooks(userId: String, onUpdate: @escaping ([UserBook]) -> Void) -> ListenerRegistration {
-        db.collection(userBooks)
+        let sequencer = SnapshotSequencer()
+        return db.collection(userBooks)
             .whereField("userId", isEqualTo: userId)
             .order(by: "updatedAt", descending: true)
             .addSnapshotListener { [weak self] snapshot, error in
                 guard let self = self, let snapshot = snapshot else { return }
+                let generation = sequencer.next()
                 let list = snapshot.documents.compactMap { doc -> UserBook? in
                     self.userBook(from: doc.data(), docId: doc.documentID)
                 }
@@ -34,7 +55,10 @@ final class UserBookRepository {
                         ub.book = await self.bookRepo.getBook(id: ub.bookId)
                         withBooks.append(ub)
                     }
-                    await MainActor.run { onUpdate(withBooks) }
+                    await MainActor.run {
+                        guard sequencer.shouldDeliver(generation) else { return }
+                        onUpdate(withBooks)
+                    }
                 }
             }
     }
@@ -81,7 +105,9 @@ final class UserBookRepository {
     }
 
     /// Adds a userBook (and ensures the book exists). Returns the created UserBook with its id.
-    func addUserBook(userId: String, book: Book, status: ReadingStatus, rating: Double?, reviewText: String?, dateStarted: Date?, dateFinished: Date?) async throws -> UserBook {
+    /// `targetShelf`/`targetOrder` (wantToRead only) place the book directly on a specific queue
+    /// shelf at a specific position — used by the shelf "Add" tiles. Default: top of backlog.
+    func addUserBook(userId: String, book: Book, status: ReadingStatus, rating: Double?, reviewText: String?, dateStarted: Date?, dateFinished: Date?, targetShelf: QueueShelf? = nil, targetOrder: Int? = nil) async throws -> UserBook {
         try await bookRepo.ensureBook(book)
         let id = UUID()
         let now = Date()
@@ -102,7 +128,14 @@ final class UserBookRepository {
         ]
         var queueShelf: QueueShelf?
         var queueOrder: Int?
-        if status == .wantToRead {
+        if status == .wantToRead, let shelf = targetShelf {
+            // Explicit placement (e.g. end of a shelf) — no reordering of other books needed.
+            queueShelf = shelf
+            queueOrder = targetOrder ?? 0
+            data["queueShelf"] = shelf.rawValue
+            data["queueOrder"] = queueOrder ?? 0
+            try await ref.setData(data)
+        } else if status == .wantToRead {
             queueShelf = .backlog
             queueOrder = 0
             data["queueShelf"] = QueueShelf.backlog.rawValue
@@ -154,6 +187,27 @@ final class UserBookRepository {
     /// Updates status, rating, review, dates, tier, tierOrder.
     func updateUserBook(_ userBook: UserBook) async throws {
         let ref = db.collection(userBooks).document(userBook.id.uuidString)
+        try await ref.updateData(Self.updateFields(for: userBook))
+    }
+
+    /// Persists many userBook updates atomically (chunked to stay under Firestore's 500-op batch limit).
+    /// Drag-reorders renumber whole tiers/shelves; committing them as one batch means the snapshot
+    /// listener sees a single consistent state instead of one partial state per document.
+    func batchUpdateUserBooks(_ books: [UserBook]) async throws {
+        guard !books.isEmpty else { return }
+        let chunkSize = 450
+        for start in stride(from: 0, to: books.count, by: chunkSize) {
+            let chunk = books[start..<min(start + chunkSize, books.count)]
+            let batch = db.batch()
+            for ub in chunk {
+                let ref = db.collection(userBooks).document(ub.id.uuidString)
+                batch.updateData(Self.updateFields(for: ub), forDocument: ref)
+            }
+            try await batch.commit()
+        }
+    }
+
+    private static func updateFields(for userBook: UserBook) -> [String: Any] {
         var fields: [String: Any] = [
             "status": userBook.status.rawValue,
             "rating": userBook.rating.map { Theme.normalizeRatingOutOfTen($0) } as Any,
@@ -174,7 +228,12 @@ final class UserBookRepository {
         } else {
             fields["queueOrder"] = NSNull()
         }
-        try await ref.updateData(fields)
+        if let extra = userBook.additionalReadDates, !extra.isEmpty {
+            fields["additionalReadDates"] = extra.map { Timestamp(date: $0) }
+        } else {
+            fields["additionalReadDates"] = NSNull()
+        }
+        return fields
     }
 
     /// Updates tier for a userBook.
@@ -209,6 +268,7 @@ final class UserBookRepository {
         let queueShelfRaw = data["queueShelf"] as? String
         let queueShelf = queueShelfRaw.flatMap { QueueShelf(rawValue: $0) }
         let queueOrder = data["queueOrder"] as? Int
+        let additionalReadDates = (data["additionalReadDates"] as? [Timestamp]).map { $0.map { $0.dateValue() } }
         return UserBook(
             id: id,
             userId: userId,
@@ -225,7 +285,8 @@ final class UserBookRepository {
             tier: tier,
             tierOrder: tierOrder,
             queueShelf: queueShelf,
-            queueOrder: queueOrder
+            queueOrder: queueOrder,
+            additionalReadDates: additionalReadDates
         )
     }
 

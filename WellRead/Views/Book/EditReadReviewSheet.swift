@@ -29,6 +29,7 @@ struct EditReadReviewSheet: View {
     @EnvironmentObject private var appState: AppState
 
     @State private var dateFinished: Date
+    @State private var additionalReadDates: [Date]
     @State private var thoughts: String
     @State private var postToFeed: Bool
     @State private var loadedFeedToggle: Bool = false
@@ -42,6 +43,7 @@ struct EditReadReviewSheet: View {
         self.userBook = userBook
         self.feedCaption = feedCaption
         _dateFinished = State(initialValue: userBook.dateFinished ?? Date())
+        _additionalReadDates = State(initialValue: userBook.additionalReadDates ?? [])
         _thoughts = State(initialValue: Self.initialThoughts(userBook: userBook, feedCaption: feedCaption))
         _postToFeed = State(initialValue: true)
     }
@@ -78,14 +80,49 @@ struct EditReadReviewSheet: View {
                             .foregroundStyle(Theme.textPrimary)
                     }
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Date finished")
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Read dates")
                             .font(Theme.caption())
                             .foregroundStyle(Theme.textSecondary)
                         DatePicker("", selection: $dateFinished, displayedComponents: .date)
                             .datePickerStyle(.compact)
                             .labelsHidden()
                             .tint(Theme.accent)
+                        ForEach(additionalReadDates.indices, id: \.self) { i in
+                            HStack(spacing: 8) {
+                                DatePicker("", selection: $additionalReadDates[i], displayedComponents: .date)
+                                    .datePickerStyle(.compact)
+                                    .labelsHidden()
+                                    .tint(Theme.accent)
+                                Button {
+                                    additionalReadDates.remove(at: i)
+                                } label: {
+                                    Image(systemName: "minus.circle.fill")
+                                        .font(.system(size: 18))
+                                        .foregroundStyle(Theme.textTertiary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        Button {
+                            additionalReadDates.append(dateFinished)
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "plus.circle")
+                                    .font(.system(size: 14, weight: .semibold))
+                                Text("Add another read date")
+                                    .font(Theme.caption())
+                                    .fontWeight(.medium)
+                            }
+                            .foregroundStyle(Theme.accent)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.top, 2)
+                        if !additionalReadDates.isEmpty {
+                            Text("Re-reads count toward each year's reading goal.")
+                                .font(Theme.caption())
+                                .foregroundStyle(Theme.textTertiary)
+                        }
                     }
 
                     if let t = userBook.tier {
@@ -222,7 +259,8 @@ struct EditReadReviewSheet: View {
             dateFinished: dateFinished,
             rating: userBook.rating,
             thoughts: thoughts,
-            postToFeed: postToFeed
+            postToFeed: postToFeed,
+            additionalReadDates: additionalReadDates
         )
         await MainActor.run {
             if let err {

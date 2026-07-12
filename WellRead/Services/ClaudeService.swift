@@ -63,7 +63,8 @@ final class ClaudeService {
         guard let key = ApiKeys.claude, !key.isEmpty else {
             throw NSError(domain: "ClaudeService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Claude API key not configured. Add CLAUDE_API_KEY to Secrets.plist."])
         }
-        let modelsToTry = ["claude-3-5-sonnet-latest", "claude-3-5-sonnet-20241022", "claude-sonnet-4-20250514"]
+        // Fallback chain: 404/400 falls through to the next. Older Sonnet 3.5 IDs were retired Oct 2025.
+        let modelsToTry = ["claude-opus-4-8", "claude-sonnet-4-5"]
         var lastError: Error?
         for model in modelsToTry {
             do {

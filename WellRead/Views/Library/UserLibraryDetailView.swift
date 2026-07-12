@@ -59,15 +59,12 @@ struct UserLibraryDetailView: View {
 
     private var readBooksFilteredByYear: [UserBook] {
         guard let year = selectedYear else { return readBooks }
-        return readBooks.filter { ub in
-            guard let d = ub.dateFinished else { return false }
-            return Calendar.current.component(.year, from: d) == year
-        }
+        return readBooks.filter { $0.wasRead(inYear: year) }
     }
 
     private var availableYears: [Int] {
-        let years = Set(readBooks.compactMap { ub -> Int? in
-            ub.dateFinished.map { Calendar.current.component(.year, from: $0) }
+        let years = Set(readBooks.flatMap { ub in
+            ub.allReadDates.map { Calendar.current.component(.year, from: $0) }
         })
         return years.sorted(by: >)
     }
@@ -81,13 +78,9 @@ struct UserLibraryDetailView: View {
         Calendar.current.component(.year, from: Date())
     }
 
-    /// Finished books with `dateFinished` in the current calendar year.
+    /// Books with any read date in the current calendar year (re-reads count toward each year's goal).
     private var booksFinishedThisCalendarYear: Int {
-        let y = calendarYear
-        return readBooks.filter { ub in
-            guard let d = ub.dateFinished else { return false }
-            return Calendar.current.component(.year, from: d) == y
-        }.count
+        readBooks.filter { $0.wasRead(inYear: calendarYear) }.count
     }
 
     private var activeReadingGoal: Int? {
@@ -134,7 +127,15 @@ struct UserLibraryDetailView: View {
                     .lineLimit(1)
             }
             ToolbarItem(placement: .topBarTrailing) {
-                otherUserAvatar
+                HStack(spacing: 8) {
+                    // Their current reads float beside the avatar; tap a cover for its profile.
+                    ReadingNowFanStack(
+                        books: wantToReadReadingNow.compactMap(\.book),
+                        coverWidth: 20,
+                        onTap: { selectedBookForProfile = $0 }
+                    )
+                    otherUserAvatar
+                }
             }
         }
         .navigationDestination(item: $selectedBookForProfile) { book in
@@ -143,8 +144,8 @@ struct UserLibraryDetailView: View {
                 readBooksForSimilar: appState.readBooks,
                 onNotInterested: nil,
                 onWantToRead: { appState.addToWantToRead(book: book); selectedBookForProfile = nil },
-                onConfirmRead: { date, rating, post, caption in
-                    appState.addAsRead(book: book, dateFinished: date, rating: rating, postToFeed: post, caption: caption)
+                onConfirmRead: { date, rating, post, caption, tier in
+                    appState.addAsRead(book: book, dateFinished: date, rating: rating, postToFeed: post, caption: caption, tier: tier)
                     selectedBookForProfile = nil
                 },
                 isOnReadList: appState.isBookOnReadList(bookId: book.id),

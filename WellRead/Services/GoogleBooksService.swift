@@ -36,6 +36,9 @@ struct VolumeInfo: Codable {
     let description: String?
     let categories: [String]?
     let industryIdentifiers: [IndustryIdentifier]?
+    let averageRating: Double?
+    let ratingsCount: Int?
+    let language: String?
 }
 
 struct ImageLinks: Codable {
@@ -92,16 +95,23 @@ final class GoogleBooksService {
         session = URLSession(configuration: config)
     }
 
-    func search(query: String) async throws -> [Book] {
+    /// Searches Google Books, then re-ranks and de-duplicates results client-side
+    /// (see `BookSearchRanker`). `includeAllEditions` skips the junk-title filter
+    /// and edition dedup for the "can't find it?" fallback. `libraryAuthors` are
+    /// author names already in the user's library, used as a personalization boost.
+    /// Strict `isbn:` queries bypass ranking entirely and keep Google's order.
+    func search(query: String, includeAllEditions: Bool = false, libraryAuthors: Set<String> = []) async throws -> [Book] {
         let normalized = query.trimmingCharacters(in: .whitespaces).lowercased()
         guard !normalized.isEmpty else { return [] }
-        let cacheKey = normalized
+        let isISBNQuery = normalized.hasPrefix("isbn:")
+        let cacheKey = (includeAllEditions ? "all|" : "") + normalized
         if let cached = cacheQueue.sync(execute: { searchCache[cacheKey] }) {
             return cached
         }
         var queryItems: [URLQueryItem] = [
             URLQueryItem(name: "q", value: query),
-            URLQueryItem(name: "maxResults", value: "15"),
+            URLQueryItem(name: "maxResults", value: isISBNQuery ? "15" : "30"),
+            URLQueryItem(name: "printType", value: "books"),
             URLQueryItem(name: "projection", value: "full")
         ]
         if let key = apiKey {
@@ -114,30 +124,51 @@ final class GoogleBooksService {
         }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await session.data(for: request)
-        } catch let urlError as URLError {
-            let msg: String
-            switch urlError.code {
-            case .notConnectedToInternet, .networkConnectionLost:
-                msg = "No internet connection. Check Wi‑Fi or cellular."
-            case .timedOut:
-                msg = "Request timed out. Check your connection and try again."
-            case .cancelled:
-                msg = "Search was cancelled."
-            default:
-                msg = urlError.localizedDescription.isEmpty ? "Can't reach Google Books. Check your connection." : urlError.localizedDescription
+
+        // Searching-as-you-type fires a request every time the debounce window elapses,
+        // so several can reach Google in quick succession and trip its rate limiter
+        // (HTTP 429/503 "Service temporarily unavailable"). Retry those transient throttles
+        // with a short backoff so they resolve themselves instead of forcing the user to
+        // tap "Try Again". Cancellation during the backoff propagates to the caller.
+        let transientStatuses: Set<Int> = [429, 500, 502, 503, 504]
+        let maxAttempts = 3
+        let data: Data
+        var attempt = 0
+        while true {
+            let payload: Data
+            let response: URLResponse
+            do {
+                (payload, response) = try await session.data(for: request)
+            } catch let urlError as URLError {
+                let msg: String
+                switch urlError.code {
+                case .notConnectedToInternet, .networkConnectionLost:
+                    msg = "No internet connection. Check Wi‑Fi or cellular."
+                case .timedOut:
+                    msg = "Request timed out. Check your connection and try again."
+                case .cancelled:
+                    msg = "Search was cancelled."
+                default:
+                    msg = urlError.localizedDescription.isEmpty ? "Can't reach Google Books. Check your connection." : urlError.localizedDescription
+                }
+                throw NSError(domain: "GoogleBooks", code: urlError.errorCode, userInfo: [NSLocalizedDescriptionKey: msg])
+            } catch {
+                throw NSError(domain: "GoogleBooks", code: -2, userInfo: [NSLocalizedDescriptionKey: "Can't reach Google Books. Check your internet connection."])
             }
-            throw NSError(domain: "GoogleBooks", code: urlError.errorCode, userInfo: [NSLocalizedDescriptionKey: msg])
-        } catch {
-            throw NSError(domain: "GoogleBooks", code: -2, userInfo: [NSLocalizedDescriptionKey: "Can't reach Google Books. Check your internet connection."])
-        }
-        guard let http = response as? HTTPURLResponse else {
-            throw NSError(domain: "GoogleBooks", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response from server. Try again."])
-        }
-        if http.statusCode != 200 {
-            let message = (try? JSONDecoder().decode(GoogleBooksResponse.self, from: data).error?.message)
+            guard let http = response as? HTTPURLResponse else {
+                throw NSError(domain: "GoogleBooks", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response from server. Try again."])
+            }
+            if http.statusCode == 200 {
+                data = payload
+                break
+            }
+            attempt += 1
+            if transientStatuses.contains(http.statusCode), attempt < maxAttempts {
+                // Back off 300ms, then 600ms, before retrying.
+                try await Task.sleep(nanoseconds: 300_000_000 * UInt64(attempt))
+                continue
+            }
+            let message = (try? JSONDecoder().decode(GoogleBooksResponse.self, from: payload).error?.message)
                 ?? "Request failed (HTTP \(http.statusCode))."
             let hint = http.statusCode == 403
                 ? " Enable the Books API in Google Cloud Console (APIs & Services → Library → Books API) and ensure your API key is allowed."
@@ -154,7 +185,29 @@ final class GoogleBooksService {
             let hint = (apiError.code == 403) ? " Enable the Books API in Google Cloud Console for your API key." : ""
             throw NSError(domain: "GoogleBooks", code: apiError.code ?? -1, userInfo: [NSLocalizedDescriptionKey: msg + hint])
         }
-        let books = (decoded.items ?? []).compactMap { item in mapToBook(item: item) }
+        let applyJunkFilter = !includeAllEditions && !isISBNQuery
+        let candidates: [BookSearchRanker.Candidate] = (decoded.items ?? []).compactMap { item in
+            guard let book = mapToBook(item: item, filterJunkEditions: applyJunkFilter) else { return nil }
+            return BookSearchRanker.Candidate(
+                book: book,
+                signals: BookSearchSignals(
+                    ratingsCount: item.volumeInfo?.ratingsCount,
+                    averageRating: item.volumeInfo?.averageRating,
+                    language: item.volumeInfo?.language
+                )
+            )
+        }
+        let books: [Book]
+        if isISBNQuery {
+            books = candidates.map(\.book)
+        } else {
+            books = BookSearchRanker.rank(
+                candidates,
+                query: query,
+                deduplicate: !includeAllEditions,
+                libraryAuthors: libraryAuthors
+            )
+        }
         cacheQueue.async { [weak self] in
             guard let self = self else { return }
             if self.searchCache.count >= self.cacheMaxQueries {
@@ -196,11 +249,13 @@ final class GoogleBooksService {
         return mapToBook(item: item)
     }
 
-    /// Use imageLinks in documented size order (best available first). Books without covers still map (empty coverURL — UI uses title placeholder / Open Library). Excludes obvious summary/study-guide entries.
-    private func mapToBook(item: GoogleBooksItem) -> Book? {
+    /// Use imageLinks in documented size order (best available first). Books without covers still map (empty coverURL — UI uses title placeholder / Open Library). Excludes obvious summary/study-guide entries unless `filterJunkEditions` is false ("show all editions" fallback).
+    private func mapToBook(item: GoogleBooksItem, filterJunkEditions: Bool = true) -> Book? {
         guard let info = item.volumeInfo, let title = info.title, !title.isEmpty else { return nil }
-        if title.range(of: "Summary", options: .caseInsensitive) != nil { return nil }
-        if isLikelyNonBookEdition(title: title) { return nil }
+        if filterJunkEditions {
+            if title.range(of: "Summary", options: .caseInsensitive) != nil { return nil }
+            if isLikelyNonBookEdition(title: title) { return nil }
+        }
         let links = info.imageLinks
         // Prefer thumbnail → medium before extraLarge: very large assets are sometimes interior scans or preview pages, not the marketing cover.
         let rawOrder: [String?] = [

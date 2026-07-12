@@ -28,17 +28,28 @@ final class AppState: ObservableObject {
     @Published var isFetchingGoodreadsFromURL = false
     /// Set when opening a feed post from a push or `wellread://` URL; Feed opens comments when resolved.
     @Published var deepLinkFeedPostId: String?
+    /// Set when a friend-review push is tapped; Feed scrolls to the post (with a brief highlight) once it's loaded, then clears this.
+    @Published var scrollToFeedPostId: String?
     /// `Book.id` of a freshly-reviewed book the tier list should pulse-glow until the user tiers it. Cleared automatically once the corresponding `UserBook.tier` becomes non-nil.
     @Published var pendingTierHighlightBookId: String?
+    /// Pending books friends sent me (Recommended shelf on the queue), newest first.
+    @Published var incomingRecommendations: [BookRecommendation] = []
+    /// Sender profiles for incoming recommendations, keyed by Firebase UID ("from {name}" labels).
+    @Published var recommenderProfiles: [String: User] = [:]
 
     /// True only after we've loaded dismissed book IDs from Firestore, so discover suggestions exclude them from the first fetch.
     private var dismissedBookIdsLoaded = false
 
+    private static let libraryCacheSaveQueue = DispatchQueue(label: "com.wellread.library-cache-save", qos: .utility)
+
     private let userBookRepo = UserBookRepository()
     private let postRepo = PostRepository()
     private let dismissedRepo = DismissedSuggestionsRepository()
+    private let userRepo = UserRepository()
+    private let recommendationRepo = RecommendationRepository()
     private var userBooksListener: ListenerRegistration?
     private var feedListener: ListenerRegistration?
+    private var recommendationsListener: ListenerRegistration?
     private var currentUserId: String?
 
     /// Firebase Auth uid for the current user (use for Firestore writes).
@@ -51,6 +62,7 @@ final class AppState: ObservableObject {
         stopFirestoreListeners()
         currentUserId = uid
         dismissedBookIdsLoaded = false
+        refreshGoodreadsWizardResumeState()
 
         // Load from disk first so the user sees their library immediately.
         if let cached = LocalLibraryCache.shared.loadLibrary(userId: uid), !cached.isEmpty {
@@ -67,13 +79,19 @@ final class AppState: ObservableObject {
             }
             if let uid = self.currentUserId {
                 let copy = list
-                DispatchQueue.global(qos: .utility).async {
+                // Serial queue: concurrent saves could land out of order and persist a stale library.
+                Self.libraryCacheSaveQueue.async {
                     LocalLibraryCache.shared.saveLibrary(copy, userId: uid)
                 }
             }
         }
         feedListener = postRepo.listenFeed { [weak self] list in
             self?.feedPosts = list
+        }
+        recommendationsListener = recommendationRepo.listenIncoming(userId: uid) { [weak self] list in
+            guard let self = self else { return }
+            self.incomingRecommendations = list
+            self.loadRecommenderProfilesIfNeeded(for: list)
         }
 
         Task { [weak self] in
@@ -98,6 +116,37 @@ final class AppState: ObservableObject {
         userBooksListener = nil
         feedListener?.remove()
         feedListener = nil
+        recommendationsListener?.remove()
+        recommendationsListener = nil
+    }
+
+    // MARK: - Friend recommendations
+
+    private func loadRecommenderProfilesIfNeeded(for recommendations: [BookRecommendation]) {
+        let missing = Set(recommendations.map(\.fromUserId)).subtracting(recommenderProfiles.keys)
+        guard !missing.isEmpty else { return }
+        Task { [weak self] in
+            guard let self = self else { return }
+            for uid in missing {
+                guard let user = await self.userRepo.getUser(uid: uid) else { continue }
+                await MainActor.run { self.recommenderProfiles[uid] = user }
+            }
+        }
+    }
+
+    /// Recipient adds a recommended book to their queue. Removes it from the
+    /// Recommended shelf immediately; status update is fire-and-forget.
+    func acceptRecommendation(_ rec: BookRecommendation) {
+        guard let book = rec.book else { return }
+        incomingRecommendations.removeAll { $0.id == rec.id }
+        addToWantToRead(book: book)
+        Task { try? await recommendationRepo.updateStatus(id: rec.id, status: .accepted) }
+    }
+
+    /// Recipient passes on a recommended book.
+    func dismissRecommendation(_ rec: BookRecommendation) {
+        incomingRecommendations.removeAll { $0.id == rec.id }
+        Task { try? await recommendationRepo.updateStatus(id: rec.id, status: .dismissed) }
     }
 
     func signOut() {
@@ -107,12 +156,16 @@ final class AppState: ObservableObject {
         isAuthenticated = false
         userBooks = []
         feedPosts = []
+        incomingRecommendations = []
+        recommenderProfiles = [:]
         dismissedBookIds = []
         dismissedBookIdsLoaded = false
         discoverCurrentSuggestion = nil
         discoverSuggestionQueue = []
+        discoverFetchGeneration += 1
         likedPostIds = []
         deepLinkFeedPostId = nil
+        scrollToFeedPostId = nil
         pendingTierHighlightBookId = nil
         BookRepository.shared.clearCache()
     }
@@ -218,9 +271,7 @@ final class AppState: ObservableObject {
         }
 
         Task {
-            for ub in toPersist {
-                try? await userBookRepo.updateUserBook(ub)
-            }
+            try? await userBookRepo.batchUpdateUserBooks(toPersist)
         }
 
         if movedTierBefore != tier {
@@ -241,22 +292,29 @@ final class AppState: ObservableObject {
         dateFinished: Date,
         rating: Double?,
         postToFeed: Bool,
-        caption: String?
+        caption: String?,
+        tier: String? = nil
     ) {
         guard let uid = currentUserId, userBook.status == .wantToRead else { return }
         let stored = rating.map { Theme.normalizeRatingOutOfTen($0) }
         let thoughts = caption?.trimmingCharacters(in: .whitespacesAndNewlines)
         let review = thoughts.flatMap { $0.isEmpty ? nil : $0 }
+        let validTier = tier.flatMap { spineTierLabels.contains($0) ? $0 : nil }
         var updated = userBook
         updated.status = .read
         updated.dateFinished = dateFinished
         updated.rating = stored
         updated.reviewText = review
+        updated.tier = validTier ?? updated.tier
         updated.queueShelf = nil
         updated.queueOrder = nil
         updated.updatedAt = Date()
         updateUserBook(updated)
-        startTierHighlight(forBookId: userBook.bookId)
+        if validTier == nil {
+            startTierHighlight(forBookId: userBook.bookId)
+        }
+        let readTitle = userBook.book?.title ?? "Book"
+        Task { @MainActor in ToastCenter.shared.show(.markedAsRead(bookTitle: readTitle, sharedToFeed: postToFeed)) }
         Task {
             try? await userBookRepo.updateUserBook(updated)
             if postToFeed {
@@ -267,7 +325,7 @@ final class AppState: ObservableObject {
                     caption: review,
                     rating: stored,
                     dateFinished: dateFinished,
-                    tier: nil
+                    tier: validTier
                 )
             }
         }
@@ -354,9 +412,7 @@ final class AppState: ObservableObject {
         }
 
         Task {
-            for ub in toPersist {
-                try? await userBookRepo.updateUserBook(ub)
-            }
+            try? await userBookRepo.batchUpdateUserBooks(toPersist)
         }
     }
 
@@ -445,9 +501,37 @@ final class AppState: ObservableObject {
     /// Add a book to Queue. No-op if already in queue. Firestore listener will update userBooks.
     func addToWantToRead(book: Book) {
         guard !isBookInQueue(bookId: book.id), let uid = currentUserId else { return }
+        Task { @MainActor in ToastCenter.shared.show(.addedToQueue(bookTitle: book.title)) }
         Task {
             _ = try? await userBookRepo.addUserBook(userId: uid, book: book, status: .wantToRead, rating: nil, reviewText: nil, dateStarted: nil, dateFinished: nil)
         }
+    }
+
+    /// Add a book directly onto a specific queue shelf (from the shelf "Add" tiles),
+    /// landing at the end of that shelf. No-op if already in queue.
+    func addToQueue(book: Book, shelf: QueueShelf) {
+        guard !isBookInQueue(bookId: book.id), let uid = currentUserId else { return }
+        let endOrder: Int = {
+            switch shelf {
+            case .readingNow: return wantToReadReadingNow.count
+            case .upNext: return wantToReadUpNext.count
+            case .backlog: return wantToReadBacklog.count
+            }
+        }()
+        Task { @MainActor in
+            ToastCenter.shared.show(shelf == .readingNow
+                ? .startedReading(bookTitle: book.title)
+                : .addedToQueue(bookTitle: book.title))
+        }
+        Task {
+            _ = try? await userBookRepo.addUserBook(userId: uid, book: book, status: .wantToRead, rating: nil, reviewText: nil, dateStarted: nil, dateFinished: nil, targetShelf: shelf, targetOrder: endOrder)
+        }
+    }
+
+    /// Switch to the Profile tab → Queue segment. Used after adding a book to the queue from the
+    /// search flow so the user lands on the queue instead of being dropped back on the search bar.
+    func openQueue() {
+        NotificationCenter.default.post(name: .spineOpenQueue, object: nil)
     }
 
     /// Remove a book from the queue. No-op if not in queue.
@@ -469,15 +553,30 @@ final class AppState: ObservableObject {
     }
 
     /// Add a book as Read. `rating` is out of 10 with one decimal (e.g. 8.8). `caption` is saved on the user’s `UserBook` as review text (book profile “Your review”) and, if `postToFeed`, on the finished-book feed post.
-    func addAsRead(book: Book, dateFinished: Date, rating: Double?, postToFeed: Bool, caption: String? = nil) {
+    /// `tier` places the book straight into that tier; when nil the book lands in Unranked and the tier-list "Rank me" prompt kicks in.
+    func addAsRead(book: Book, dateFinished: Date, rating: Double?, postToFeed: Bool, caption: String? = nil, tier: String? = nil) {
         guard let uid = currentUserId else { return }
+        // If the book is already in the user's queue (Want to Read), promote that existing
+        // entry to Read instead of creating a duplicate row. This also removes it from the
+        // queue, since `promoteQueueEntryToRead` clears queueShelf/queueOrder.
+        if let queued = userBooks.first(where: { $0.bookId == book.id && $0.status == .wantToRead }) {
+            promoteQueueEntryToRead(userBook: queued, dateFinished: dateFinished, rating: rating, postToFeed: postToFeed, caption: caption, tier: tier)
+            return
+        }
         let stored: Double? = rating.map { Theme.normalizeRatingOutOfTen($0) }
         let thoughts = (caption?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
-        startTierHighlight(forBookId: book.id)
+        let validTier = tier.flatMap { spineTierLabels.contains($0) ? $0 : nil }
+        if validTier == nil {
+            startTierHighlight(forBookId: book.id)
+        }
+        Task { @MainActor in ToastCenter.shared.show(.markedAsRead(bookTitle: book.title, sharedToFeed: postToFeed)) }
         Task {
-            _ = try? await userBookRepo.addUserBook(userId: uid, book: book, status: .read, rating: stored, reviewText: thoughts, dateStarted: nil, dateFinished: dateFinished)
+            let ub = try? await userBookRepo.addUserBook(userId: uid, book: book, status: .read, rating: stored, reviewText: thoughts, dateStarted: nil, dateFinished: dateFinished)
+            if let validTier, let ub {
+                try? await userBookRepo.setTier(userBookId: ub.id, tier: validTier)
+            }
             if postToFeed {
-                _ = try? await postRepo.createPost(userId: uid, type: .finishedBook, bookId: book.id, caption: thoughts, rating: stored, dateFinished: dateFinished, tier: nil)
+                _ = try? await postRepo.createPost(userId: uid, type: .finishedBook, bookId: book.id, caption: thoughts, rating: stored, dateFinished: dateFinished, tier: validTier)
             }
         }
     }
@@ -499,12 +598,14 @@ final class AppState: ObservableObject {
     }
 
     /// Updates read `UserBook` and syncs or creates/removes the matching feed post. Returns an error message on failure.
+    /// `additionalReadDates` nil leaves re-read dates unchanged; an array (even empty) replaces them.
     func updateReadReview(
         userBook: UserBook,
         dateFinished: Date,
         rating: Double?,
         thoughts: String,
-        postToFeed: Bool
+        postToFeed: Bool,
+        additionalReadDates: [Date]? = nil
     ) async -> String? {
         guard let uid = currentUserId, userBook.userId == uid else { return "You’re not signed in." }
         guard userBook.status == .read else { return "This isn’t a finished book entry." }
@@ -515,6 +616,9 @@ final class AppState: ObservableObject {
         updated.dateFinished = dateFinished
         updated.rating = storedRating
         updated.reviewText = reviewText
+        if let additionalReadDates {
+            updated.additionalReadDates = additionalReadDates.isEmpty ? nil : additionalReadDates.sorted(by: >)
+        }
         updated.updatedAt = Date()
         do {
             try await userBookRepo.updateUserBook(updated)
@@ -553,6 +657,7 @@ final class AppState: ObservableObject {
                     }
                 }
             }
+            await MainActor.run { ToastCenter.shared.show(.reviewUpdated(sharedToFeed: postToFeed)) }
             return nil
         } catch {
             return error.localizedDescription
@@ -581,26 +686,98 @@ final class AppState: ObservableObject {
 
     // MARK: - Goodreads import
 
-    /// Import Goodreads-matched items. Skips duplicates when skipDuplicates is true. Calls progress?(importedCount, totalCount) on the main actor after each book.
-    func importFromGoodreads(items: [GoodreadsMatchedItem], skipDuplicates: Bool, importRatings: Bool, importReviews: Bool, progress: (@Sendable (Int, Int) -> Void)? = nil) async {
-        guard let uid = currentUserId else { return }
-        var existingIds = Set(userBooks.map(\.bookId))
-        let total = items.count
-        var imported = 0
-        for item in items {
-            guard let book = item.book else { continue }
-            if skipDuplicates && existingIds.contains(book.id) { continue }
-            let status = GoodreadsImportService.status(for: item.row.exclusiveShelf)
-            let rating = importRatings ? GoodreadsImportService.ratingOutOfTen(from: item.row.myRating) : nil
-            let review = importReviews ? item.row.myReview : nil
-            let dateFinished = status == .read ? item.row.dateRead : nil
-            do {
-                _ = try await userBookRepo.addUserBook(userId: uid, book: book, status: status, rating: rating, reviewText: review, dateStarted: nil, dateFinished: dateFinished)
-                existingIds.insert(book.id)
-                imported += 1
-                progress?(imported, total)
-            } catch { }
+    /// Import one Goodreads read book (wizard "Looks good" / Edit / import-all). Sets tier when the user picked one. Returns false on failure or duplicate.
+    func importGoodreadsReadBook(book: Book, rating: Double?, review: String?, dateFinished: Date?, tier: String?) async -> Bool {
+        guard let uid = currentUserId else { return false }
+        guard !isBookOnReadList(bookId: book.id) else { return false }
+        let storedRating = rating.map { Theme.normalizeRatingOutOfTen($0) }
+        let trimmedReview = (review?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
+        let validTier = tier.flatMap { spineTierLabels.contains($0) ? $0 : nil }
+        // Already queued (e.g. added manually before importing): promote that row instead of duplicating.
+        if let queued = userBooks.first(where: { $0.bookId == book.id && $0.status == .wantToRead }) {
+            var updated = queued
+            updated.status = .read
+            updated.dateFinished = dateFinished
+            updated.rating = storedRating
+            updated.reviewText = trimmedReview
+            updated.tier = validTier
+            updated.queueShelf = nil
+            updated.queueOrder = nil
+            updated.updatedAt = Date()
+            updateUserBook(updated)
+            try? await userBookRepo.updateUserBook(updated)
+            return true
         }
+        do {
+            let ub = try await userBookRepo.addUserBook(userId: uid, book: book, status: .read, rating: storedRating, reviewText: trimmedReview, dateStarted: nil, dateFinished: dateFinished)
+            if let validTier {
+                try? await userBookRepo.setTier(userBookId: ub.id, tier: validTier)
+            }
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// A Goodreads row matched a book already on the read shelf: keep the single
+    /// library/tier entry, but record the row's read date as a re-read when it's a
+    /// day we don't have yet. `dateFinished` stays the most recent read.
+    func mergeGoodreadsReReadDate(bookId: String, dateRead: Date?) async {
+        guard let dateRead else { return }
+        guard var existing = userBooks.first(where: { $0.bookId == bookId && $0.status == .read }) else { return }
+        let cal = Calendar.current
+        var unique: [Date] = []
+        for d in (existing.allReadDates + [dateRead]).sorted(by: >) where !unique.contains(where: { cal.isDate($0, inSameDayAs: d) }) {
+            unique.append(d)
+        }
+        guard unique.count > existing.allReadDates.count || existing.dateFinished == nil else { return }
+        existing.dateFinished = unique.first
+        existing.additionalReadDates = unique.count > 1 ? Array(unique.dropFirst()) : nil
+        existing.updatedAt = Date()
+        updateUserBook(existing)
+        try? await userBookRepo.updateUserBook(existing)
+    }
+
+    /// Import one Goodreads not-yet-read book into the queue. Returns false on failure or duplicate.
+    func importGoodreadsQueueBook(book: Book) async -> Bool {
+        guard let uid = currentUserId else { return false }
+        guard !isBookInQueue(bookId: book.id), !isBookOnReadList(bookId: book.id) else { return false }
+        do {
+            _ = try await userBookRepo.addUserBook(userId: uid, book: book, status: .wantToRead, rating: nil, reviewText: nil, dateStarted: nil, dateFinished: nil)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    // MARK: - Goodreads wizard session (resume support)
+
+    /// Books left in a paused import wizard session — drives the "finish importing" callout on the tier list. 0 when nothing to resume.
+    @Published var goodreadsWizardRemainingCount: Int = 0
+
+    func refreshGoodreadsWizardResumeState() {
+        guard let uid = currentUserId else {
+            goodreadsWizardRemainingCount = 0
+            return
+        }
+        goodreadsWizardRemainingCount = GoodreadsWizardStore.remainingCount(uid: uid)
+    }
+
+    func loadGoodreadsWizardSession() -> GoodreadsWizardSession? {
+        guard let uid = currentUserId else { return nil }
+        return GoodreadsWizardStore.load(uid: uid)
+    }
+
+    func saveGoodreadsWizardSession(_ session: GoodreadsWizardSession) {
+        guard let uid = currentUserId else { return }
+        GoodreadsWizardStore.save(session, uid: uid)
+        goodreadsWizardRemainingCount = GoodreadsWizardStore.remainingCount(uid: uid)
+    }
+
+    func clearGoodreadsWizardSession() {
+        guard let uid = currentUserId else { return }
+        GoodreadsWizardStore.clear(uid: uid)
+        goodreadsWizardRemainingCount = 0
     }
 
     /// Download shared URL (from Share Extension), parse as CSV if possible, and set pendingGoodreadsImportRows or pendingGoodreadsImportError. Call from main app when pendingGoodreadsImportURL is set.
@@ -630,20 +807,43 @@ final class AppState: ObservableObject {
 
     // MARK: - Discover suggestions (prefetch so suggestions are ready when user taps Discover)
 
+    /// Criteria the user set to steer Discover suggestions (default = overall taste).
+    var discoverCriteria: DiscoverCriteria { currentUser?.discoverCriteria ?? .default }
+
+    /// Bumped whenever criteria change or the user signs out, so in-flight fetches started under old criteria are discarded.
+    private var discoverFetchGeneration = 0
+
+    /// Apply new criteria: update local user, persist to Firestore, flush the queue, refetch.
+    func setDiscoverCriteria(_ new: DiscoverCriteria) {
+        guard new != discoverCriteria else { return }
+        currentUser?.discoverCriteria = new
+        if let uid = currentUserId {
+            Task { [userRepo] in try? await userRepo.updateDiscoverCriteria(uid: uid, criteria: new) }
+        }
+        discoverFetchGeneration += 1
+        discoverCurrentSuggestion = nil
+        discoverSuggestionQueue = []
+        isLoadingDiscoverSuggestions = false
+        loadDiscoverSuggestionsIfNeeded()
+    }
+
     /// Call when app/tab bar appears to load first suggestion in background. No-op if already have a suggestion or are loading. Waits for dismissed IDs to load from Firestore so we never suggest passed books.
     func loadDiscoverSuggestionsIfNeeded() {
         guard dismissedBookIdsLoaded else { return }
         guard discoverCurrentSuggestion == nil, discoverSuggestionQueue.isEmpty, !isLoadingDiscoverSuggestions else { return }
         isLoadingDiscoverSuggestions = true
+        let generation = discoverFetchGeneration
         Task { [weak self] in
             guard let self = self else { return }
             let batch = await DiscoverSuggestionsService.fetchBatch(
                 readBooks: self.readBooks,
                 queueBookIds: self.queueBookIds,
                 dismissedBookIds: self.dismissedBookIds,
-                readingInterestTags: self.currentUser?.readingInterestTags ?? []
+                readingInterestTags: self.currentUser?.readingInterestTags ?? [],
+                criteria: self.discoverCriteria
             )
             await MainActor.run {
+                guard generation == self.discoverFetchGeneration else { return }
                 self.isLoadingDiscoverSuggestions = false
                 let filtered = batch.filter { !self.shouldExcludeFromDiscover(bookId: $0.id) }
                 self.discoverSuggestionQueue.append(contentsOf: filtered)
@@ -699,15 +899,18 @@ final class AppState: ObservableObject {
     }
 
     private func fetchMoreDiscoverSuggestionsInBackground() {
+        let generation = discoverFetchGeneration
         Task { [weak self] in
             guard let self = self else { return }
             let batch = await DiscoverSuggestionsService.fetchBatch(
                 readBooks: self.readBooks,
                 queueBookIds: self.queueBookIds,
                 dismissedBookIds: self.dismissedBookIds,
-                readingInterestTags: self.currentUser?.readingInterestTags ?? []
+                readingInterestTags: self.currentUser?.readingInterestTags ?? [],
+                criteria: self.discoverCriteria
             )
             await MainActor.run {
+                guard generation == self.discoverFetchGeneration else { return }
                 let filtered = batch.filter { !self.shouldExcludeFromDiscover(bookId: $0.id) }
                 self.discoverSuggestionQueue.append(contentsOf: filtered)
             }

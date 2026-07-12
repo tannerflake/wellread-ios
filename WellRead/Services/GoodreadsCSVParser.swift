@@ -8,7 +8,8 @@
 import Foundation
 
 /// One row from a Goodreads export (relevant fields only).
-struct GoodreadsRow: Identifiable, Equatable {
+/// Codable so an in-progress import wizard session can be persisted and resumed.
+struct GoodreadsRow: Identifiable, Equatable, Codable {
     let id: String
     let title: String
     let author: String

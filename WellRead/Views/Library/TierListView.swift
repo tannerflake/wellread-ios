@@ -18,6 +18,84 @@ private func tierColor(for tier: String?) -> Color {
     spineTierColor(for: tier)
 }
 
+// MARK: - Post-review tier prompt (scroll anchor + callout)
+
+/// ScrollViewReader anchor attached to the just-reviewed book so we can bring it
+/// fully into view (not just the tall Unranked row).
+private let tierHighlightScrollID = "tier-highlight-book"
+
+/// Publishes the highlighted book's on-screen bounds so the callout can point at
+/// it from an overlay above the (clipped) tier rows.
+private struct TierHighlightAnchorKey: PreferenceKey {
+    static let defaultValue: Anchor<CGRect>? = nil
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+        value = value ?? nextValue()
+    }
+}
+
+/// Measured height of the callout bubble, so we can seat its tail just above the book.
+private struct TierCalloutHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 58
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+/// Downward-pointing tail for the callout bubble.
+private struct CalloutTail: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+        p.closeSubpath()
+        return p
+    }
+}
+
+/// "Rank me!" bubble shown above a freshly-reviewed, still-unranked book.
+/// `tailOffset` shifts the tail horizontally so it keeps pointing at the book
+/// even when the bubble is nudged inward to stay on screen.
+private struct TierHighlightCallout: View {
+    var tailOffset: CGFloat = 0
+
+    var body: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: 2) {
+                Text(SpinesGlyphs.bracketed("Rank me"))
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .tracking(0.5)
+                Text("Drag me onto a tier")
+                    .font(Theme.caption())
+                    .opacity(0.9)
+            }
+            .foregroundStyle(Theme.phosphorWhite)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Theme.accent)
+            )
+
+            CalloutTail()
+                .fill(Theme.accent)
+                .frame(width: 18, height: 9)
+                .offset(x: tailOffset)
+        }
+        .shadow(color: Theme.textPrimary.opacity(0.22), radius: 8, x: 0, y: 3)
+        .allowsHitTesting(false)
+    }
+}
+
+private extension View {
+    /// Applies a ScrollViewReader `.id` only when `active`, so the anchor exists
+    /// solely on the currently-highlighted book.
+    @ViewBuilder
+    func scrollAnchorID(_ id: String, active: Bool) -> some View {
+        if active { self.id(id) } else { self }
+    }
+}
+
 /// Invisible drop slot between or around books so the user can drop at a specific position (front, between, or back) in a tier. Fixed width so rows stay left-aligned; use fillsRow: true for empty tiers so the whole row accepts drops.
 private struct TierRowDropSlot: View {
     let tier: String?
@@ -80,8 +158,15 @@ struct TierListView: View {
     var readOnly: Bool = false
     /// `Book.id` of a book to pulse-glow + scroll into view (e.g. just-reviewed book sitting in Unranked).
     var highlightedBookId: String? = nil
+    /// `Book.id`s to render with a selection check (Discover seed-book picker). Only used with `readOnly`.
+    var selectedBookIds: Set<String> = []
 
     @EnvironmentObject private var queueDragCoordinator: QueueBookDragCoordinator
+
+    /// Measured callout height (updated via preference) so the tail seats just above the book.
+    @State private var calloutHeight: CGFloat = 58
+    /// Gated on after the scroll settles so the callout fades in over the centered book.
+    @State private var showCallout = false
 
     /// Content area width for each row: list width minus horizontal padding and tier label.
     private static let tierLabelWidth: CGFloat = 38
@@ -94,7 +179,10 @@ struct TierListView: View {
 
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 8) {
+                    // Plain VStack (6 rows) so every row — especially "unranked" at the
+                    // bottom — is registered with the ScrollViewReader immediately;
+                    // scrollTo on an unbuilt LazyVStack child silently does nothing.
+                    VStack(alignment: .leading, spacing: 8) {
                         ForEach(tierLabels, id: \.self) { tier in
                             TierRowView(
                                 tier: tier,
@@ -103,7 +191,8 @@ struct TierListView: View {
                                 onUpdateTierAndOrder: onUpdateTierAndOrder,
                                 onBookTap: onBookTap,
                                 readOnly: readOnly,
-                                highlightedBookId: highlightedBookId
+                                highlightedBookId: highlightedBookId,
+                                selectedBookIds: selectedBookIds
                             )
                         }
                         TierRowView(
@@ -113,7 +202,8 @@ struct TierListView: View {
                             onUpdateTierAndOrder: onUpdateTierAndOrder,
                             onBookTap: onBookTap,
                             readOnly: readOnly,
-                            highlightedBookId: highlightedBookId
+                            highlightedBookId: highlightedBookId,
+                            selectedBookIds: selectedBookIds
                         )
                         .id("unranked")
                     }
@@ -126,20 +216,83 @@ struct TierListView: View {
                     .padding(.top, 10)
                     .padding(.bottom, 88)
                 }
-                .onChange(of: highlightedBookId) { _, newValue in
-                    guard newValue != nil else { return }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                        withAnimation(.easeInOut(duration: 0.45)) {
-                            proxy.scrollTo("unranked", anchor: .bottom)
+                // Draw the "Rank me!" callout above the tier rows so it isn't clipped
+                // by each row's rounded-rect mask, and point it at the exact book.
+                .overlayPreferenceValue(TierHighlightAnchorKey.self) { anchor in
+                    GeometryReader { overlayProxy in
+                        if let anchor, showCallout {
+                            let rect = overlayProxy[anchor]
+                            let W = overlayProxy.size.width
+                            let bubbleW: CGFloat = 200
+                            let edgePad: CGFloat = 16
+                            let gap: CGFloat = 8
+                            // Keep the bubble on screen, but let its tail slide to stay on the book.
+                            let centerX = min(max(rect.midX, edgePad + bubbleW / 2), W - edgePad - bubbleW / 2)
+                            let maxTail = bubbleW / 2 - 18
+                            let tailOffset = min(max(rect.midX - centerX, -maxTail), maxTail)
+                            let centerY = rect.minY - gap - calloutHeight / 2
+
+                            TierHighlightCallout(tailOffset: tailOffset)
+                                .frame(width: bubbleW)
+                                .background(
+                                    GeometryReader { g in
+                                        Color.clear.preference(key: TierCalloutHeightKey.self, value: g.size.height)
+                                    }
+                                )
+                                .position(x: centerX, y: max(calloutHeight / 2 + 4, centerY))
+                                .transition(.scale(scale: 0.85, anchor: .bottom).combined(with: .opacity))
                         }
+                    }
+                    .onPreferenceChange(TierCalloutHeightKey.self) { calloutHeight = $0 }
+                    .allowsHitTesting(false)
+                }
+                .onChange(of: highlightedBookId) { _, newValue in
+                    scrollToHighlight(proxy: proxy, isSet: newValue != nil, delay: 0.25)
+                }
+                // A freshly marked-read book reaches `userBooks` only after the Firestore
+                // listener echoes it back — often after onAppear's scroll already ran and
+                // found nothing. Re-scroll the moment the highlighted book actually exists.
+                .onChange(of: highlightedBookIsPresent) { _, present in
+                    if present {
+                        scrollToHighlight(proxy: proxy, isSet: true, delay: 0.15)
                     }
                 }
                 .onAppear {
+                    scrollToHighlight(proxy: proxy, isSet: highlightedBookId != nil, delay: 0.35)
+                }
+            }
+        }
+    }
+
+    /// Whether the highlighted book has actually arrived in `userBooks` (Firestore echo).
+    private var highlightedBookIsPresent: Bool {
+        guard let highlightedBookId else { return false }
+        return userBooks.contains { $0.book?.id == highlightedBookId }
+    }
+
+    /// Brings the freshly-reviewed book into view and fades the callout in once it settles.
+    /// Two-stage: scroll to the Unranked row first (its anchor always exists, and getting
+    /// it on screen builds the lazy book cells inside it), then center the exact book.
+    private func scrollToHighlight(proxy: ScrollViewProxy, isSet: Bool, delay: TimeInterval) {
+        guard isSet else {
+            withAnimation(.easeOut(duration: 0.2)) { showCallout = false }
+            return
+        }
+        showCallout = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            guard highlightedBookId != nil else { return }
+            withAnimation(.easeInOut(duration: 0.3)) {
+                proxy.scrollTo("unranked", anchor: .top)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                guard highlightedBookId != nil else { return }
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    proxy.scrollTo(tierHighlightScrollID, anchor: .center)
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                     guard highlightedBookId != nil else { return }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                        withAnimation(.easeInOut(duration: 0.45)) {
-                            proxy.scrollTo("unranked", anchor: .bottom)
-                        }
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                        showCallout = true
                     }
                 }
             }
@@ -171,6 +324,7 @@ struct TierRowView: View {
     var onBookTap: ((Book) -> Void)? = nil
     var readOnly: Bool = false
     var highlightedBookId: String? = nil
+    var selectedBookIds: Set<String> = []
 
     var header: String {
         tier ?? "Unranked"
@@ -228,7 +382,7 @@ struct TierRowView: View {
                         ForEach(Array(rowBooks.enumerated()), id: \.element.id) { i, ub in
                             TierRowDropSlot(tier: tier, insertionIndex: startIndex + i, onUpdateTierAndOrder: onUpdateTierAndOrder, minHeight: slotHeight, readOnly: readOnly)
                             if ub.book != nil {
-                                TierBookCell(userBook: ub, tier: tier, insertionIndex: startIndex + i, bookSize: bookSize, onUpdateTierAndOrder: onUpdateTierAndOrder, onBookTap: onBookTap, readOnly: readOnly, isHighlighted: highlightedBookId != nil && ub.book?.id == highlightedBookId)
+                                TierBookCell(userBook: ub, tier: tier, insertionIndex: startIndex + i, bookSize: bookSize, onUpdateTierAndOrder: onUpdateTierAndOrder, onBookTap: onBookTap, readOnly: readOnly, isHighlighted: highlightedBookId != nil && ub.book?.id == highlightedBookId, isSelected: selectedBookIds.contains(ub.bookId))
                             }
                         }
                         TierRowDropSlot(tier: tier, insertionIndex: startIndex + rowBooks.count, onUpdateTierAndOrder: onUpdateTierAndOrder, fillsRow: true, minHeight: slotHeight, readOnly: readOnly)
@@ -257,6 +411,8 @@ struct TierBookCell: View {
     var readOnly: Bool = false
     /// True when this is the just-reviewed book sitting in Unranked — pulses a tier-color glow until tiered.
     var isHighlighted: Bool = false
+    /// True when picked as a Discover seed book (readOnly picker mode) — shows a check overlay.
+    var isSelected: Bool = false
 
     @State private var pulseOn = false
 
@@ -265,6 +421,7 @@ struct TierBookCell: View {
             if let book = userBook.book {
                 if readOnly {
                     BookCoverView(book: book, size: bookSize, onTap: onBookTap != nil ? { onBookTap?(book) } : nil)
+                        .overlay(selectionOverlay)
                 } else {
                     ZStack {
                         ReadListBookDragCover(
@@ -299,6 +456,26 @@ struct TierBookCell: View {
                     }
                 }
             }
+        }
+        // Scroll target + callout anchor for the just-reviewed book.
+        .scrollAnchorID(tierHighlightScrollID, active: isHighlighted)
+        .anchorPreference(key: TierHighlightAnchorKey.self, value: .bounds) { isHighlighted ? $0 : nil }
+    }
+
+    @ViewBuilder
+    private var selectionOverlay: some View {
+        if isSelected {
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(Theme.accent, lineWidth: 2.5)
+                .frame(width: bookSize, height: bookSize * 1.5)
+                .overlay(alignment: .topTrailing) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 18))
+                        .foregroundStyle(Theme.accent)
+                        .background(Circle().fill(Theme.background))
+                        .offset(x: 6, y: -6)
+                }
+                .allowsHitTesting(false)
         }
     }
 

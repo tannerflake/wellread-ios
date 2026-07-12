@@ -132,9 +132,17 @@ enum PushNotificationService {
 
     static func handleRemoteNotificationTap(userInfo: [AnyHashable: Any]) {
         let type = WellreadDeepLink.pushNotificationType(from: userInfo)
-        /// Friend-review pushes should land on the feed only, not open the comment thread.
+        /// Friend-review pushes land on the feed scrolled to that review (no comment thread).
         if type == "friend_review_posted" {
-            NotificationCenter.default.post(name: .wellreadOpenFeed, object: nil)
+            if let postId = WellreadDeepLink.postId(fromNotificationUserInfo: userInfo) {
+                NotificationCenter.default.post(
+                    name: .wellreadOpenFeedScrollToPost,
+                    object: nil,
+                    userInfo: ["postId": postId]
+                )
+            } else {
+                NotificationCenter.default.post(name: .wellreadOpenFeed, object: nil)
+            }
             return
         }
         guard let postId = WellreadDeepLink.postId(fromNotificationUserInfo: userInfo) else { return }
@@ -150,6 +158,10 @@ extension Notification.Name {
     /// Opens the Feed tab without scrolling to a post or opening comments.
     static let wellreadOpenFeed = Notification.Name("wellreadOpenFeed")
     static let wellreadOpenFeedPost = Notification.Name("wellreadOpenFeedPost")
+    /// Opens the Feed tab and scrolls to the post (briefly highlighted) without opening its comment thread. `userInfo["postId"]` is the post UUID string.
+    static let wellreadOpenFeedScrollToPost = Notification.Name("wellreadOpenFeedScrollToPost")
     /// After a user marks a book as read: switch to Profile tab → Read segment, scroll the tier list to Unranked, and pulse-glow the just-reviewed book until they tier it. `userInfo["bookId"]` is the `Book.id`.
     static let spineHighlightTierBook = Notification.Name("spineHighlightTierBook")
+    /// After a user adds a book to their queue from the search flow: switch to Profile tab → Queue segment so they land on the queue and see it was added.
+    static let spineOpenQueue = Notification.Name("spineOpenQueue")
 }

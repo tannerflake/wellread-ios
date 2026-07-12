@@ -36,6 +36,13 @@ final class ProfileImageCache {
         return digest.map { String(format: "%02x", $0) }.joined() + ".dat"
     }
 
+    /// In-memory cache only — cheap and main-thread safe, for synchronous hydration in a
+    /// `View.init` so a cached avatar paints on the first frame (no placeholder flash on scroll).
+    func memoryImage(for url: URL?) -> UIImage? {
+        guard let url else { return nil }
+        return memory.object(forKey: url.absoluteString as NSString)
+    }
+
     /// Loads from memory, then disk, then network; writes disk after a successful download.
     func image(for url: URL) async -> UIImage? {
         let key = url.absoluteString as NSString

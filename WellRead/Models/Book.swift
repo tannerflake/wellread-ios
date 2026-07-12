@@ -21,11 +21,14 @@ struct Book: Identifiable, Equatable, Hashable {
     /// When true, `coverImageURLsToTry` is empty (e.g. Firestore metadata timed out — show title-only placeholder only).
     var suppressCoverImageFetch: Bool = false
 
-    /// Open Library cover API: try large, then medium, then small. See https://openlibrary.org/dev/docs/api/covers
+    /// Open Library cover API: large then medium. `default=false` makes a missing
+    /// cover a fast 404 instead of a blank image we'd have to download and sniff.
+    /// L (~500px) is sharp for every cover size in the app without over-fetching.
+    /// See https://openlibrary.org/dev/docs/api/covers
     static func openLibraryCoverURLs(isbnDigits: String) -> [String] {
         let d = isbnDigits.filter(\.isNumber)
         guard d.count == 10 || d.count == 13 else { return [] }
-        return ["L", "M", "S"].map { "https://covers.openlibrary.org/b/isbn/\(d)-\($0).jpg" }
+        return ["L", "M"].map { "https://covers.openlibrary.org/b/isbn/\(d)-\($0).jpg?default=false" }
     }
 
     /// URL used for loading the cover image. Uses high-res variant for Google Books URLs when possible.
@@ -63,7 +66,12 @@ struct Book: Identifiable, Equatable, Hashable {
         return components.string ?? base
     }
 
-    /// For Google Books URLs, returns multiple URLs with zoom=0,1,2,3,4,5 so we can try lower resolutions if high-res fails. Non-Google URLs return a single-element array.
+    /// Google zoom levels to try, best-fit first: zoom=2 (~300px) covers most display
+    /// sizes, zoom=3 (~575px) for the profile header, zoom=1 (~128px thumbnail) as a
+    /// last resort. zoom=0/4/5 are skipped — huge originals that are often interior scans.
+    static let googleZoomsToTry = [2, 3, 1]
+
+    /// For Google Books URLs, returns URL variants across `googleZoomsToTry` so we can try other resolutions if one fails. Non-Google URLs return a single-element array.
     static func coverURLsToTry(from urlString: String) -> [String] {
         let sanitized = sanitizeGoogleBooksCoverURL(urlString)
         guard sanitized.contains("books.google.com"),
@@ -72,7 +80,7 @@ struct Book: Identifiable, Equatable, Hashable {
         }
         var result: [String] = []
         let query = components.queryItems ?? []
-        for zoom in [0, 1, 2, 3, 4, 5] {
+        for zoom in googleZoomsToTry {
             var q = query
             q.removeAll { $0.name.lowercased() == "zoom" }
             q.append(URLQueryItem(name: "zoom", value: "\(zoom)"))
@@ -91,7 +99,7 @@ struct Book: Identifiable, Equatable, Hashable {
         if UUID(uuidString: id) != nil { return [] }
         guard id.count >= 5, id.count <= 50, id.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" || $0 == "-" }) else { return [] }
         guard let encoded = id.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else { return [] }
-        return (0...5).map { "https://books.google.com/books/content?id=\(encoded)&printsec=frontcover&img=1&zoom=\($0)" }
+        return googleZoomsToTry.map { "https://books.google.com/books/content?id=\(encoded)&printsec=frontcover&img=1&zoom=\($0)" }
     }
 
     /// Whether to append Google `books/content?id=<bookId>` zoom fallbacks. Skip when we already have a non-Google cover URL (e.g. Firebase/custom) or a non–Google-Books id.
