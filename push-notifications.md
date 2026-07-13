@@ -396,3 +396,22 @@ That one should feel sharp, personal, and curiosity-inducing, with the review pr
 - Diagnostics test pushes use a fixed sample cover so the rich path can be verified from Push Diagnostics.
 
 **Tap behavior for `friend_review_posted`.** Tapping now lands on the Feed tab scrolled to the exact review, which pulses with a brief accent highlight (`wellreadOpenFeedScrollToPost` → `AppState.scrollToFeedPostId` → `FeedView` ScrollViewReader). Like/comment/thread pushes still open the post's comment thread directly.
+
+---
+
+## 5) New follower (`new_follower`) — added July 2026
+
+Sent by `onUserFollowingChanged` in `functions/src/index.ts`, which diffs the `following`
+array on any `users/{uid}` update and pushes to each newly-followed user:
+
+- **Title:** `{FirstName} started following you`
+- **Body:** `See what they're reading on Spine.`
+- **Tap:** opens the Feed tab (the Following strip is at the top). No cover image.
+- Bulk updates (more than 10 additions at once, i.e. a migration/backfill) are skipped.
+- Unfollows stay silent.
+
+Related: `onUserCreated` notifies the founder when a new account is created
+(`{FirstName} joined Spine`), and auto-follows the new member back server-side.
+New accounts are seeded client-side following only the founder — the old
+everyone-follows-everyone mesh is retired (it never actually worked, since
+Firestore rules only allow writing your own user doc).

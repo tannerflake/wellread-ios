@@ -1,7 +1,7 @@
 import { initializeApp, getApps } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
-import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
 import type { DocumentData, Firestore } from "firebase-admin/firestore";
@@ -198,6 +198,77 @@ export const sendTestPushNotification = onCall(
     }
 
     return { ok: true, sent: tokens.length, type };
+  }
+);
+
+/** Tanner's Firebase Auth uid (@tan). New accounts follow him by default (seeded client-side);
+ * this side follows them back, since Firestore rules only let clients write their own doc. */
+const FOUNDER_UID = "jCaSGxcYgHZd6OzXfxmGNn1GZBj2";
+
+/**
+ * New account created: the founder auto-follows the new member, and gets a push that
+ * someone joined (the new doc is already seeded following him).
+ */
+export const onUserCreated = onDocumentCreated(
+  {
+    document: "users/{uid}",
+    database: DATABASE_ID,
+  },
+  async (event) => {
+    const uid = event.params.uid as string;
+    if (!uid || uid === FOUNDER_UID) return;
+    const first = firstNameFromUser(event.data?.data());
+    try {
+      await db.collection("users").doc(FOUNDER_UID).update({
+        following: FieldValue.arrayUnion(uid),
+      });
+    } catch (e) {
+      logger.error("founder auto-follow failed", { uid, error: (e as Error).message });
+    }
+    await sendToUser(
+      FOUNDER_UID,
+      `${first} joined Spine`,
+      "They follow you — and you now follow them back.",
+      { type: "new_follower" }
+    );
+  }
+);
+
+/**
+ * A user's `following` array grew: push a new-follower alert to each newly-followed user.
+ * (Follows are written client-side as arrayUnion on the follower's own doc, so an update
+ * trigger diff is the only reliable hook. Unfollows stay silent.)
+ */
+export const onUserFollowingChanged = onDocumentUpdated(
+  {
+    document: "users/{uid}",
+    database: DATABASE_ID,
+  },
+  async (event) => {
+    const followerUid = event.params.uid as string;
+    const before = (event.data?.before.data()?.following as string[] | undefined) ?? [];
+    const after = (event.data?.after.data()?.following as string[] | undefined) ?? [];
+    const beforeSet = new Set(before);
+    const added = after.filter((t) => t && !beforeSet.has(t) && t !== followerUid);
+    if (added.length === 0) return;
+    // A bulk write (migration/backfill) should not fan out notifications.
+    if (added.length > 10) {
+      logger.warn("skipping new_follower fanout for bulk following update", {
+        followerUid,
+        addedCount: added.length,
+      });
+      return;
+    }
+    const follower = (await db.collection("users").doc(followerUid).get()).data();
+    const first = firstNameFromUser(follower);
+    for (const target of added) {
+      await sendToUser(
+        target,
+        `${first} started following you`,
+        "See what they're reading on Spine.",
+        { type: "new_follower" }
+      );
+    }
   }
 );
 

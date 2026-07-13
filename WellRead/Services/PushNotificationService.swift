@@ -145,6 +145,11 @@ enum PushNotificationService {
             }
             return
         }
+        /// New-follower pushes land on the feed, where the Following strip lives.
+        if type == "new_follower" {
+            NotificationCenter.default.post(name: .wellreadOpenFeed, object: nil)
+            return
+        }
         guard let postId = WellreadDeepLink.postId(fromNotificationUserInfo: userInfo) else { return }
         NotificationCenter.default.post(
             name: .wellreadOpenFeedPost,

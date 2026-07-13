@@ -2,9 +2,8 @@
 //  FeedCommunityWelcomeModal.swift
 //  Spine
 //
-//  One-time overlay on the feed explaining default mutual follows for early
-//  community users. Themed to match Spine redesign — windowed card, mono
-//  type, mono CTA.
+//  One-time overlay on the feed: the founder's welcome note to early users.
+//  Themed to match Spine redesign — windowed card, mono type, mono CTA.
 //
 
 import SwiftUI
@@ -28,22 +27,17 @@ struct FeedCommunityWelcomeModal: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
-                        paragraph("I'm excited to have you here early.")
-                        paragraph("I'm focused on building a strong community of thoughtful, curious people.")
-                        paragraph("To foster this, early users automatically follow all other Spine users.")
-                        paragraph("Why? Because I think you'll like them and what they have to say.")
-                        paragraph("You can unfollow anyone at any time from their profile, and they won't be notified.")
-                        paragraph("There's nothing more I love in this life than the free sharing of new thoughts and ideas.")
-                        paragraph("The app might be a bit ugly right now, but I hope it's functional enough. I promise it'll get smoother and prettier over time.")
-                        paragraph("Please text me with any issues you encounter, as well as any feedback/thoughts/feature ideas. I want to hear what you think. Unfiltered.")
-                        paragraph("Once again, I'm glad you're here.")
+                        paragraph("Thanks for being here early!")
+                        paragraph("I'm adding new features and polishing the app on a weekly basis. Please send feedback my way via text/DM.")
+                        paragraph("Reading and learning exist at the core of my passion for life. I hope this app helps you share what inspires you. I'm glad you're here.")
+                        paragraph("-Tanner")
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .frame(maxHeight: 380)
 
                 Button(action: onGotIt) {
-                    Text("I'M GLAD TO BE HERE")
+                    Text("I'm glad to be here!")
                         .font(.system(size: 13, weight: .bold, design: .monospaced))
                         .tracking(1)
                         .multilineTextAlignment(.center)

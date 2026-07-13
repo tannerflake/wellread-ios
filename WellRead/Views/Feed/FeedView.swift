@@ -2,9 +2,11 @@
 //  FeedView.swift
 //  Spine
 //
-//  Vertical feed of posts. Friends row up top, then a feed of finished books,
-//  reviews, and recommendations from people you follow. Themed for the new
-//  cream/teal palette with mono type and receipt-style row separators.
+//  Vertical feed of posts. "Following" row up top (people you follow first —
+//  current readers leading — then a divider and everyone else on Spine with a
+//  quick-follow button), then a feed of finished books, reviews, and
+//  recommendations from people you follow. Themed for the cream/teal palette
+//  with mono type and receipt-style row separators.
 //
 
 import SwiftUI
@@ -16,12 +18,17 @@ struct FeedView: View {
     @State private var postForComments: Post? = nil
     @State private var editReviewFromFeed: EditReadReviewSheetPayload? = nil
     @State private var otherReaders: [(uid: String, user: User)] = []
+    /// Reading-now covers per member uid (floating book fans on the avatars).
+    @State private var readingNowByUid: [String: [Book]] = [:]
+    /// Uids with a follow write in flight (debounces the quick-follow plus button).
+    @State private var followInFlight: Set<String> = []
     @State private var isLoadingOtherReaders = true
-    @State private var showFollowCommunityWelcome = false
+    @State private var showFounderWelcome = false
     /// Post briefly tinted after a push-tap scroll so the review the user tapped is unmistakable.
     @State private var highlightedPostId: String? = nil
 
     private let userRepo = UserRepository()
+    private let userBookRepo = UserBookRepository()
     private let postRepo = PostRepository()
 
     var body: some View {
@@ -75,20 +82,20 @@ struct FeedView: View {
                     }
                 }
 
-                if showFollowCommunityWelcome {
+                if showFounderWelcome {
                     Color.black.opacity(0.45)
                         .ignoresSafeArea()
                         .transition(.opacity)
 
                     FeedCommunityWelcomeModal {
                         Task {
-                            await dismissFollowCommunityWelcome()
+                            await dismissFounderWelcome()
                         }
                     }
                     .transition(.opacity)
                 }
             }
-            .animation(.easeInOut(duration: 0.22), value: showFollowCommunityWelcome)
+            .animation(.easeInOut(duration: 0.22), value: showFounderWelcome)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Theme.background, for: .navigationBar)
@@ -125,7 +132,7 @@ struct FeedView: View {
                 await loadOtherReaders()
             }
             .task(id: authService.firebaseUser?.uid) {
-                await scheduleFollowCommunityWelcomeIfNeeded()
+                await scheduleFounderWelcomeIfNeeded()
             }
             .onAppear {
                 openDeepLinkedPostIfNeeded()
@@ -185,48 +192,51 @@ struct FeedView: View {
         }
     }
 
-    /// After profile is available and the feed has had a moment to render, show the one-time community follow explainer.
-    private func scheduleFollowCommunityWelcomeIfNeeded() async {
+    /// After profile is available and the feed has had a moment to render, show the one-time founder welcome note.
+    private func scheduleFounderWelcomeIfNeeded() async {
         guard authService.firebaseUser != nil else { return }
         var attempts = 0
         while authService.appUser == nil && attempts < 40 {
             try? await Task.sleep(nanoseconds: 100_000_000)
             attempts += 1
         }
-        guard let u = authService.appUser, !u.hasSeenFollowCommunityModal else { return }
+        guard let u = authService.appUser, !u.hasSeenFounderWelcomeModal else { return }
         try? await Task.sleep(nanoseconds: 450_000_000)
         await MainActor.run {
             withAnimation(.easeInOut(duration: 0.22)) {
-                showFollowCommunityWelcome = true
+                showFounderWelcome = true
             }
         }
     }
 
-    private func dismissFollowCommunityWelcome() async {
+    private func dismissFounderWelcome() async {
         guard let uid = authService.firebaseUser?.uid else {
             await MainActor.run {
-                withAnimation(.easeInOut(duration: 0.22)) { showFollowCommunityWelcome = false }
+                withAnimation(.easeInOut(duration: 0.22)) { showFounderWelcome = false }
             }
             return
         }
         do {
-            try await userRepo.markHasSeenFollowCommunityModal(uid: uid)
+            try await userRepo.markHasSeenFounderWelcomeModal(uid: uid)
             await authService.refreshAppUser()
         } catch {
             #if DEBUG
-            print("markHasSeenFollowCommunityModal: \(error)")
+            print("markHasSeenFounderWelcomeModal: \(error)")
             #endif
         }
         await MainActor.run {
-            withAnimation(.easeInOut(duration: 0.22)) { showFollowCommunityWelcome = false }
+            withAnimation(.easeInOut(duration: 0.22)) { showFounderWelcome = false }
         }
     }
 
     private func loadOtherReaders() async {
         let uid = authService.firebaseUser?.uid
-        let list = await userRepo.fetchAllReaderProfiles(excludingUid: uid, limit: 400)
+        async let profilesTask = userRepo.fetchAllReaderProfiles(excludingUid: uid, limit: 400)
+        async let readingNowTask = userBookRepo.fetchAllReadingNowBooks()
+        let (list, readingNow) = await (profilesTask, readingNowTask)
         await MainActor.run {
             otherReaders = list
+            readingNowByUid = readingNow
             isLoadingOtherReaders = false
         }
     }
@@ -248,7 +258,7 @@ struct FeedView: View {
         .padding(.bottom, 12)
     }
 
-    /// Hairline rule between "Friends" row and posts.
+    /// Hairline rule between the "Following" row and posts.
     private var feedFriendsDivider: some View {
         Rectangle()
             .fill(Theme.chromeTeal.opacity(0.35))
@@ -269,10 +279,54 @@ struct FeedView: View {
         .padding(.bottom, 6)
     }
 
+    /// Uids the signed-in user follows.
+    private var myFollowingSet: Set<String> {
+        Set(authService.appUser?.following ?? [])
+    }
+
+    /// People you follow — anyone reading a book right now first, then alphabetical.
+    private var followedReaders: [(uid: String, user: User)] {
+        otherReaders
+            .filter { myFollowingSet.contains($0.uid) }
+            .sorted { a, b in
+                let aReading = !(readingNowByUid[a.uid] ?? []).isEmpty
+                let bReading = !(readingNowByUid[b.uid] ?? []).isEmpty
+                if aReading != bReading { return aReading }
+                return a.user.displayName.localizedCaseInsensitiveCompare(b.user.displayName) == .orderedAscending
+            }
+    }
+
+    /// Everyone on Spine you don't follow yet — most mutual connections first, then alphabetical.
+    private var discoverableReaders: [(uid: String, user: User)] {
+        let candidates = otherReaders.filter { !myFollowingSet.contains($0.uid) }
+        var scores: [String: Int] = [:]
+        for c in candidates {
+            scores[c.uid] = mutualConnectionCount(candidateUid: c.uid, candidateFollowing: c.user.following)
+        }
+        return candidates.sorted { a, b in
+            let sa = scores[a.uid] ?? 0
+            let sb = scores[b.uid] ?? 0
+            if sa != sb { return sa > sb }
+            return a.user.displayName.localizedCaseInsensitiveCompare(b.user.displayName) == .orderedAscending
+        }
+    }
+
+    /// Mutual-connection score for the "everyone" ranking: people we both follow,
+    /// plus people I follow who follow the candidate.
+    private func mutualConnectionCount(candidateUid: String, candidateFollowing: [String]) -> Int {
+        let mine = myFollowingSet
+        guard !mine.isEmpty else { return 0 }
+        var count = mine.intersection(candidateFollowing).count
+        for (uid, user) in otherReaders where mine.contains(uid) && user.following.contains(candidateUid) {
+            count += 1
+        }
+        return count
+    }
+
     @ViewBuilder
     private var friendsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("FRIENDS")
+            Text("FOLLOWING")
                 .font(.system(size: 12, weight: .bold, design: .monospaced))
                 .tracking(1)
                 .foregroundStyle(Theme.chromeTeal)
@@ -296,29 +350,104 @@ struct FeedView: View {
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(alignment: .top, spacing: 14) {
-                        ForEach(Array(otherReaders.enumerated()), id: \.element.uid) { _, item in
-                            NavigationLink(value: item.uid) {
-                                VStack(spacing: 8) {
-                                    otherReaderCircleAvatar(user: item.user, size: 64)
-                                    Text(item.user.displayName)
-                                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                        .foregroundStyle(Theme.textSecondary)
-                                        .lineLimit(2)
-                                        .multilineTextAlignment(.center)
-                                        .frame(width: 72)
-                                }
-                                .accessibilityElement(children: .combine)
-                                .accessibilityLabel("\(item.user.displayName), open library")
-                            }
-                            .buttonStyle(.plain)
+                        ForEach(followedReaders, id: \.uid) { item in
+                            readerCell(item: item, isFollowed: true)
+                        }
+                        if !followedReaders.isEmpty && !discoverableReaders.isEmpty {
+                            allReadersDivider
+                        }
+                        ForEach(discoverableReaders, id: \.uid) { item in
+                            readerCell(item: item, isFollowed: false)
                         }
                     }
                     .padding(.horizontal, Theme.horizontalPadding)
                     .padding(.bottom, 12)
+                    .animation(.easeInOut(duration: 0.25), value: myFollowingSet)
                 }
             }
         }
         .padding(.top, 4)
+    }
+
+    /// Little rule between the people you follow and the rest of Spine.
+    private var allReadersDivider: some View {
+        VStack(spacing: 6) {
+            Rectangle()
+                .fill(Theme.chromeTeal.opacity(0.45))
+                .frame(width: 1.5, height: 56)
+            Text("ALL")
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .tracking(1)
+                .foregroundStyle(Theme.chromeTeal)
+        }
+        .padding(.top, 4)
+        .padding(.horizontal, 2)
+        .accessibilityHidden(true)
+    }
+
+    /// Avatar + name cell. Reading-now covers float on the bottom-left edge of the
+    /// avatar; the quick-follow plus sits top-right so the two never collide.
+    private func readerCell(item: (uid: String, user: User), isFollowed: Bool) -> some View {
+        let readingNow = readingNowByUid[item.uid] ?? []
+        return NavigationLink(value: item.uid) {
+            VStack(spacing: 8) {
+                otherReaderCircleAvatar(user: item.user, size: 64)
+                    .overlay(alignment: .bottomLeading) {
+                        if !readingNow.isEmpty {
+                            ReadingNowFanStack(books: readingNow, coverWidth: 19)
+                                .offset(x: -9, y: 8)
+                        }
+                    }
+                    .overlay(alignment: .topTrailing) {
+                        if !isFollowed {
+                            followPlusButton(targetUid: item.uid)
+                                .offset(x: 5, y: -5)
+                        }
+                    }
+                Text(item.user.displayName)
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(Theme.textSecondary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .frame(width: 72)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(item.user.displayName), open library")
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func followPlusButton(targetUid: String) -> some View {
+        Button {
+            followReader(targetUid: targetUid)
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(Theme.phosphorWhite)
+                .frame(width: 22, height: 22)
+                .background(Circle().fill(Theme.accent))
+                .overlay(Circle().strokeBorder(Theme.background, lineWidth: 2))
+        }
+        .buttonStyle(.plain)
+        .disabled(followInFlight.contains(targetUid))
+        .accessibilityLabel("Follow")
+    }
+
+    private func followReader(targetUid: String) {
+        guard let uid = authService.firebaseUser?.uid, uid != targetUid else { return }
+        guard !followInFlight.contains(targetUid) else { return }
+        followInFlight.insert(targetUid)
+        Task {
+            do {
+                try await userRepo.setFollowing(currentUid: uid, targetUid: targetUid, follow: true)
+                await authService.refreshAppUser()
+            } catch {
+                #if DEBUG
+                print("followReader: \(error)")
+                #endif
+            }
+            await MainActor.run { _ = followInFlight.remove(targetUid) }
+        }
     }
 
     private func otherReaderCircleAvatar(user: User, size: CGFloat) -> some View {
@@ -415,9 +544,9 @@ struct FeedPostRow: View {
                     onCommentTap?()
                 } label: {
                     engagementPill(
-                        icon: "bubble.right.fill",
+                        icon: "bubble.right",
                         count: post.commentCount,
-                        tint: Theme.chromeTeal,
+                        tint: Theme.textSecondary,
                         active: false,
                         activeColor: Theme.chromeTeal
                     )
@@ -448,16 +577,19 @@ struct FeedPostRow: View {
     }
 
     /// Chunky tappable capsule for like/comment — icon bounces when toggled on.
+    /// Zero counts are hidden (the mono slashed 0 reads badly), leaving just the icon.
     private func engagementPill(icon: String, count: Int, tint: Color, active: Bool, activeColor: Color) -> some View {
         HStack(spacing: 7) {
             Image(systemName: icon)
                 .font(.system(size: 19, weight: .semibold))
                 .foregroundStyle(tint)
                 .symbolEffect(.bounce, value: active)
-            Text("\(count)")
-                .font(.system(size: 15, weight: .bold, design: .monospaced))
-                .foregroundStyle(active ? activeColor : Theme.textSecondary)
-                .contentTransition(.numericText())
+            if count > 0 {
+                Text("\(count)")
+                    .font(.system(size: 15, weight: .bold, design: .monospaced))
+                    .foregroundStyle(active ? activeColor : Theme.textSecondary)
+                    .contentTransition(.numericText())
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 9)
@@ -470,33 +602,70 @@ struct FeedPostRow: View {
         .animation(.spring(response: 0.3, dampingFraction: 0.6), value: active)
     }
 
-    /// Up to two latest comments inline, then "View all N comments" (Instagram-style).
+    /// Up to two latest comments inline (Instagram-style) on an inset card:
+    /// tiny avatar + name badge above each comment, then "View all N comments".
     @ViewBuilder
     private var commentPreviewSection: some View {
         if !previewComments.isEmpty {
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 10) {
                 ForEach(previewComments) { c in
-                    (
-                        Text(c.displayName ?? "User")
-                            .font(.system(size: 13, weight: .bold, design: .monospaced))
-                        + Text("  \(c.text)")
-                            .font(Theme.body())
-                    )
-                    .foregroundStyle(Theme.textPrimary)
-                    .lineLimit(2)
+                    HStack(alignment: .top, spacing: 8) {
+                        previewCommentAvatar(c)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(c.displayName ?? "User")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .tracking(0.5)
+                                .foregroundStyle(Theme.chromeTeal)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 2)
+                                .background(Capsule().fill(Theme.chromeTeal.opacity(0.12)))
+                            Text(c.text)
+                                .font(.system(size: 14, design: .serif))
+                                .foregroundStyle(Theme.textPrimary)
+                                .lineLimit(2)
+                        }
+                        Spacer(minLength: 0)
+                    }
                 }
                 if post.commentCount > previewComments.count {
                     Text("View all \(post.commentCount) comments")
-                        .font(.system(size: 13, weight: .medium, design: .monospaced))
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
                         .foregroundStyle(Theme.textTertiary)
                 }
             }
+            .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Theme.surface.opacity(0.6))
+            )
             .contentShape(Rectangle())
             .onTapGesture { onCommentTap?() }
             .padding(.horizontal)
             .padding(.bottom, 14)
         }
+    }
+
+    private func previewCommentAvatar(_ c: Comment) -> some View {
+        let initial = String((c.displayName ?? "?").prefix(1))
+        let placeholder = Circle()
+            .fill(Theme.chromeTeal)
+            .overlay(
+                Text(initial.uppercased())
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Theme.phosphorWhite)
+            )
+        return Group {
+            if let urlStr = c.profileImageURL, let url = URL(string: urlStr) {
+                CachedProfileImage(url: url, contentMode: .fill) {
+                    placeholder
+                }
+            } else {
+                placeholder
+            }
+        }
+        .frame(width: 22, height: 22)
+        .clipShape(Circle())
     }
 
     private var showEditReviewButton: Bool {

@@ -104,6 +104,33 @@ final class UserBookRepository {
         }
     }
 
+    /// Every member's "Reading now" covers in one query (Feed following strip): uid → books in shelf order.
+    func fetchAllReadingNowBooks() async -> [String: [Book]] {
+        do {
+            let snapshot = try await db.collection(userBooks)
+                .whereField("queueShelf", isEqualTo: QueueShelf.readingNow.rawValue)
+                .getDocuments()
+            var rowsByUid: [String: [UserBook]] = [:]
+            for doc in snapshot.documents {
+                guard let ub = userBook(from: doc.data(), docId: doc.documentID),
+                      ub.status == .wantToRead, ub.queueShelf == .readingNow else { continue }
+                rowsByUid[ub.userId, default: []].append(ub)
+            }
+            var result: [String: [Book]] = [:]
+            for (uid, rows) in rowsByUid {
+                let ordered = rows.sorted { ($0.queueOrder ?? 999) < ($1.queueOrder ?? 999) }
+                var books: [Book] = []
+                for ub in ordered {
+                    if let b = await bookRepo.getBook(id: ub.bookId) { books.append(b) }
+                }
+                if !books.isEmpty { result[uid] = books }
+            }
+            return result
+        } catch {
+            return [:]
+        }
+    }
+
     /// Adds a userBook (and ensures the book exists). Returns the created UserBook with its id.
     /// `targetShelf`/`targetOrder` (wantToRead only) place the book directly on a specific queue
     /// shelf at a specific position — used by the shelf "Add" tiles. Default: top of backlog.

@@ -22,10 +22,8 @@ struct User: Identifiable, Codable, Equatable {
     var joinedAt: Date
     /// Firebase Auth UIDs this user follows (`users/{id}/following` in Firestore). Used for push eligibility and profile.
     var following: [String]
-    /// When true, the one-time “everyone follows everyone” mesh has been applied; avoids re-adding follows after intentional unfollows.
-    var communityMeshApplied: Bool
-    /// Firestore `hasSeenFollowCommunityModal`; one-time feed modal explaining default mutual follows (syncs across devices).
-    var hasSeenFollowCommunityModal: Bool
+    /// Firestore `hasSeenFounderWelcomeModal`; one-time feed modal with the founder's welcome note (syncs across devices).
+    var hasSeenFounderWelcomeModal: Bool
     /// One-time prompt to enable push after profile onboarding (`hasSeenPushNotificationPrompt` in Firestore).
     var hasSeenPushNotificationPrompt: Bool
     var totalBooksRead: Int
@@ -48,8 +46,7 @@ struct User: Identifiable, Codable, Equatable {
         profileImageURL: nil,
         joinedAt: Date(),
         following: [],
-        communityMeshApplied: true,
-        hasSeenFollowCommunityModal: true,
+        hasSeenFounderWelcomeModal: true,
         hasSeenPushNotificationPrompt: true,
         totalBooksRead: 12,
         totalPagesRead: 3840,
