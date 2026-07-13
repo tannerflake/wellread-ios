@@ -468,7 +468,7 @@ struct QueueLibraryView: View {
                 }
                 HStack(spacing: 10) {
                     Button(action: { onAcceptRecommendation?(rec) }) {
-                        Text("[ + QUEUE ]")
+                        Text("+ QUEUE")
                             .font(.system(size: 12, weight: .bold, design: .monospaced))
                             .tracking(0.5)
                             .foregroundStyle(Theme.phosphorWhite)
@@ -481,7 +481,7 @@ struct QueueLibraryView: View {
                     }
                     .buttonStyle(.plain)
                     Button(action: { onDismissRecommendation?(rec) }) {
-                        Text("[ DISMISS ]")
+                        Text("DISMISS")
                             .font(.system(size: 12, weight: .bold, design: .monospaced))
                             .tracking(0.5)
                             .foregroundStyle(Theme.textSecondary)

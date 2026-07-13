@@ -259,7 +259,7 @@ struct FeedView: View {
 
     private var feedSectionLabel: some View {
         HStack {
-            Text("[ FEED ]")
+            Text("FEED")
                 .font(.system(size: 12, weight: .bold, design: .monospaced))
                 .tracking(1)
                 .foregroundStyle(Theme.chromeTeal)
@@ -272,7 +272,7 @@ struct FeedView: View {
     @ViewBuilder
     private var friendsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("[ FRIENDS ]")
+            Text("FRIENDS")
                 .font(.system(size: 12, weight: .bold, design: .monospaced))
                 .tracking(1)
                 .foregroundStyle(Theme.chromeTeal)
@@ -363,6 +363,9 @@ struct FeedPostRow: View {
     /// Tier to display on the post. Lets the feed pass a fallback (e.g. the current user's UserBook tier) for legacy posts where `post.tier` hasn't been backfilled yet.
     var displayTier: String? = nil
 
+    /// Latest comments shown inline under the post (Instagram-style, max 2).
+    @State private var previewComments: [Comment] = []
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             feedAuthorHeader
@@ -390,42 +393,42 @@ struct FeedPostRow: View {
             }
 
             if let caption = post.caption, !caption.isEmpty {
-                Text(caption)
-                    .font(Theme.body())
-                    .foregroundStyle(Theme.textPrimary)
-                    .lineSpacing(Theme.bodyLineSpacing)
+                ExpandableReviewText(text: caption)
                     .padding(.horizontal)
             }
 
-            HStack(spacing: 22) {
+            HStack(spacing: 12) {
                 Button {
                     onLikeToggle?(!isLiked)
                 } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: isLiked ? "heart.fill" : "heart")
-                            .foregroundStyle(isLiked ? Theme.magentaPunch : Theme.textSecondary)
-                        Text("\(post.likeCount)")
-                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(Theme.textSecondary)
-                    }
+                    engagementPill(
+                        icon: isLiked ? "heart.fill" : "heart",
+                        count: post.likeCount,
+                        tint: isLiked ? Theme.magentaPunch : Theme.textSecondary,
+                        active: isLiked,
+                        activeColor: Theme.magentaPunch
+                    )
                 }
                 .buttonStyle(.plain)
+                .sensoryFeedback(.impact(weight: .medium), trigger: isLiked)
                 Button {
                     onCommentTap?()
                 } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "bubble.right")
-                            .foregroundStyle(Theme.textSecondary)
-                        Text("\(post.commentCount)")
-                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(Theme.textSecondary)
-                    }
+                    engagementPill(
+                        icon: "bubble.right.fill",
+                        count: post.commentCount,
+                        tint: Theme.chromeTeal,
+                        active: false,
+                        activeColor: Theme.chromeTeal
+                    )
                 }
                 .buttonStyle(.plain)
                 Spacer()
             }
             .padding(.horizontal)
-            .padding(.bottom, 14)
+            .padding(.bottom, previewComments.isEmpty ? 14 : 4)
+
+            commentPreviewSection
 
             // Receipt-style hairline between posts
             Rectangle()
@@ -434,6 +437,66 @@ struct FeedPostRow: View {
                 .padding(.horizontal, Theme.horizontalPadding)
         }
         .padding(.top, 14)
+        .task(id: "\(post.id.uuidString)-\(post.commentCount)") {
+            guard post.commentCount > 0 else {
+                previewComments = []
+                return
+            }
+            let all = await CommentRepository().fetchComments(postId: post.id.uuidString)
+            previewComments = Array(all.suffix(2))
+        }
+    }
+
+    /// Chunky tappable capsule for like/comment — icon bounces when toggled on.
+    private func engagementPill(icon: String, count: Int, tint: Color, active: Bool, activeColor: Color) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: icon)
+                .font(.system(size: 19, weight: .semibold))
+                .foregroundStyle(tint)
+                .symbolEffect(.bounce, value: active)
+            Text("\(count)")
+                .font(.system(size: 15, weight: .bold, design: .monospaced))
+                .foregroundStyle(active ? activeColor : Theme.textSecondary)
+                .contentTransition(.numericText())
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 9)
+        .background(
+            Capsule().fill(active ? activeColor.opacity(0.14) : Theme.surface)
+        )
+        .overlay(
+            Capsule().stroke(active ? activeColor.opacity(0.55) : Theme.chromeTeal.opacity(0.35), lineWidth: 1)
+        )
+        .animation(.spring(response: 0.3, dampingFraction: 0.6), value: active)
+    }
+
+    /// Up to two latest comments inline, then "View all N comments" (Instagram-style).
+    @ViewBuilder
+    private var commentPreviewSection: some View {
+        if !previewComments.isEmpty {
+            VStack(alignment: .leading, spacing: 5) {
+                ForEach(previewComments) { c in
+                    (
+                        Text(c.displayName ?? "User")
+                            .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        + Text("  \(c.text)")
+                            .font(Theme.body())
+                    )
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(2)
+                }
+                if post.commentCount > previewComments.count {
+                    Text("View all \(post.commentCount) comments")
+                        .font(.system(size: 13, weight: .medium, design: .monospaced))
+                        .foregroundStyle(Theme.textTertiary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture { onCommentTap?() }
+            .padding(.horizontal)
+            .padding(.bottom, 14)
+        }
     }
 
     private var showEditReviewButton: Bool {
@@ -452,7 +515,7 @@ struct FeedPostRow: View {
                         Text(post.user?.displayName ?? "User")
                             .font(.system(size: 14, weight: .bold, design: .monospaced))
                             .foregroundStyle(Theme.textPrimary)
-                        Text("[ \(Theme.feedRelativeTimestamp(post.createdAt)) ]")
+                        Text(Theme.feedRelativeTimestamp(post.createdAt))
                             .font(.system(size: 10, weight: .regular, design: .monospaced))
                             .tracking(0.5)
                             .foregroundStyle(Theme.chromeTeal)
@@ -501,5 +564,88 @@ struct FeedPostRow: View {
                     .font(.system(size: 16, weight: .bold, design: .monospaced))
                     .foregroundStyle(Theme.phosphorWhite)
             )
+    }
+}
+
+/// Review/caption text that collapses past 9 lines. Tapping the text or the
+/// "read more"/"show less" pill toggles expansion; short text renders plain.
+struct ExpandableReviewText: View {
+    let text: String
+    private static let collapsedLineLimit = 9
+
+    @State private var expanded = false
+    /// True once measurement shows the full text is taller than 9 lines.
+    @State private var truncatable = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(text)
+                .font(Theme.body())
+                .foregroundStyle(Theme.textPrimary)
+                .lineSpacing(Theme.bodyLineSpacing)
+                .lineLimit(expanded ? nil : Self.collapsedLineLimit)
+            if truncatable {
+                Text(expanded ? "show less" : "…read more")
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Theme.chromeTeal)
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard truncatable else { return }
+            withAnimation(.easeInOut(duration: 0.2)) { expanded.toggle() }
+        }
+        .background(measurer)
+    }
+
+    /// Invisible copies of the text — one clamped to 9 lines, one unclamped —
+    /// measured to decide whether the toggle is needed at the current width.
+    private var measurer: some View {
+        ZStack(alignment: .topLeading) {
+            Text(text)
+                .font(Theme.body())
+                .lineSpacing(Theme.bodyLineSpacing)
+                .lineLimit(Self.collapsedLineLimit)
+                .background(
+                    GeometryReader { g in
+                        Color.clear.preference(key: CollapsedHeightKey.self, value: g.size.height)
+                    }
+                )
+            Text(text)
+                .font(Theme.body())
+                .lineSpacing(Theme.bodyLineSpacing)
+                .fixedSize(horizontal: false, vertical: true)
+                .background(
+                    GeometryReader { g in
+                        Color.clear.preference(key: FullHeightKey.self, value: g.size.height)
+                    }
+                )
+        }
+        .hidden()
+        .onPreferenceChange(CollapsedHeightKey.self) { collapsed in
+            collapsedHeight = collapsed
+            updateTruncatable()
+        }
+        .onPreferenceChange(FullHeightKey.self) { full in
+            fullHeight = full
+            updateTruncatable()
+        }
+    }
+
+    @State private var collapsedHeight: CGFloat = 0
+    @State private var fullHeight: CGFloat = 0
+
+    private func updateTruncatable() {
+        truncatable = fullHeight > collapsedHeight + 1
+    }
+
+    private struct CollapsedHeightKey: PreferenceKey {
+        static var defaultValue: CGFloat = 0
+        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+    }
+
+    private struct FullHeightKey: PreferenceKey {
+        static var defaultValue: CGFloat = 0
+        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
     }
 }

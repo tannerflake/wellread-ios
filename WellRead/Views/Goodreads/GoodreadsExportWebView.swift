@@ -64,7 +64,7 @@ struct GoodreadsExportWebView: View {
                     .font(Theme.caption())
                     .foregroundStyle(Theme.textPrimary)
             } else {
-                Text(SpinesGlyphs.bracketed("Tip"))
+                Text(SpinesGlyphs.caps("Tip"))
                     .font(.system(size: 11, weight: .bold, design: .monospaced))
                     .foregroundStyle(Theme.chromeTeal)
                 Text("Tap “Export Library”, then tap the “Your export from…” link when it appears.")

@@ -236,7 +236,7 @@ struct FindFriendsView: View {
                         cantSendTextAlert = true
                     }
                 } label: {
-                    Text("[ INVITE ]")
+                    Text("INVITE")
                         .font(.system(size: 12, weight: .bold, design: .monospaced))
                         .foregroundStyle(Theme.accent)
                 }

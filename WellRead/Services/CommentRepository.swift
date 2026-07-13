@@ -71,13 +71,15 @@ final class CommentRepository {
         }
     }
 
-    /// Adds a comment and increments post's commentCount.
+    /// Adds a comment and increments post's commentCount. `parentCommentId` marks a reply
+    /// to another comment (triggers the reply push in Cloud Functions).
     func addComment(
         postId: String,
         userId: String,
         text: String,
         displayName: String?,
-        profileImageURL: String? = nil
+        profileImageURL: String? = nil,
+        parentCommentId: String? = nil
     ) async throws -> Comment {
         let id = UUID()
         let now = Date()
@@ -90,6 +92,7 @@ final class CommentRepository {
         ]
         if let name = displayName { data["displayName"] = name }
         if let url = profileImageURL, !url.isEmpty { data["profileImageURL"] = url }
+        if let parent = parentCommentId, !parent.isEmpty { data["parentCommentId"] = parent }
         try await ref.setData(data)
         let postRef = db.collection("posts").document(postId)
         try await postRef.updateData([
@@ -102,7 +105,8 @@ final class CommentRepository {
             text: text,
             createdAt: now,
             displayName: displayName,
-            profileImageURL: profileImageURL
+            profileImageURL: profileImageURL,
+            parentCommentId: parentCommentId
         )
     }
 
@@ -114,6 +118,7 @@ final class CommentRepository {
               let id = UUID(uuidString: docId) else { return nil }
         let displayName = data["displayName"] as? String
         let profileImageURL = data["profileImageURL"] as? String
+        let parentCommentId = data["parentCommentId"] as? String
         return Comment(
             id: id,
             postId: postId,
@@ -121,7 +126,8 @@ final class CommentRepository {
             text: text,
             createdAt: createdAt,
             displayName: displayName,
-            profileImageURL: profileImageURL
+            profileImageURL: profileImageURL,
+            parentCommentId: parentCommentId
         )
     }
 }

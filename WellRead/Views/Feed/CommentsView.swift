@@ -32,7 +32,7 @@ struct CommentsView: View {
                             Text(SpinesGlyphs.phosphorFade)
                                 .font(.system(size: 18, weight: .regular, design: .monospaced))
                                 .foregroundStyle(Theme.chromeTeal.opacity(0.7))
-                            Text("[ no comments yet ]")
+                            Text("no comments yet")
                                 .font(.system(size: 13, weight: .regular, design: .monospaced))
                                 .tracking(0.5)
                                 .foregroundStyle(Theme.textTertiary)
@@ -40,11 +40,14 @@ struct CommentsView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
                         List {
-                            ForEach(viewModel.comments) { comment in
+                            ForEach(viewModel.threadedComments, id: \.comment.id) { item in
                                 CommentRow(
-                                    comment: comment,
-                                    profileImageURL: viewModel.profileImageURL(for: comment)
+                                    comment: item.comment,
+                                    profileImageURL: viewModel.profileImageURL(for: item.comment),
+                                    isReply: item.isReply,
+                                    onReply: { viewModel.replyingTo = item.comment }
                                 )
+                                    .padding(.leading, item.isReply ? 38 : 0)
                                     .listRowBackground(Theme.background)
                                     .listRowSeparatorTint(Theme.chromeTeal.opacity(0.3))
                             }
@@ -86,8 +89,42 @@ struct CommentsView: View {
     }
 
     private var commentInputBar: some View {
+        VStack(spacing: 0) {
+            if let replyTarget = viewModel.replyingTo {
+                HStack(spacing: 8) {
+                    Text("Replying to \(replyTarget.displayName ?? "comment")")
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .foregroundStyle(Theme.textSecondary)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    Button {
+                        viewModel.replyingTo = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundStyle(Theme.textTertiary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Cancel reply")
+                }
+                .padding(.horizontal)
+                .padding(.top, 8)
+            }
+            commentInputRow
+        }
+        .background(
+            VStack(spacing: 0) {
+                Rectangle()
+                    .fill(Theme.chromeTeal.opacity(0.35))
+                    .frame(height: Theme.chromeHairline)
+                Theme.background
+            }
+        )
+    }
+
+    private var commentInputRow: some View {
         HStack(spacing: 10) {
-            TextField("> add a comment…", text: $viewModel.commentText, axis: .vertical)
+            TextField(viewModel.replyingTo == nil ? "> add a comment…" : "> add a reply…", text: $viewModel.commentText, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(Theme.body())
                 .foregroundStyle(Theme.textPrimary)
@@ -119,14 +156,6 @@ struct CommentsView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
-        .background(
-            VStack(spacing: 0) {
-                Rectangle()
-                    .fill(Theme.chromeTeal.opacity(0.35))
-                    .frame(height: Theme.chromeHairline)
-                Theme.background
-            }
-        )
     }
 }
 
@@ -134,6 +163,10 @@ struct CommentRow: View {
     let comment: Comment
     /// Resolved URL (from comment doc or fetched profile).
     var profileImageURL: String?
+    /// True when this comment is a reply — rendered indented with a smaller avatar.
+    var isReply: Bool = false
+    /// Shows a "Reply" affordance under the comment when set.
+    var onReply: (() -> Void)? = nil
 
     private static let avatarSize: CGFloat = 36
 
@@ -148,7 +181,7 @@ struct CommentRow: View {
                                 .font(.system(size: 13, weight: .bold, design: .monospaced))
                                 .foregroundStyle(Theme.textPrimary)
                             TimelineView(.periodic(from: .now, by: 15)) { context in
-                                Text("[ \(Theme.commentRelativeTimestamp(comment.createdAt, now: context.date)) ]")
+                                Text(Theme.commentRelativeTimestamp(comment.createdAt, now: context.date))
                                     .font(.system(size: 10, weight: .regular, design: .monospaced))
                                     .tracking(0.5)
                                     .foregroundStyle(Theme.chromeTeal)
@@ -164,6 +197,16 @@ struct CommentRow: View {
                 .foregroundStyle(Theme.textPrimary)
                 .lineSpacing(Theme.bodyLineSpacing)
                 .padding(.leading, Self.avatarSize + 10)
+            if let onReply {
+                Button(action: onReply) {
+                    Text("Reply")
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .foregroundStyle(Theme.textTertiary)
+                }
+                .buttonStyle(.plain)
+                .padding(.leading, Self.avatarSize + 10)
+                .padding(.top, 2)
+            }
         }
         .padding(.vertical, 6)
     }
@@ -204,6 +247,8 @@ final class CommentsViewModel: ObservableObject {
     @Published var commentText: String = ""
     @Published var isSending: Bool = false
     @Published var isLoading: Bool = true
+    /// Comment being replied to; the next send becomes its reply.
+    @Published var replyingTo: Comment? = nil
     /// Cached `userId` → profile image URL (`""` = loaded, no image).
     @Published private(set) var avatarURLByUserId: [String: String] = [:]
 
@@ -220,6 +265,39 @@ final class CommentsViewModel: ObservableObject {
 
     var canSend: Bool {
         !commentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Comments in display order: top-level chronological, each followed by its replies
+    /// (also chronological). Replies-to-replies flatten under the same top-level ancestor,
+    /// Instagram-style. Replies whose parent was deleted render as top-level.
+    var threadedComments: [(comment: Comment, isReply: Bool)] {
+        let byId = Dictionary(uniqueKeysWithValues: comments.map { ($0.id.uuidString, $0) })
+
+        /// Walk up the parent chain to the top-level ancestor (nil parent). Bails to self on a broken/cyclic chain.
+        func rootId(of comment: Comment) -> String {
+            var current = comment
+            var hops = 0
+            while let pid = current.parentCommentId, let parent = byId[pid], hops < 20 {
+                current = parent
+                hops += 1
+            }
+            return current.id.uuidString
+        }
+
+        let topLevel = comments
+            .filter { $0.parentCommentId == nil || byId[$0.parentCommentId!] == nil }
+            .sorted { $0.createdAt < $1.createdAt }
+        let replies = comments.filter { $0.parentCommentId != nil && byId[$0.parentCommentId!] != nil }
+        let repliesByRoot = Dictionary(grouping: replies, by: rootId(of:))
+
+        var result: [(Comment, Bool)] = []
+        for c in topLevel {
+            result.append((c, false))
+            for r in (repliesByRoot[c.id.uuidString] ?? []).sorted(by: { $0.createdAt < $1.createdAt }) {
+                result.append((r, true))
+            }
+        }
+        return result
     }
 
     init(postId: String) {
@@ -282,6 +360,7 @@ final class CommentsViewModel: ObservableObject {
         guard let uid = userId else { return }
         let text = commentText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        let parentId = await MainActor.run { replyingTo?.id.uuidString }
         await MainActor.run { isSending = true; commentText = "" }
         do {
             let new = try await commentRepo.addComment(
@@ -289,13 +368,15 @@ final class CommentsViewModel: ObservableObject {
                 userId: uid,
                 text: text,
                 displayName: displayName,
-                profileImageURL: profileImageURL
+                profileImageURL: profileImageURL,
+                parentCommentId: parentId
             )
             await MainActor.run {
                 if !comments.contains(where: { $0.id == new.id }) {
                     comments.append(new)
                     comments.sort { $0.createdAt < $1.createdAt }
                 }
+                replyingTo = nil
             }
         } catch {
             await MainActor.run { commentText = text }

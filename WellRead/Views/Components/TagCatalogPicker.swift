@@ -10,9 +10,34 @@ import SwiftUI
 
 struct TagCatalogPicker: View {
     @Binding var selected: Set<String>
+    /// When true and exactly one Format is picked (Fiction XOR Non-Fiction), tags that
+    /// can't apply to that format are hidden — e.g. Dystopian disappears once the user
+    /// picks Non-Fiction only. Off by default so onboarding/profile show the full catalog.
+    var filterByFormat: Bool = false
+
+    /// Categories/tags that only make sense for fiction.
+    private static let fictionOnlyCategories: Set<String> = ["Story Type", "Setting / World", "Character / Dynamics"]
+    private static let fictionOnlyTags: Set<String> = ["Mystery & Thriller", "Sci-Fi & Fantasy", "Romance"]
+    /// Categories/tags that only make sense for non-fiction.
+    private static let nonFictionOnlyCategories: Set<String> = ["Nonfiction Topics"]
+    private static let nonFictionOnlyTags: Set<String> = ["Biography & Memoir", "Self-Improvement", "Business", "Psychology", "Science"]
+
+    private var visibleSections: [(category: String, tags: [String])] {
+        let all = WellReadTagCatalog.shared.onboardingSectionsOrdered()
+        let fiction = selected.contains(WellReadTagCatalog.fictionTag)
+        let nonFiction = selected.contains(WellReadTagCatalog.nonFictionTag)
+        guard filterByFormat, fiction != nonFiction else { return all }
+        let hiddenCategories = nonFiction ? Self.fictionOnlyCategories : Self.nonFictionOnlyCategories
+        let hiddenTags = nonFiction ? Self.fictionOnlyTags : Self.nonFictionOnlyTags
+        return all.compactMap { section in
+            if hiddenCategories.contains(section.category) { return nil }
+            let tags = section.tags.filter { !hiddenTags.contains($0) }
+            return tags.isEmpty ? nil : (section.category, tags)
+        }
+    }
 
     var body: some View {
-        ForEach(WellReadTagCatalog.shared.onboardingSectionsOrdered(), id: \.category) { section in
+        ForEach(visibleSections, id: \.category) { section in
             VStack(alignment: .leading, spacing: 10) {
                 Text(section.category.uppercased())
                     .font(.system(size: 12, weight: .semibold))
@@ -33,6 +58,13 @@ struct TagCatalogPicker: View {
                 selected.remove(tag)
             } else {
                 selected.insert(tag)
+            }
+            // Toggling Format can hide whole sections — drop any now-hidden picks
+            // so they don't silently ride along into the saved criteria.
+            if filterByFormat {
+                let visible = Set(visibleSections.flatMap(\.tags))
+                let pruned = selected.filter { visible.contains($0) }
+                if pruned.count != selected.count { selected = pruned }
             }
         } label: {
             let isSelected = selected.contains(tag)

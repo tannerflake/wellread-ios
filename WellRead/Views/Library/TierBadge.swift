@@ -33,7 +33,7 @@ struct InlineTierPicker: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(SpinesGlyphs.bracketed("Tier · optional"))
+            Text(SpinesGlyphs.caps("Tier · optional"))
                 .font(.system(size: 11, weight: .bold, design: .monospaced))
                 .tracking(0.5)
                 .foregroundStyle(Theme.chromeTeal)

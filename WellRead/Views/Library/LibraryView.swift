@@ -616,7 +616,7 @@ struct ProfileLibraryView: View {
                     .background(Theme.accent)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(SpinesGlyphs.bracketed("Finish importing!"))
+                    Text(SpinesGlyphs.caps("Finish importing!"))
                         .font(.system(size: 12, weight: .bold, design: .monospaced))
                         .tracking(0.5)
                         .foregroundStyle(Theme.accent)

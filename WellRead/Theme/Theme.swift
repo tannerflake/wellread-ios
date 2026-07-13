@@ -133,22 +133,17 @@ enum Theme {
     /// Line spacing for body prose. Serif at 17pt reads well with a small extra leading.
     static let bodyLineSpacing: CGFloat = 3
 
-    /// Comment rows and feed post timestamps: seconds only under one minute; otherwise minutes and hours until 24 h; then whole days/weeks—no hour remainder once a post is a day old.
-    /// Feed post timestamp: relative ("3 days") within the last week, otherwise an absolute date.
+    /// Feed post and comment timestamps are always relative — never an exact date:
+    /// seconds under a minute, minutes until 1 hr, hours until 24 hr, days until
+    /// 1 week, then weeks, then months.
     static func feedRelativeTimestamp(_ date: Date, now: Date = Date()) -> String {
-        if now.timeIntervalSince(date) >= 7 * 86400 {
-            return date.formatted(date: .abbreviated, time: .omitted)
-        }
-        return commentRelativeTimestamp(date, now: now)
+        commentRelativeTimestamp(date, now: now)
     }
 
     static func commentRelativeTimestamp(_ date: Date, now: Date = Date()) -> String {
         let interval = now.timeIntervalSince(date)
-        if interval < 0 {
-            return date.formatted(date: .abbreviated, time: .shortened)
-        }
         if interval < 60 {
-            let s = Int(interval)
+            let s = Int(max(0, interval))
             if s < 1 { return "just now" }
             return "\(s) sec"
         }
@@ -168,7 +163,8 @@ enum Theme {
             let w = max(1, days / 7)
             return w == 1 ? "1 week" : "\(w) weeks"
         }
-        return date.formatted(date: .abbreviated, time: .omitted)
+        let months = max(2, days / 30)
+        return "\(months) months"
     }
 
     // MARK: - Ratings (out of 10, one decimal — e.g. 8.8)
@@ -212,7 +208,7 @@ enum Theme {
     static let gridSpacing: CGFloat = 12
     static let horizontalPadding: CGFloat = 20
     /// Approximate height of `MainTabView`'s custom tab bar (icons, labels, padding). Used to inset pushed views that don't inherit the parent's safe area.
-    static let mainTabBarChromeHeight: CGFloat = 56
+    static let mainTabBarChromeHeight: CGFloat = 44
     /// Stroke width for teal "window" frames around hero surfaces.
     static let windowBorderWidth: CGFloat = 2
     /// Hairline width for inline chrome (dividers, list separators, card outlines).
@@ -229,8 +225,8 @@ enum SpinesGlyphs {
     /// "─" — single horizontal-rule character; multiply for a divider line.
     static let ruleUnit = "─"
 
-    /// Wraps a short label in mono-style brackets: `[ STATUS ]`.
-    static func bracketed(_ s: String) -> String { "[ \(s.uppercased()) ]" }
+    /// Uppercases a short mono status label, e.g. `STATUS`.
+    static func caps(_ s: String) -> String { s.uppercased() }
 
     /// Builds a horizontal rule of the given character width, e.g. "────────".
     static func rule(width: Int) -> String { String(repeating: ruleUnit, count: max(1, width)) }
@@ -295,10 +291,61 @@ struct WindowedCardStyle<TitleAccessory: View>: ViewModifier {
     }
 }
 
+/// Hinge-style profile section: airy rounded card with a small overline label
+/// inside the card (no title bar), generous padding, and a soft shadow. Used for
+/// book-profile sections; modals keep the Win95 `windowedCard` treatment.
+struct HingeSectionCardStyle<TitleAccessory: View>: ViewModifier {
+    let title: String?
+    let accentColor: Color
+    /// Optional trailing view beside the overline label (e.g. a tier badge).
+    let titleAccessory: TitleAccessory
+
+    func body(content: Content) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if let title {
+                HStack(spacing: 8) {
+                    Text(title.uppercased())
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .tracking(1.8)
+                        .foregroundStyle(accentColor)
+                    Spacer(minLength: 0)
+                    titleAccessory
+                }
+            }
+            content
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: 24)
+                .fill(Theme.surfaceElevated)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 24)
+                .stroke(accentColor.opacity(0.18), lineWidth: 1)
+        )
+        .shadow(color: Theme.textPrimary.opacity(0.08), radius: 12, x: 0, y: 5)
+    }
+}
+
 extension View {
     /// Plain Spines card (paper surface, hairline teal border).
     func wellReadCard() -> some View {
         modifier(ThemeCardStyle())
+    }
+
+    /// Hinge-style profile section card with an overline label.
+    func hingeSectionCard(title: String?, accent: Color = Theme.chromeTeal) -> some View {
+        modifier(HingeSectionCardStyle(title: title, accentColor: accent, titleAccessory: EmptyView()))
+    }
+
+    /// Hinge-style section card with a trailing view beside the label (e.g. a tier badge).
+    func hingeSectionCard<Accessory: View>(
+        title: String?,
+        accent: Color = Theme.chromeTeal,
+        @ViewBuilder titleAccessory: () -> Accessory
+    ) -> some View {
+        modifier(HingeSectionCardStyle(title: title, accentColor: accent, titleAccessory: titleAccessory()))
     }
 
     /// Spines card framed as a Win95-style window with an optional title bar.

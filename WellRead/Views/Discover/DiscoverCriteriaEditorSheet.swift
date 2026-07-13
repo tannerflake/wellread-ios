@@ -219,7 +219,7 @@ struct DiscoverCriteriaEditorSheet: View {
     private var tagsSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             sectionHeader("Tags & genres", detail: "Focus suggestions on topics, genres, or vibes.")
-            TagCatalogPicker(selected: $selectedTags)
+            TagCatalogPicker(selected: $selectedTags, filterByFormat: true)
         }
     }
 

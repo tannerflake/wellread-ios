@@ -107,9 +107,9 @@ struct AddBookFlowView: View {
 
     private static func shelfCTATitle(_ shelf: QueueShelf) -> String {
         switch shelf {
-        case .readingNow: return "[ + READING NOW ]"
-        case .upNext: return "[ + UP NEXT ]"
-        case .backlog: return "[ + BACKLOG ]"
+        case .readingNow: return "+ READING NOW"
+        case .upNext: return "+ UP NEXT"
+        case .backlog: return "+ BACKLOG"
         }
     }
     

@@ -14,4 +14,6 @@ struct Comment: Identifiable, Codable {
     var displayName: String?  // Optional; set when writing so we can show without lookup
     /// Denormalized from the user profile at post time (optional for legacy comments).
     var profileImageURL: String?
+    /// Comment doc id (UUID string) this comment replies to. `nil` = top-level comment.
+    var parentCommentId: String?
 }

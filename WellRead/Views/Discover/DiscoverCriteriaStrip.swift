@@ -4,7 +4,7 @@
 //
 //  Always-visible row under the Discover header showing exactly what's driving
 //  the next suggestion: default-taste chips, or one removable chip per custom
-//  criterion, plus a [ TUNE ] button opening the criteria editor.
+//  criterion, plus a TUNE button opening the criteria editor.
 //
 
 import SwiftUI
@@ -16,6 +16,8 @@ struct DiscoverCriteriaStrip: View {
     /// Called with the mutated criteria when the user removes a chip.
     let onRemove: (DiscoverCriteria) -> Void
     let onEdit: () -> Void
+    /// Resolves a seed's full Book (for cover art) — e.g. from the user's library.
+    var bookForSeed: ((DiscoverSeedBook) -> Book?)? = nil
 
     var body: some View {
         HStack(spacing: 8) {
@@ -30,7 +32,7 @@ struct DiscoverCriteriaStrip: View {
                 .padding(.vertical, 2)
             }
             Button(action: onEdit) {
-                Text(SpinesGlyphs.bracketed("TUNE"))
+                Text(SpinesGlyphs.caps("TUNE"))
                     .font(.system(size: 12, weight: .bold, design: .monospaced))
                     .foregroundStyle(Theme.accent)
             }
@@ -72,12 +74,8 @@ struct DiscoverCriteriaStrip: View {
 
     @ViewBuilder
     private var customChips: some View {
-        ForEach(criteria.seedBooks, id: \.bookId) { seed in
-            removableChip(label: seed.title, tint: nil) {
-                var c = criteria
-                c.seedBooks.removeAll { $0.bookId == seed.bookId }
-                onRemove(c)
-            }
+        if !criteria.seedBooks.isEmpty {
+            seedBooksChip
         }
         ForEach(criteria.tiers, id: \.self) { tier in
             removableChip(label: "\(tier) tier", tint: spineTierColor(for: tier)) {
@@ -100,6 +98,58 @@ struct DiscoverCriteriaStrip: View {
                 onRemove(c)
             }
         }
+    }
+
+    /// Grouped seed-book tag: "Like these:" followed by tiny cover thumbnails.
+    /// Tap opens the editor; ✕ clears all seed books.
+    private var seedBooksChip: some View {
+        HStack(spacing: 7) {
+            Button(action: onEdit) {
+                HStack(spacing: 7) {
+                    Text("Like these:")
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .foregroundStyle(Theme.textPrimary)
+                    HStack(spacing: 3) {
+                        ForEach(criteria.seedBooks, id: \.bookId) { seed in
+                            BookCoverView(book: resolvedBook(seed), size: 18)
+                        }
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+            Button {
+                var c = criteria
+                c.seedBooks = []
+                onRemove(c)
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textTertiary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .background(Theme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .strokeBorder(Theme.chromeTeal.opacity(0.5), lineWidth: 1)
+        )
+    }
+
+    /// Library book when available (real cover); otherwise a title-only placeholder from the snapshot.
+    private func resolvedBook(_ seed: DiscoverSeedBook) -> Book {
+        bookForSeed?(seed) ?? Book(
+            id: seed.bookId,
+            title: seed.title,
+            author: seed.author,
+            coverURL: "",
+            pageCount: nil,
+            publishedDate: nil,
+            description: nil,
+            genres: []
+        )
     }
 
     private func truncated(_ text: String, limit: Int = 28) -> String {

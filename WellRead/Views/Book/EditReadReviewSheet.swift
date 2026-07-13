@@ -30,6 +30,7 @@ struct EditReadReviewSheet: View {
 
     @State private var dateFinished: Date
     @State private var additionalReadDates: [Date]
+    @State private var selectedTier: String?
     @State private var thoughts: String
     @State private var postToFeed: Bool
     @State private var loadedFeedToggle: Bool = false
@@ -44,6 +45,7 @@ struct EditReadReviewSheet: View {
         self.feedCaption = feedCaption
         _dateFinished = State(initialValue: userBook.dateFinished ?? Date())
         _additionalReadDates = State(initialValue: userBook.additionalReadDates ?? [])
+        _selectedTier = State(initialValue: userBook.tier)
         _thoughts = State(initialValue: Self.initialThoughts(userBook: userBook, feedCaption: feedCaption))
         _postToFeed = State(initialValue: true)
     }
@@ -125,19 +127,7 @@ struct EditReadReviewSheet: View {
                         }
                     }
 
-                    if let t = userBook.tier {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Tier")
-                                .font(Theme.caption())
-                                .foregroundStyle(Theme.textSecondary)
-                            HStack(spacing: 8) {
-                                TierBadge(tier: t)
-                                Text("Change in your tier list.")
-                                    .font(Theme.caption())
-                                    .foregroundStyle(Theme.textTertiary)
-                            }
-                        }
-                    }
+                    InlineTierPicker(selection: $selectedTier)
 
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Thoughts")
@@ -266,6 +256,9 @@ struct EditReadReviewSheet: View {
             if let err {
                 saveError = err
             } else {
+                if selectedTier != userBook.tier {
+                    appState.setTier(for: userBook.id, tier: selectedTier)
+                }
                 dismiss()
             }
         }

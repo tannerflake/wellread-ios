@@ -158,7 +158,7 @@ struct MarkAsReadInlineOverlay: View {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { isPresented = false }
                 onConfirm(date, nil, post, thoughts.isEmpty ? nil : thoughts, tier)
             } label: {
-                Text("[ MARK AS READ ]")
+                Text("MARK AS READ")
                     .font(.system(size: 14, weight: .bold, design: .monospaced))
                     .tracking(1)
                     .foregroundStyle(Theme.phosphorWhite)
@@ -176,9 +176,9 @@ struct MarkAsReadInlineOverlay: View {
         .windowedCard(title: "Mark As Read")
     }
 
-    /// Bracketed mono section label, e.g. "[ DATE FINISHED ]".
+    /// Mono section label, e.g. "DATE FINISHED".
     private func sectionLabel(_ text: String) -> some View {
-        Text("[ \(text.uppercased()) ]")
+        Text(text.uppercased())
             .font(.system(size: 11, weight: .bold, design: .monospaced))
             .tracking(1)
             .foregroundStyle(Theme.chromeTeal)

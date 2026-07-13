@@ -45,7 +45,7 @@ struct Toast: Identifiable, Equatable {
 
     let id = UUID()
     let style: Style
-    /// Short bracketed status word, shown as `[ QUEUED ]`.
+    /// Short uppercase status word, shown as `QUEUED`.
     let status: String
     /// Human-readable detail line. Optional — some toasts are status-only.
     let message: String?
@@ -179,7 +179,7 @@ private struct ToastView: View {
             .frame(width: 30, height: 30)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(SpinesGlyphs.bracketed(toast.status))
+                Text(SpinesGlyphs.caps(toast.status))
                     .font(.system(size: 12, weight: .bold, design: .monospaced))
                     .tracking(0.5)
                     .foregroundStyle(toast.style.chrome)

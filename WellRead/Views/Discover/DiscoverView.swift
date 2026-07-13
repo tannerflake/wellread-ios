@@ -26,7 +26,10 @@ struct DiscoverView: View {
                         criteria: appState.discoverCriteria,
                         interestTagsCount: appState.currentUser?.readingInterestTags.count ?? 0,
                         onRemove: { appState.setDiscoverCriteria($0) },
-                        onEdit: { showCriteriaEditor = true }
+                        onEdit: { showCriteriaEditor = true },
+                        bookForSeed: { seed in
+                            appState.userBooks.first(where: { $0.bookId == seed.bookId })?.book
+                        }
                     )
 
                     Group {
@@ -55,7 +58,8 @@ struct DiscoverView: View {
                     isOnReadList: appState.isBookOnReadList(bookId: book.id),
                     isInQueue: appState.isBookInQueue(bookId: book.id),
                     readEntryForReview: appState.userReadBook(forBookId: book.id),
-                    canEditReadReview: true
+                    canEditReadReview: true,
+                    showRecommend: false
                 )
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -163,7 +167,8 @@ struct DiscoverView: View {
             isOnReadList: appState.isBookOnReadList(bookId: book.id),
             isInQueue: appState.isBookInQueue(bookId: book.id),
             readEntryForReview: appState.userReadBook(forBookId: book.id),
-            canEditReadReview: true
+            canEditReadReview: true,
+            showRecommend: false
         )
         .id(book.id)
     }

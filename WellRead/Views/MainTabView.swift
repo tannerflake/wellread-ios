@@ -250,14 +250,14 @@ struct MainTabView: View {
 
     private var tabBar: some View {
         HStack(spacing: 0) {
-            tabButton(.feed, icon: "book.closed.fill", label: "Social")
+            tabButton(.feed, icon: "person.2.fill", label: "Social")
             tabButton(.discover, icon: "sparkles", label: "Discover")
             tabButton(.profile, icon: "books.vertical.fill", label: "Profile")
             searchButton
         }
         .padding(.horizontal, 8)
-        .padding(.top, 14)
-        .padding(.bottom, 12)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
         .background(Theme.background.opacity(0.95))
         .overlay(alignment: .top) {
             Rectangle()
@@ -274,11 +274,11 @@ struct MainTabView: View {
                 selectedTab = tab
             }
         } label: {
-            VStack(spacing: 4) {
+            VStack(spacing: 3) {
                 Image(systemName: icon)
-                    .font(.system(size: 20, weight: .medium))
+                    .font(.system(size: 17, weight: .medium))
                 Text(label)
-                    .font(Theme.caption())
+                    .font(.system(size: 10, weight: .regular, design: .monospaced))
             }
             .frame(maxWidth: .infinity)
             .foregroundStyle(selectedTab == tab ? Theme.accent : Theme.textSecondary)
@@ -290,11 +290,11 @@ struct MainTabView: View {
         Button {
             showAddBook = true
         } label: {
-            VStack(spacing: 4) {
+            VStack(spacing: 3) {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 20, weight: .medium))
+                    .font(.system(size: 17, weight: .medium))
                 Text("Search")
-                    .font(Theme.caption())
+                    .font(.system(size: 10, weight: .regular, design: .monospaced))
             }
             .frame(maxWidth: .infinity)
             .foregroundStyle(Theme.textSecondary)

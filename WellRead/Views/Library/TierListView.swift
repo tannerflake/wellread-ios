@@ -11,6 +11,12 @@ import UniformTypeIdentifiers
 /// Match queue grid: wider slots so drops register between covers.
 private let tierDropSlotWidth: CGFloat = 16
 
+/// Coordinate space of the tier-list ScrollView, used to pin each tier's letter
+/// to the top of the viewport while its (possibly very tall) row scrolls by.
+private let tierListScrollSpace = "tierListScroll"
+/// Height of the pinned letter block inside the colored label column.
+private let tierStickyLetterHeight: CGFloat = 96
+
 /// Tier rows rendered top-to-bottom, plus an Unranked row appended after.
 private let tierLabels: [String] = spineTierLabels
 
@@ -62,7 +68,7 @@ private struct TierHighlightCallout: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 2) {
-                Text(SpinesGlyphs.bracketed("Rank me"))
+                Text(SpinesGlyphs.caps("Rank me"))
                     .font(.system(size: 13, weight: .bold, design: .monospaced))
                     .tracking(0.5)
                 Text("Drag me onto a tier")
@@ -216,6 +222,7 @@ struct TierListView: View {
                     .padding(.top, 10)
                     .padding(.bottom, 88)
                 }
+                .coordinateSpace(name: tierListScrollSpace)
                 // Draw the "Rank me!" callout above the tier rows so it isn't clipped
                 // by each row's rounded-rect mask, and point it at the exact book.
                 .overlayPreferenceValue(TierHighlightAnchorKey.self) { anchor in
@@ -334,12 +341,28 @@ struct TierRowView: View {
         HStack(alignment: .top, spacing: 0) {
             ZStack {
                 tierColor(for: tier)
-                Text(header)
-                    .font(Theme.headline())
-                    .lineLimit(1)
-                    .fixedSize(horizontal: header == "Unranked", vertical: false)
-                    .foregroundStyle(header == "Unranked" ? Theme.textSecondary : Color.black.opacity(0.75))
-                    .rotationEffect(header == "Unranked" ? .degrees(-90) : .zero)
+                if header == "Unranked" {
+                    Text(header)
+                        .font(Theme.headline())
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .foregroundStyle(Theme.textSecondary)
+                        .rotationEffect(.degrees(-90))
+                } else {
+                    // Pin the letter to the top of the viewport while scrolling through
+                    // a tall tier, stopping at the bottom of the row.
+                    GeometryReader { geo in
+                        let frame = geo.frame(in: .named(tierListScrollSpace))
+                        let overflow = max(0, -frame.minY)
+                        let pinned = min(overflow, max(0, frame.height - tierStickyLetterHeight))
+                        Text(header)
+                            .font(Theme.headline())
+                            .lineLimit(1)
+                            .foregroundStyle(Color.black.opacity(0.75))
+                            .frame(width: 38, height: tierStickyLetterHeight)
+                            .offset(y: pinned)
+                    }
+                }
             }
             .frame(minWidth: 38, maxWidth: 38, minHeight: 96)
             .frame(maxHeight: .infinity)

@@ -2,10 +2,9 @@
 //  BookProfileView.swift
 //  Spine
 //
-//  Hero book profile — terminal/Win95-flavored: filename URL bar at the top,
-//  cover front-and-center, then "windowed" section cards (review, summary,
-//  similar, quote) with teal title bars. Action bar below uses bracketed
-//  mono labels.
+//  Hero book profile — cover front-and-center with a status badge, then airy
+//  Hinge-style section cards (review, summary, similar, quote, recommend) with
+//  small overline labels. Action bar below uses mono labels.
 //
 
 import SwiftUI
@@ -35,10 +34,13 @@ struct BookProfileView: View {
     var reviewSectionHeading: String = "My review"
     /// When `true`, shows a pencil on the review card to edit date, rating, thoughts, feed visibility, or delete.
     var canEditReadReview: Bool = false
-    /// Shelf-scoped primary CTA (e.g. "[ + READING NOW ]") shown above the Queue/Read row
+    /// Shelf-scoped primary CTA (e.g. "+ READING NOW") shown above the Queue/Read row
     /// when the profile was opened from a shelf's "Add" tile. Hidden if already in queue.
     var shelfActionTitle: String? = nil
     var onAddToShelf: (() -> Void)? = nil
+    /// When `false`, hides the "Recommend to a Friend" section. Discover suppresses it
+    /// since those are books the user hasn't read yet.
+    var showRecommend: Bool = true
 
     @EnvironmentObject private var appState: AppState
 
@@ -52,7 +54,19 @@ struct BookProfileView: View {
     @State private var profileTags: [String] = []
     @State private var tagsLoading = false
     @State private var userBookToEdit: UserBook? = nil
-    @State private var showRecommendSheet = false
+
+    // Recommend-to-a-friend section
+    private struct RecommendReader: Identifiable {
+        var id: String { uid }
+        let uid: String
+        let user: User
+    }
+    @State private var recommendReaders: [RecommendReader] = []
+    @State private var recommendLoading = false
+    @State private var recommendSendingTo: Set<String> = []
+    @State private var recommendSentTo: Set<String> = []
+    @State private var showInviteCompose = false
+    @State private var cantSendTextAlert = false
 
     private var showActionBar: Bool {
         onNotInterested != nil || onWantToRead != nil || onConfirmRead != nil || onRemoveFromQueue != nil || onAddToShelf != nil
@@ -89,10 +103,15 @@ struct BookProfileView: View {
                     if showReviewSection, let ub = readEntryForReview {
                         reviewWindow(ub: ub)
                             .padding(.horizontal)
+                        recommendSection
                     }
 
                     summaryWindow
                         .padding(.horizontal)
+
+                    if !showReviewSection {
+                        recommendSection
+                    }
 
                     if !readBooksForSimilar.isEmptyOrNil && (similarLoading || !similarBooks.isEmpty) {
                         similarWindow
@@ -123,12 +142,28 @@ struct BookProfileView: View {
             EditReadReviewSheet(userBook: ub)
                 .environmentObject(appState)
         }
-        .sheet(isPresented: $showRecommendSheet) {
-            RecommendBookSheet(book: book)
-                .environmentObject(appState)
+        .sheet(isPresented: $showInviteCompose) {
+            MessageComposeView(recipients: [], body: AppLinks.inviteMessage(bookTitle: book.title))
+                .ignoresSafeArea()
+        }
+        .alert("Can't send texts", isPresented: $cantSendTextAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("This device can't send text messages. You can still share Spine from the App Store: \(AppLinks.appStore)")
         }
         .navigationBarTitleDisplayMode(.inline)
         .task(id: book.id) {
+            recommendSendingTo = []
+            recommendSentTo = []
+            if showRecommend && appState.authUserId != nil && recommendReaders.isEmpty {
+                recommendLoading = true
+                Task {
+                    let list = await UserRepository().fetchAllReaderProfiles(excludingUid: appState.authUserId, limit: 500)
+                    recommendReaders = list.map { RecommendReader(uid: $0.uid, user: $0.user) }
+                    recommendLoading = false
+                }
+            }
+
             profileTags = []
             tagsLoading = true
             summaryLoading = true
@@ -156,10 +191,43 @@ struct BookProfileView: View {
 
     // MARK: - Hero
 
+    /// Badge label + color for the current user's status with this book.
+    /// `nil` (no relationship) → no badge.
+    private var statusBadge: (label: String, color: Color)? {
+        guard let ub = appState.userBooks.first(where: { $0.bookId == book.id }) else { return nil }
+        switch ub.status {
+        case .read:
+            return ("READ", Theme.chromeTeal)
+        case .currentlyReading:
+            return ("READING NOW", Theme.magentaPunch)
+        case .wantToRead:
+            switch ub.queueShelf {
+            case .readingNow: return ("READING NOW", Theme.magentaPunch)
+            case .upNext: return ("UP NEXT", Theme.accent)
+            case .backlog, nil: return ("BACKLOG", Theme.chromeNavy)
+            }
+        }
+    }
+
     private var hero: some View {
         VStack(spacing: 14) {
             BookCoverView(book: book, size: 220)
                 .shadow(color: Theme.textPrimary.opacity(0.18), radius: 14, x: 0, y: 6)
+                .overlay(alignment: .topTrailing) {
+                    if let badge = statusBadge {
+                        Text(badge.label)
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .tracking(0.8)
+                            .foregroundStyle(Theme.phosphorWhite)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Capsule().fill(badge.color))
+                            .overlay(Capsule().stroke(Theme.phosphorWhite.opacity(0.85), lineWidth: 1.5))
+                            .rotationEffect(.degrees(6))
+                            .shadow(color: Theme.textPrimary.opacity(0.25), radius: 4, x: 0, y: 2)
+                            .offset(x: 14, y: -10)
+                    }
+                }
 
             VStack(spacing: 4) {
                 Text(book.title)
@@ -172,6 +240,12 @@ struct BookProfileView: View {
                     .font(Theme.callout())
                     .foregroundStyle(Theme.textSecondary)
                     .multilineTextAlignment(.center)
+
+                if let published = book.publishedDate {
+                    Text("published \(Self.publishedYearFormatter.string(from: published))")
+                        .font(.system(size: 12, weight: .regular, design: .monospaced))
+                        .foregroundStyle(Theme.textTertiary)
+                }
             }
             .padding(.horizontal, 24)
 
@@ -198,8 +272,7 @@ struct BookProfileView: View {
                 reviewFooter(ub: ub)
             }
         }
-        .padding()
-        .windowedCard(title: reviewSectionHeading) {
+        .hingeSectionCard(title: reviewSectionHeading) {
             if let t = ub.tier {
                 TierBadge(tier: t, size: .mini)
             }
@@ -240,6 +313,12 @@ struct BookProfileView: View {
         return f
     }()
 
+    private static let publishedYearFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy"
+        return f
+    }()
+
     // MARK: - Summary window
 
     private var summaryWindow: some View {
@@ -269,12 +348,11 @@ struct BookProfileView: View {
                 .padding(.top, 4)
             }
         }
-        .padding()
-        .windowedCard(title: "Summary")
+        .hingeSectionCard(title: "Summary")
     }
 
     private func tagChip(_ tag: String) -> some View {
-        Text("[\(tag.lowercased())]")
+        Text(tag.lowercased())
             .font(.system(size: 11, weight: .semibold, design: .monospaced))
             .tracking(0.4)
             .foregroundStyle(Theme.chromeTeal)
@@ -327,8 +405,7 @@ struct BookProfileView: View {
                 }
             }
         }
-        .padding()
-        .windowedCard(title: "Similar Books")
+        .hingeSectionCard(title: "Similar Books")
     }
 
     // MARK: - Quote window
@@ -355,8 +432,157 @@ struct BookProfileView: View {
                 emptyState(text: "no notable quote available")
             }
         }
-        .padding()
-        .windowedCard(title: "Notable Quote", chrome: Theme.chromeNavy)
+        .hingeSectionCard(title: "Notable Quote", accent: Theme.chromeNavy)
+    }
+
+    // MARK: - Recommend window
+
+    /// Windowed section (below My Review, or Summary when there's no review):
+    /// tap a reader to send them this book, or the dashed tile to text an
+    /// invite to someone who isn't on Spine yet.
+    @ViewBuilder
+    private var recommendSection: some View {
+        if showRecommend, appState.authUserId != nil {
+            recommendWindow
+                .padding(.horizontal)
+        }
+    }
+
+    private var recommendWindow: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if recommendLoading {
+                phosphorLoader(label: "loading readers")
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: 14) {
+                        ForEach(recommendReaders) { reader in
+                            recommendReaderTile(reader)
+                        }
+                        inviteTile
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+        }
+        .hingeSectionCard(title: "Recommend to a Friend")
+    }
+
+    private func recommendReaderTile(_ reader: RecommendReader) -> some View {
+        let sent = recommendSentTo.contains(reader.uid)
+        let sending = recommendSendingTo.contains(reader.uid)
+        return Button {
+            sendRecommendation(to: reader)
+        } label: {
+            VStack(spacing: 6) {
+                readerAvatar(user: reader.user)
+                    .opacity(sending || sent ? 0.55 : 1)
+                    .overlay(alignment: .bottomTrailing) {
+                        if sent {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(Theme.accent)
+                                .background(Circle().fill(Theme.background))
+                                .offset(x: 3, y: 3)
+                        }
+                    }
+                    .overlay {
+                        if sending {
+                            ProgressView().tint(Theme.accent)
+                        }
+                    }
+                Text(reader.user.displayName)
+                    .font(.system(size: 10, weight: .regular, design: .monospaced))
+                    .foregroundStyle(sent ? Theme.textTertiary : Theme.textSecondary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .frame(width: 64)
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(sent || sending)
+    }
+
+    private var inviteTile: some View {
+        Button {
+            if MessageComposeView.canSendText {
+                showInviteCompose = true
+            } else {
+                cantSendTextAlert = true
+            }
+        } label: {
+            VStack(spacing: 6) {
+                Circle()
+                    .fill(Theme.surface)
+                    .frame(width: 52, height: 52)
+                    .overlay(
+                        Image(systemName: "plus.message")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(Theme.chromeTeal)
+                    )
+                    .overlay(
+                        Circle()
+                            .stroke(Theme.chromeTeal.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                    )
+                Text("invite via text")
+                    .font(.system(size: 10, weight: .regular, design: .monospaced))
+                    .foregroundStyle(Theme.textSecondary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .frame(width: 64)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func readerAvatar(user: User) -> some View {
+        ZStack {
+            if let urlString = user.profileImageURL, let url = URL(string: urlString) {
+                CachedProfileImage(url: url, contentMode: .fill) {
+                    initialCircle(user.displayName)
+                }
+            } else {
+                initialCircle(user.displayName)
+            }
+        }
+        .frame(width: 52, height: 52)
+        .clipShape(Circle())
+    }
+
+    private func initialCircle(_ name: String) -> some View {
+        Circle()
+            .fill(Theme.chromeTeal)
+            .overlay(
+                Text(String(name.prefix(1)).uppercased())
+                    .font(.system(size: 20, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Theme.phosphorWhite)
+            )
+    }
+
+    private func sendRecommendation(to reader: RecommendReader) {
+        guard let fromUid = appState.authUserId else { return }
+        recommendSendingTo.insert(reader.uid)
+        Task {
+            do {
+                _ = try await RecommendationRepository().send(
+                    fromUserId: fromUid,
+                    toUserId: reader.uid,
+                    book: book,
+                    note: nil
+                )
+                await MainActor.run {
+                    recommendSendingTo.remove(reader.uid)
+                    recommendSentTo.insert(reader.uid)
+                    ToastCenter.shared.show(.recommendationSent(to: reader.user.displayName))
+                }
+            } catch {
+                await MainActor.run {
+                    recommendSendingTo.remove(reader.uid)
+                    ToastCenter.shared.show(
+                        Toast(style: .error, status: "Failed", message: "Couldn't send to \(reader.user.displayName)")
+                    )
+                }
+            }
+        }
     }
 
     // MARK: - Loading / empty helpers
@@ -375,7 +601,7 @@ struct BookProfileView: View {
     }
 
     private func emptyState(text: String) -> some View {
-        Text("[ \(text) ]")
+        Text(text)
             .font(.system(size: 13, weight: .regular, design: .monospaced))
             .tracking(0.5)
             .foregroundStyle(Theme.textTertiary)
@@ -392,12 +618,6 @@ struct BookProfileView: View {
                 .buttonStyle(.plain)
             }
             actionButtonRow
-            if appState.authUserId != nil {
-                Button(action: { showRecommendSheet = true }) {
-                    actionLabel("[ RECOMMEND TO A FRIEND ]", foreground: Theme.textSecondary, background: Theme.surface, border: Theme.chromeTeal.opacity(0.5))
-                }
-                .buttonStyle(.plain)
-            }
         }
         .padding(.horizontal)
         .padding(.top, 18)
@@ -417,7 +637,7 @@ struct BookProfileView: View {
         HStack(spacing: 10) {
             if onNotInterested != nil {
                 Button(action: { onNotInterested?() }) {
-                    actionLabel("[ PASS ]", foreground: Theme.textSecondary, background: Theme.surface, border: Theme.chromeTeal.opacity(0.5))
+                    actionLabel("PASS", foreground: Theme.textSecondary, background: Theme.surface, border: Theme.chromeTeal.opacity(0.5))
                 }
                 .buttonStyle(.plain)
             }
@@ -425,18 +645,18 @@ struct BookProfileView: View {
                 Group {
                     if isInQueue && onRemoveFromQueue != nil {
                         Button(action: { onRemoveFromQueue?() }) {
-                            actionLabel("[ REMOVE ]", foreground: Theme.phosphorWhite, background: Color(red: 0.86, green: 0.32, blue: 0.30), border: .clear)
+                            actionLabel("REMOVE", foreground: Theme.phosphorWhite, background: Color(red: 0.86, green: 0.32, blue: 0.30), border: .clear)
                         }
                         .buttonStyle(.plain)
                     } else if isInQueue {
                         Button {} label: {
-                            actionLabel("[ IN QUEUE ]", foreground: Theme.textTertiary, background: Theme.surface, border: Theme.chromeTeal.opacity(0.3))
+                            actionLabel("IN QUEUE", foreground: Theme.textTertiary, background: Theme.surface, border: Theme.chromeTeal.opacity(0.3))
                         }
                         .buttonStyle(.plain)
                         .disabled(true)
                     } else {
                         Button(action: { onWantToRead?() }) {
-                            actionLabel("[ QUEUE ]", foreground: Theme.queuePowderBlueLabel, background: Theme.queuePowderBlue, border: .clear)
+                            actionLabel("QUEUE", foreground: Theme.queuePowderBlueLabel, background: Theme.queuePowderBlue, border: .clear)
                         }
                         .buttonStyle(.plain)
                     }
@@ -450,7 +670,7 @@ struct BookProfileView: View {
                     // When a shelf CTA is the primary action, READ steps down to an outline
                     // style so there's a single clear main button.
                     actionLabel(
-                        isOnReadList ? "[ READ \u{2714} ]" : "[ READ ]",
+                        isOnReadList ? "READ \u{2714}" : "READ",
                         foreground: isOnReadList
                             ? Theme.phosphorWhite
                             : (showShelfAction ? Theme.textSecondary : Theme.phosphorWhite),

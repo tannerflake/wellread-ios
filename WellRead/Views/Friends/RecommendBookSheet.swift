@@ -161,7 +161,7 @@ struct RecommendBookSheet: View {
                 Button {
                     send(to: reader)
                 } label: {
-                    Text("[ SEND ]")
+                    Text("SEND")
                         .font(.system(size: 12, weight: .bold, design: .monospaced))
                         .foregroundStyle(Theme.accent)
                 }
@@ -181,7 +181,7 @@ struct RecommendBookSheet: View {
             Button {
                 showInviteContacts = true
             } label: {
-                Text("[ INVITE FROM CONTACTS ]")
+                Text("INVITE FROM CONTACTS")
                     .font(.system(size: 13, weight: .bold, design: .monospaced))
                     .tracking(1)
                     .foregroundStyle(Theme.textSecondary)

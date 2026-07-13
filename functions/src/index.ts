@@ -304,8 +304,30 @@ export const onCommentCreated = onDocumentCreated(
     const first = firstNameFromUser(commenter);
     const { title: book, coverURL } = await bookInfo(postData.bookId as string | undefined);
 
-    // Author: review_commented (not if self-comment)
-    if (commenterId !== authorId) {
+    // Reply to another comment: comment_replied to the parent comment's author.
+    const parentCommentId = d.parentCommentId as string | undefined;
+    let replyTargetUid: string | null = null;
+    if (parentCommentId) {
+      const parent = await db.collection("comments").doc(parentCommentId).get();
+      const parentUid = parent.data()?.userId as string | undefined;
+      if (parentUid && parentUid !== commenterId) {
+        replyTargetUid = parentUid;
+        const replyTitle = book
+          ? `${first} replied to your comment on ${book}`
+          : `${first} replied to your comment`;
+        const replyBody = teaser8Words(commentText);
+        await sendToUser(
+          replyTargetUid,
+          replyTitle,
+          replyBody,
+          { type: "comment_replied", postId },
+          coverURL
+        );
+      }
+    }
+
+    // Author: review_commented (not if self-comment; skip if they already got comment_replied)
+    if (commenterId !== authorId && authorId !== replyTargetUid) {
       const title = book
         ? `${first} commented on your review of ${book}`
         : `${first} replied to your review`;
@@ -320,7 +342,8 @@ export const onCommentCreated = onDocumentCreated(
       );
     }
 
-    // Thread participants (exclude new commenter and post author — author already notified above)
+    // Thread participants (exclude new commenter, post author, and the replied-to
+    // commenter — each already notified above)
     const commentsSnap = await db.collection("comments").where("postId", "==", postId).get();
     const participantIds = new Set<string>();
     commentsSnap.forEach((doc) => {
@@ -329,6 +352,7 @@ export const onCommentCreated = onDocumentCreated(
     });
     participantIds.delete(commenterId);
     participantIds.delete(authorId);
+    if (replyTargetUid) participantIds.delete(replyTargetUid);
 
     const threadTitle = book
       ? `${first} also commented on the ${book} review you joined`

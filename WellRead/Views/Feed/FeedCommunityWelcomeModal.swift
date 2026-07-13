@@ -4,7 +4,7 @@
 //
 //  One-time overlay on the feed explaining default mutual follows for early
 //  community users. Themed to match Spine redesign — windowed card, mono
-//  type, bracketed CTA.
+//  type, mono CTA.
 //
 
 import SwiftUI
@@ -43,7 +43,7 @@ struct FeedCommunityWelcomeModal: View {
                 .frame(maxHeight: 380)
 
                 Button(action: onGotIt) {
-                    Text("[ I'M GLAD TO BE HERE ]")
+                    Text("I'M GLAD TO BE HERE")
                         .font(.system(size: 13, weight: .bold, design: .monospaced))
                         .tracking(1)
                         .multilineTextAlignment(.center)

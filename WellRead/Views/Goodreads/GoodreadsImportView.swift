@@ -724,7 +724,7 @@ struct GoodreadsImportView: View {
     }
 
     private func cardSectionLabel(_ text: String) -> some View {
-        Text(SpinesGlyphs.bracketed(text))
+        Text(SpinesGlyphs.caps(text))
             .font(.system(size: 11, weight: .bold, design: .monospaced))
             .tracking(0.5)
             .foregroundStyle(Theme.chromeTeal)
