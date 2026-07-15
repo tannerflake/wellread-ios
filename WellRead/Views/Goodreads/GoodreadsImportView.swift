@@ -539,6 +539,11 @@ struct GoodreadsImportView: View {
     @StateObject private var model = GoodreadsWizardModel()
     @State private var showFileImporter = false
     @State private var showExportWebView = false
+    /// Goodreads bounces an unauthenticated visit to its login page, then
+    /// strands the user on the homepage instead of the export page — so the
+    /// explainer walks two visits: log in first ("I'm logged in" advances this
+    /// flag), then reopen the same page to actually export.
+    @State private var goodreadsLoginDone = false
     @State private var showImportAllConfirm = false
     @State private var showStartOverConfirm = false
     // Inline-editable card state, re-seeded from the Goodreads row for each book.
@@ -602,10 +607,19 @@ struct GoodreadsImportView: View {
                 syncCardState()
             }
             .fullScreenCover(isPresented: $showExportWebView) {
-                GoodreadsExportWebView { rows in
-                    showExportWebView = false
-                    model.startSession(rows: rows)
-                }
+                GoodreadsExportWebView(
+                    mode: goodreadsLoginDone ? .export : .login,
+                    onLoggedIn: {
+                        goodreadsLoginDone = true
+                        showExportWebView = false
+                    },
+                    onRows: { rows in
+                        // Already-logged-in users can export on the first visit.
+                        goodreadsLoginDone = true
+                        showExportWebView = false
+                        model.startSession(rows: rows)
+                    }
+                )
             }
             .alert("Delete import progress?", isPresented: $showStartOverConfirm) {
                 Button("Delete progress", role: .destructive) { model.startOver() }
@@ -682,16 +696,18 @@ struct GoodreadsImportView: View {
 
                     Grid(alignment: .topLeading, horizontalSpacing: 12, verticalSpacing: 12) {
                         GridRow {
-                            stepNumberBadge(1)
-                            stepBody("Tap the button below — your Goodreads export page opens right here in Spine. Sign in if asked.")
+                            stepNumberBadge(1, done: goodreadsLoginDone, active: !goodreadsLoginDone)
+                            stepBody(
+                                "Log in to Goodreads — tap the button below and sign in. Once you’re in, tap “I’m logged in”.",
+                                dimmed: goodreadsLoginDone
+                            )
                         }
-                        GridRow {
-                            stepNumberBadge(2)
-                            stepBody("Tap \"Export Library\", then tap the \"Your export from…\" link once it appears.")
-                        }
-                        GridRow {
-                            stepNumberBadge(3)
-                            stepBody("That's it — Spine grabs the file and starts your import automatically.")
+                        // Step 2 only appears once they're back from logging in.
+                        if goodreadsLoginDone {
+                            GridRow {
+                                stepNumberBadge(2, done: false, active: false)
+                                stepBody("Tap “Get my Goodreads export”, then “Export Library”, then the “Your export from…” link — SPINE takes it from there.")
+                            }
                         }
                     }
                 }
@@ -700,8 +716,8 @@ struct GoodreadsImportView: View {
                     showExportWebView = true
                 } label: {
                     HStack {
-                        Image(systemName: "square.and.arrow.down")
-                        Text("Get my Goodreads export")
+                        Image(systemName: goodreadsLoginDone ? "square.and.arrow.down" : "person.crop.circle")
+                        Text(goodreadsLoginDone ? "Get my Goodreads export" : "Log in to Goodreads")
                     }
                     .font(Theme.headline())
                     .foregroundStyle(Theme.background)
@@ -709,27 +725,6 @@ struct GoodreadsImportView: View {
                     .padding(.vertical, 14)
                     .background(Theme.accentGloss)
                     .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
-                }
-                .buttonStyle(.plain)
-
-                Button {
-                    showFileImporter = true
-                } label: {
-                    HStack {
-                        Image(systemName: "square.and.arrow.up")
-                        Text("Already have the CSV? Upload it")
-                    }
-                    .font(Theme.callout())
-                    .fontWeight(.medium)
-                    .foregroundStyle(Theme.textSecondary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(Theme.surface)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
-                            .strokeBorder(Theme.textTertiary.opacity(0.35), lineWidth: 1)
-                    )
                 }
                 .buttonStyle(.plain)
 
@@ -743,21 +738,55 @@ struct GoodreadsImportView: View {
             .padding(Theme.cardPadding)
             .padding(.bottom, 16)
         }
+        .safeAreaInset(edge: .bottom) {
+            Button {
+                showFileImporter = true
+            } label: {
+                Text("Already have the export file?")
+                    .font(Theme.caption())
+                    .fontWeight(.medium)
+                    .foregroundStyle(Theme.textTertiary)
+                    .underline()
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+            }
+            .buttonStyle(.plain)
+            .padding(.bottom, 4)
+        }
     }
 
-    private func stepNumberBadge(_ number: Int) -> some View {
-        Text("\(number)")
-            .font(Theme.headline())
-            .foregroundStyle(Theme.background)
-            .frame(width: 28, height: 28)
-            .background(Theme.accentGloss)
-            .clipShape(Circle())
+    private func stepNumberBadge(_ number: Int, done: Bool, active: Bool) -> some View {
+        Group {
+            if done {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.background)
+            } else {
+                Text("\(number)")
+                    .font(Theme.headline())
+                    .foregroundStyle(active ? Theme.background : Theme.textPrimary)
+            }
+        }
+        .frame(width: 28, height: 28)
+        .background(
+            done || active
+                ? AnyShapeStyle(Theme.accentGloss)
+                : AnyShapeStyle(Theme.surface)
+        )
+        .clipShape(Circle())
+        .overlay(
+            Circle()
+                .strokeBorder(
+                    done || active ? Color.clear : Theme.textTertiary.opacity(0.35),
+                    lineWidth: 1
+                )
+        )
     }
 
-    private func stepBody(_ text: String) -> some View {
+    private func stepBody(_ text: String, dimmed: Bool = false) -> some View {
         Text(text)
             .font(Theme.callout())
-            .foregroundStyle(Theme.textSecondary)
+            .foregroundStyle(dimmed ? Theme.textTertiary : Theme.textSecondary)
             .multilineTextAlignment(.leading)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -1021,7 +1050,7 @@ struct GoodreadsImportView: View {
                 Text("Read books done!")
                     .font(Theme.title2())
                     .foregroundStyle(Theme.textPrimary)
-                Text("You have \(model.session?.pendingQueueCount ?? 0) books on your Goodreads to-read shelf. Add them to your Spine queue?")
+                Text("You have \(model.session?.pendingQueueCount ?? 0) books on your Goodreads to-read shelf. Add them to your SPINE queue?")
                     .font(Theme.callout())
                     .foregroundStyle(Theme.textSecondary)
                     .multilineTextAlignment(.center)

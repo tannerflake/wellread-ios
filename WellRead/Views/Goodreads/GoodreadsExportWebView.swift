@@ -2,7 +2,7 @@
 //  GoodreadsExportWebView.swift
 //  WellRead
 //
-//  Embedded browser for the Goodreads export page. Two jobs:
+//  Embedded browser for the Goodreads export page. Three jobs:
 //  1. Keep navigation inside Spine — goodreads.com registers a catch-all
 //     universal link, so opening the page externally hands off to the Goodreads
 //     app (where the CSV can't be downloaded). Universal links never trigger
@@ -10,12 +10,27 @@
 //  2. Intercept the library-export CSV download via WKDownloadDelegate and feed
 //     the parsed rows straight back to the import wizard — no Files app, no
 //     upload step.
+//  3. Guide the two-visit dance: Goodreads bounces an unauthenticated visit to
+//     its login page and then strands the user on the homepage (not back on the
+//     export page), so the wizard opens this view twice — once in `.login` mode
+//     ("sign in, then tap I'm logged in") and once in `.export` mode. Same URL
+//     both times.
 //
 
 import SwiftUI
 import WebKit
 
 struct GoodreadsExportWebView: View {
+    /// Which step of the two-visit import flow this browser visit is for.
+    enum Mode {
+        case login
+        case export
+    }
+
+    var mode: Mode = .export
+    /// Login mode only: the user tapped "I'm logged in" — the wizard advances
+    /// to the export step.
+    var onLoggedIn: () -> Void = {}
     /// Called with parsed rows when the user's export CSV is captured.
     let onRows: ([GoodreadsRow]) -> Void
 
@@ -25,57 +40,79 @@ struct GoodreadsExportWebView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack(alignment: .bottom) {
+            VStack(spacing: 0) {
+                statusBanner
                 GoodreadsExportWebViewRepresentable(
                     isDownloading: $isDownloading,
                     errorMessage: $errorMessage,
                     onRows: onRows
                 )
                 .ignoresSafeArea(edges: .bottom)
-
-                statusBanner
             }
-            .navigationTitle("Goodreads export")
+            .navigationTitle(mode == .login ? "Log in to Goodreads" : "Goodreads export")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Theme.background, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
-                        .foregroundStyle(Theme.accent)
+                    Button(mode == .login ? "Cancel" : "Close") { dismiss() }
+                        .foregroundStyle(mode == .login ? Theme.textTertiary : Theme.accent)
+                }
+                if mode == .login {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button {
+                            onLoggedIn()
+                        } label: {
+                            Text("I’m logged in")
+                                .font(Theme.callout())
+                                .fontWeight(.semibold)
+                                .foregroundStyle(Theme.accent)
+                        }
+                    }
                 }
             }
         }
     }
 
     private var statusBanner: some View {
-        HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 4) {
             if isDownloading {
-                ProgressView()
-                    .tint(Theme.accent)
-                Text("Grabbing your export…")
-                    .font(Theme.caption())
-                    .foregroundStyle(Theme.textPrimary)
+                HStack(spacing: 10) {
+                    ProgressView()
+                        .tint(Theme.accent)
+                    Text("Grabbing your export…")
+                        .font(Theme.callout())
+                        .fontWeight(.medium)
+                        .foregroundStyle(Theme.textPrimary)
+                }
             } else if let errorMessage {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 14))
-                    .foregroundStyle(Theme.magentaPunch)
-                Text(errorMessage)
-                    .font(Theme.caption())
-                    .foregroundStyle(Theme.textPrimary)
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Theme.magentaPunch)
+                    Text(errorMessage)
+                        .font(Theme.callout())
+                        .foregroundStyle(Theme.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             } else {
-                Text(SpinesGlyphs.caps("Tip"))
+                Text(SpinesGlyphs.caps(mode == .login ? "Step 1 of 2" : "Step 2 of 2"))
                     .font(.system(size: 11, weight: .bold))
+                    .tracking(0.5)
                     .foregroundStyle(Theme.chromeTeal)
-                Text("Tap “Export Library”, then tap the “Your export from…” link when it appears.")
-                    .font(Theme.caption())
+                Text(mode == .login
+                     ? "Sign in to Goodreads, then tap “I’m logged in” at the top. Already signed in? Tap it now."
+                     : "Tap “Export Library”, then tap the “Your export from…” link when it appears — SPINE takes it from there.")
+                    .font(Theme.callout())
+                    .fontWeight(.medium)
                     .foregroundStyle(Theme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
         .background(Theme.surfaceElevated)
-        .overlay(alignment: .top) {
+        .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(Theme.chromeTeal.opacity(0.35))
                 .frame(height: Theme.chromeHairline)

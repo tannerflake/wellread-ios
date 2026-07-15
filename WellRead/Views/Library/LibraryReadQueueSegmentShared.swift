@@ -31,13 +31,13 @@ struct LibraryReadingGoalProgressStrip: View {
     private var caption: String {
         switch copy {
         case .own:
-            return "Read \(booksRead) of \(goal) for your \(calendarYear) goal"
+            return "Read \(booksRead) of your \(goal) goal for \(calendarYear)"
         case .other(let first):
             let trimmed = first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             if !trimmed.isEmpty {
-                return "Read \(booksRead) of \(goal) for \(trimmed)'s \(calendarYear) goal"
+                return "Read \(booksRead) of \(trimmed)'s \(goal) goal for \(calendarYear)"
             }
-            return "Read \(booksRead) of \(goal) for their \(calendarYear) goal"
+            return "Read \(booksRead) of their \(goal) goal for \(calendarYear)"
         }
     }
 

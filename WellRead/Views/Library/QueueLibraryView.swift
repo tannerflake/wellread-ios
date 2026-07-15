@@ -135,6 +135,7 @@ private struct QueueAddBookTile: View {
                     .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
                     .foregroundStyle(Theme.textTertiary.opacity(0.6))
             )
+            .opacity(0.5)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -168,6 +169,7 @@ private struct QueueEmptyShelfAddTile: View {
                     .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [8, 6]))
                     .foregroundStyle(Theme.textTertiary.opacity(0.5))
             )
+            .opacity(0.5)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

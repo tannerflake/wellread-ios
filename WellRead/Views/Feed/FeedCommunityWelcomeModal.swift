@@ -14,7 +14,7 @@ struct FeedCommunityWelcomeModal: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 14) {
-                Text("Welcome to Spine")
+                Text("Welcome to SPINE")
                     .font(Theme.largeTitle())
                     .tracking(Theme.displayTracking)
                     .foregroundStyle(Theme.textPrimary)

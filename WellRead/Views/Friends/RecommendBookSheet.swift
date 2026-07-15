@@ -175,7 +175,7 @@ struct RecommendBookSheet: View {
 
     private var inviteFooter: some View {
         VStack(spacing: 8) {
-            Text("Friend not on Spine yet?")
+            Text("Friend not on SPINE yet?")
                 .font(Theme.caption())
                 .foregroundStyle(Theme.textSecondary)
             Button {

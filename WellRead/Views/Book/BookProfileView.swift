@@ -149,7 +149,7 @@ struct BookProfileView: View {
         .alert("Can't send texts", isPresented: $cantSendTextAlert) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("This device can't send text messages. You can still share Spine from the App Store: \(AppLinks.appStore)")
+            Text("This device can't send text messages. You can still share SPINE from the App Store: \(AppLinks.appStore)")
         }
         .navigationBarTitleDisplayMode(.inline)
         .task(id: book.id) {

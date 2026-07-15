@@ -3,7 +3,7 @@
 //  WellRead
 //
 //  Contact sync: matches the address book against Spine members by phone
-//  number ("On Spine" — tap through to their library) and offers one-tap SMS
+//  number ("On SPINE" — tap through to their library) and offers one-tap SMS
 //  invites for everyone else. Presented as a sheet from the Library profile
 //  menu and from the recommend-a-book flow.
 //
@@ -57,7 +57,7 @@ struct FindFriendsView: View {
         .alert("Can't send texts", isPresented: $cantSendTextAlert) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("This device can't send text messages. You can still share Spine from the App Store: \(AppLinks.appStore)")
+            Text("This device can't send text messages. You can still share SPINE from the App Store: \(AppLinks.appStore)")
         }
         .task { await syncIfAuthorized() }
     }
@@ -77,14 +77,14 @@ struct FindFriendsView: View {
         case .denied, .restricted:
             explainer(
                 title: "Contacts access is off",
-                message: "To find friends already on Spine and invite the rest, allow contact access in Settings.",
+                message: "To find friends already on SPINE and invite the rest, allow contact access in Settings.",
                 buttonTitle: "Open Settings",
                 action: openSettings
             )
         default:
             explainer(
                 title: "Find friends from your contacts",
-                message: "Spine checks which of your contacts are already members — matched by phone number — and lets you text an invite to anyone who isn't yet. Contacts stay on your device.",
+                message: "SPINE checks which of your contacts are already members — matched by phone number — and lets you text an invite to anyone who isn't yet. Contacts stay on your device.",
                 buttonTitle: "Sync Contacts",
                 action: { Task { await requestAndSync() } }
             )
@@ -137,7 +137,7 @@ struct FindFriendsView: View {
                 }
 
                 if !filteredMatched.isEmpty {
-                    sectionHeader("On Spine")
+                    sectionHeader("On SPINE")
                     ForEach(filteredMatched) { member in
                         NavigationLink(value: member.uid) {
                             memberRow(member)
@@ -147,7 +147,7 @@ struct FindFriendsView: View {
                 }
 
                 if !filteredInvites.isEmpty {
-                    sectionHeader("Invite to Spine")
+                    sectionHeader("Invite to SPINE")
                     ForEach(filteredInvites) { contact in
                         inviteRow(contact)
                     }

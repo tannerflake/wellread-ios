@@ -192,7 +192,7 @@ struct ProfileCompletionView: View {
                                 .textFieldStyle(.plain)
                                 .focused($focusedField, equals: .phone)
                         }
-                        Text("So friends who sync their contacts can find you on Spine.")
+                        Text("So friends who sync their contacts can find you on SPINE.")
                             .font(Theme.caption())
                             .foregroundStyle(Theme.textTertiary)
                     }

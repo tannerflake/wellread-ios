@@ -871,7 +871,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = WellReadShareExtension/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Spines;
+				INFOPLIST_KEY_CFBundleDisplayName = SPINE;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -938,7 +938,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = WellReadShareExtension/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Spines;
+				INFOPLIST_KEY_CFBundleDisplayName = SPINE;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -977,7 +977,7 @@
 				GCC_NO_COMMON_BLOCKS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = WellReadNotificationService/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Spines;
+				INFOPLIST_KEY_CFBundleDisplayName = SPINE;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1015,7 +1015,7 @@
 				GCC_NO_COMMON_BLOCKS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = WellReadNotificationService/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Spines;
+				INFOPLIST_KEY_CFBundleDisplayName = SPINE;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
