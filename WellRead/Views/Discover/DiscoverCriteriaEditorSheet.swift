@@ -27,15 +27,16 @@ struct DiscoverCriteriaEditorSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    Text("Your next suggestions come only from what you set here. Leave everything empty to go back to picks from your whole library and interests.")
-                        .font(Theme.caption())
-                        .foregroundStyle(Theme.textSecondary)
+                VStack(alignment: .leading, spacing: 20) {
+                    Text("What are you in the mood for?")
+                        .font(Theme.title())
+                        .foregroundStyle(Theme.textPrimary)
+                        .padding(.top, 4)
 
+                    freeTextSection
                     seedBooksSection
                     tiersSection
                     tagsSection
-                    freeTextSection
 
                     Button {
                         save()
@@ -45,7 +46,7 @@ struct DiscoverCriteriaEditorSheet: View {
                             .foregroundStyle(Theme.background)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
-                            .background(Theme.accent)
+                            .background(Theme.accentGloss)
                             .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
                     }
                     .buttonStyle(.plain)
@@ -73,10 +74,8 @@ struct DiscoverCriteriaEditorSheet: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .background(Theme.background)
-            .navigationTitle("Tune Discover")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Theme.background, for: .navigationBar)
-            .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -106,39 +105,75 @@ struct DiscoverCriteriaEditorSheet: View {
     // MARK: - Books
 
     private var seedBooksSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            sectionHeader("Specific books", detail: "Get suggestions similar to books you pick.")
-            if draft.seedBooks.isEmpty {
-                if appState.readBooks.isEmpty {
-                    Text("Finish and rank some books first to use them as seeds.")
-                        .font(Theme.caption())
-                        .foregroundStyle(Theme.textTertiary)
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Pick a favorite and we'll suggest books with the same vibe.")
+                .font(Theme.callout())
+                .foregroundStyle(Theme.textSecondary)
+            if appState.readBooks.isEmpty {
+                Text("Finish and rank some books first to use them as seeds.")
+                    .font(Theme.caption())
+                    .foregroundStyle(Theme.textTertiary)
+            } else if draft.seedBooks.isEmpty {
+                NavigationLink {
+                    DiscoverBookPickerView(readBooks: appState.readBooks, selectedSeeds: $draft.seedBooks)
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "books.vertical")
+                            .font(.system(size: 18, weight: .semibold))
+                        Text("Choose books from your tier list")
+                            .font(Theme.callout())
+                            .fontWeight(.semibold)
+                    }
+                    .foregroundStyle(Theme.accent)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 18)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Theme.accent.opacity(0.06))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .strokeBorder(Theme.accent.opacity(0.55), style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
+                    )
                 }
+                .buttonStyle(.plain)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
                         ForEach(draft.seedBooks, id: \.bookId) { seed in
                             seedTile(seed)
                         }
+                        addSeedTile
                     }
                 }
-            }
-            if !appState.readBooks.isEmpty {
-                NavigationLink {
-                    DiscoverBookPickerView(readBooks: appState.readBooks, selectedSeeds: $draft.seedBooks)
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "plus.circle")
-                            .font(.system(size: 14, weight: .semibold))
-                        Text(draft.seedBooks.isEmpty ? "Choose from your tier list" : "Add or remove books")
-                            .font(Theme.caption())
-                            .fontWeight(.medium)
-                    }
-                    .foregroundStyle(Theme.accent)
-                }
-                .buttonStyle(.plain)
             }
         }
+        .hingeSectionCard(title: "Start from books you loved")
+    }
+
+    /// Cover-shaped dashed "add" tile shown after the chosen seeds.
+    private var addSeedTile: some View {
+        NavigationLink {
+            DiscoverBookPickerView(readBooks: appState.readBooks, selectedSeeds: $draft.seedBooks)
+        } label: {
+            VStack(spacing: 6) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Theme.accent.opacity(0.06))
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(Theme.accent.opacity(0.55), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                    Image(systemName: "plus")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(Theme.accent)
+                }
+                .frame(width: 56, height: 84)
+                Text("Add")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Theme.accent)
+            }
+            .frame(width: 68)
+        }
+        .buttonStyle(.plain)
     }
 
     private func seedTile(_ seed: DiscoverSeedBook) -> some View {
@@ -151,7 +186,7 @@ struct DiscoverCriteriaEditorSheet: View {
                     .frame(width: 56, height: 84)
                     .overlay(
                         Text(seed.title)
-                            .font(.system(size: 9, weight: .medium, design: .monospaced))
+                            .font(.system(size: 9, weight: .medium))
                             .foregroundStyle(Theme.textSecondary)
                             .multilineTextAlignment(.center)
                             .padding(4)
@@ -172,14 +207,17 @@ struct DiscoverCriteriaEditorSheet: View {
     // MARK: - Tiers
 
     private var tiersSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            sectionHeader("Tiers", detail: "Seed suggestions from every book in the tiers you pick.")
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Use every book in the tiers you pick as inspiration.")
+                .font(Theme.callout())
+                .foregroundStyle(Theme.textSecondary)
             HStack(spacing: 8) {
                 ForEach(spineTierLabels, id: \.self) { tier in
                     tierToggle(tier)
                 }
             }
         }
+        .hingeSectionCard(title: "Whole tiers")
     }
 
     private func tierToggle(_ tier: String) -> some View {
@@ -194,10 +232,10 @@ struct DiscoverCriteriaEditorSheet: View {
         } label: {
             VStack(spacing: 2) {
                 Text(tier)
-                    .font(.system(size: 16, weight: .bold, design: .monospaced))
+                    .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(Color.black.opacity(0.75))
                 Text("\(count)")
-                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(Color.black.opacity(0.55))
             }
             .frame(maxWidth: .infinity)
@@ -217,20 +255,24 @@ struct DiscoverCriteriaEditorSheet: View {
     // MARK: - Tags
 
     private var tagsSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            sectionHeader("Tags & genres", detail: "Focus suggestions on topics, genres, or vibes.")
-            TagCatalogPicker(selected: $selectedTags, filterByFormat: true)
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Focus suggestions on topics, genres, or vibes.")
+                .font(Theme.callout())
+                .foregroundStyle(Theme.textSecondary)
+            VStack(alignment: .leading, spacing: 18) {
+                TagCatalogPicker(selected: $selectedTags, filterByFormat: true, separated: true)
+            }
         }
+        .hingeSectionCard(title: "Tags & genres")
     }
 
     // MARK: - Free text
 
     private var freeTextSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            sectionHeader("In your own words", detail: "Describe what you're in the mood for.")
+        VStack(alignment: .leading, spacing: 12) {
             ZStack(alignment: .topLeading) {
                 if draft.freeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Text("e.g. something like Dune but funnier")
+                    Text("\u{201C}a dystopian novel but not one written for tweens\u{201D}")
                         .font(Theme.body())
                         .foregroundStyle(Theme.textSecondary.opacity(0.7))
                         .padding(.horizontal, 4)
@@ -256,16 +298,6 @@ struct DiscoverCriteriaEditorSheet: View {
                     .strokeBorder(Theme.textTertiary.opacity(0.3), lineWidth: 1)
             )
         }
-    }
-
-    private func sectionHeader(_ title: String, detail: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(Theme.caption())
-                .foregroundStyle(Theme.textSecondary)
-            Text(detail)
-                .font(Theme.caption())
-                .foregroundStyle(Theme.textTertiary)
-        }
+        .hingeSectionCard(title: "Describe the type of book you're looking for")
     }
 }

@@ -14,6 +14,9 @@ struct TagCatalogPicker: View {
     /// can't apply to that format are hidden — e.g. Dystopian disappears once the user
     /// picks Non-Fiction only. Off by default so onboarding/profile show the full catalog.
     var filterByFormat: Bool = false
+    /// When true, a hairline rule is drawn above each category after the first,
+    /// visually separating the groups (used by the Discover criteria editor).
+    var separated: Bool = false
 
     /// Categories/tags that only make sense for fiction.
     private static let fictionOnlyCategories: Set<String> = ["Story Type", "Setting / World", "Character / Dynamics"]
@@ -37,8 +40,15 @@ struct TagCatalogPicker: View {
     }
 
     var body: some View {
-        ForEach(visibleSections, id: \.category) { section in
+        let sections = visibleSections
+        ForEach(Array(sections.enumerated()), id: \.element.category) { index, section in
             VStack(alignment: .leading, spacing: 10) {
+                if separated && index > 0 {
+                    Rectangle()
+                        .fill(Theme.textTertiary.opacity(0.25))
+                        .frame(height: 1)
+                        .padding(.bottom, 6)
+                }
                 Text(section.category.uppercased())
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Theme.textTertiary)

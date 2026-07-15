@@ -111,7 +111,7 @@ struct FindFriendsView: View {
                     .foregroundStyle(Theme.background)
                     .padding(.horizontal, 32)
                     .padding(.vertical, 14)
-                    .background(Theme.accent)
+                    .background(Theme.accentGloss)
                     .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
             }
             .buttonStyle(.plain)
@@ -226,7 +226,7 @@ struct FindFriendsView: View {
             Spacer()
             if invitedContactIds.contains(contact.id) {
                 Text("INVITED ✓")
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(Theme.textTertiary)
             } else {
                 Button {
@@ -237,7 +237,7 @@ struct FindFriendsView: View {
                     }
                 } label: {
                     Text("INVITE")
-                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(Theme.accent)
                 }
                 .buttonStyle(.plain)

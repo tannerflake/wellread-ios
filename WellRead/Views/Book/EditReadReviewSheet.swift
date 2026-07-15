@@ -177,7 +177,7 @@ struct EditReadReviewSheet: View {
                             .foregroundStyle(Theme.background)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
-                            .background(Theme.accent)
+                            .background(Theme.accentGloss)
                             .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
                     }
                     .buttonStyle(.plain)
@@ -213,7 +213,6 @@ struct EditReadReviewSheet: View {
             .navigationTitle("Edit review")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Theme.background, for: .navigationBar)
-            .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }

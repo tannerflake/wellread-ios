@@ -38,7 +38,6 @@ struct GoodreadsExportWebView: View {
             .navigationTitle("Goodreads export")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Theme.background, for: .navigationBar)
-            .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { dismiss() }
@@ -65,7 +64,7 @@ struct GoodreadsExportWebView: View {
                     .foregroundStyle(Theme.textPrimary)
             } else {
                 Text(SpinesGlyphs.caps("Tip"))
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(Theme.chromeTeal)
                 Text("Tap “Export Library”, then tap the “Your export from…” link when it appears.")
                     .font(Theme.caption())

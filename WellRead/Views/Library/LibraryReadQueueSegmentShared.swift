@@ -55,7 +55,7 @@ struct LibraryReadingGoalProgressStrip: View {
                     Capsule().fill(Theme.textSecondary.opacity(0.18))
                     if fraction > 0 {
                         Capsule()
-                            .fill(Theme.accent)
+                            .fill(Theme.accentGloss)
                             .frame(width: max(geo.size.height, geo.size.width * fraction))
                     }
                 }
@@ -76,11 +76,34 @@ enum LibraryReadQueueTab: String, CaseIterable {
     case wantToRead = "Queue"
 }
 
-/// Springs for Read / Queue control — selection uses a slightly slower, smoother curve than drag chrome (your library only).
+/// Springs for Read / Queue control — selection matches the main tab bar's lens spring so
+/// every sliding selector in the app moves the same way; drag chrome stays a touch quicker.
 enum LibrarySegmentControlAnimation {
-    /// Used when the Read/Queue highlight slides between segments (tap).
-    static let selection = Animation.spring(response: 0.32, dampingFraction: 0.78, blendDuration: 0)
+    /// Used when the Read/Queue lens slides between segments (tap).
+    static let selection = Animation.snappy(duration: 0.3, extraBounce: 0.12)
     static let dragChrome = Animation.spring(response: 0.24, dampingFraction: 0.82, blendDuration: 0)
+}
+
+/// Sliding indicator for the Read/Queue control — the same liquid-glass lens as the main
+/// tab bar on iOS 26+, with the old elevated-pill look as the pre-26 fallback.
+struct LibrarySegmentGlassLens: View {
+    var cornerRadius: CGFloat = 8
+
+    var body: some View {
+        if #available(iOS 26.0, *) {
+            RoundedRectangle(cornerRadius: cornerRadius)
+                .fill(.clear)
+                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: cornerRadius))
+        } else {
+            RoundedRectangle(cornerRadius: cornerRadius)
+                .fill(Theme.surfaceElevated)
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius)
+                        .strokeBorder(Theme.chromeTeal.opacity(0.55), lineWidth: 1.25)
+                )
+                .shadow(color: Theme.shadowInk.opacity(0.12), radius: 4, y: 1)
+        }
+    }
 }
 
 /// Same pill styling as your library’s Read/Queue control, without drag-and-drop chrome.
@@ -99,13 +122,7 @@ struct LibraryReadQueueSegmentControlReadOnly: View {
                 GeometryReader { geo in
                     let half = geo.size.width / 2
                     let pillW = max(0, half - 6)
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Theme.surfaceElevated)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .strokeBorder(Theme.chromeTeal.opacity(0.55), lineWidth: 1.25)
-                        )
-                        .shadow(color: Theme.textPrimary.opacity(0.12), radius: 4, y: 1)
+                    LibrarySegmentGlassLens()
                         .frame(width: pillW)
                         .offset(x: 3 + (segment == .read ? 0 : half))
                         .animation(LibrarySegmentControlAnimation.selection, value: segment)

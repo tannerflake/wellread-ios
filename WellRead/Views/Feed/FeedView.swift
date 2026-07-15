@@ -6,7 +6,7 @@
 //  current readers leading — then a divider and everyone else on Spine with a
 //  quick-follow button), then a feed of finished books, reviews, and
 //  recommendations from people you follow. Themed for the cream/teal palette
-//  with mono type and receipt-style row separators.
+//  with receipt-style row separators.
 //
 
 import SwiftUI
@@ -38,7 +38,6 @@ struct FeedView: View {
                 ScrollViewReader { scrollProxy in
                     ScrollView {
                         VStack(spacing: 0) {
-                            spinesHeader
                             friendsSection
                             feedFriendsDivider
                             feedSectionLabel
@@ -58,7 +57,8 @@ struct FeedView: View {
                                                   let ub = appState.userReadBook(forBookId: bid) else { return }
                                             editReviewFromFeed = EditReadReviewSheetPayload(userBook: ub, feedCaption: post.caption)
                                         },
-                                        displayTier: effectiveTier(for: post)
+                                        displayTier: effectiveTier(for: post),
+                                        readingNowBooks: readingNowFanBooks(for: post)
                                     )
                                     .id(post.id.uuidString)
                                     .background(Theme.accent.opacity(highlightedPostId == post.id.uuidString ? 0.14 : 0))
@@ -99,7 +99,6 @@ struct FeedView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Theme.background, for: .navigationBar)
-            .toolbarColorScheme(.light, for: .navigationBar)
             .navigationDestination(for: String.self) { userId in
                 UserLibraryDetailView(userId: userId)
                     .environmentObject(authService)
@@ -144,6 +143,17 @@ struct FeedView: View {
                 Task { await loadOtherReaders() }
             }
         }
+    }
+
+    /// Reading-now covers fanned beside the post author's avatar. Own posts use live
+    /// local shelf state (fresher than the feed-load snapshot); others use the snapshot.
+    private func readingNowFanBooks(for post: Post) -> [Book] {
+        let isOwn = post.userId == authService.firebaseUser?.uid
+            || (post.user != nil && post.user?.id == appState.currentUser?.id)
+        if isOwn {
+            return appState.wantToReadReadingNow.compactMap(\.book)
+        }
+        return readingNowByUid[post.userId] ?? []
     }
 
     /// Tier shown on a feed post — prefer the post's own `tier` field; fall back to the current user's local tier for legacy posts that haven't been backfilled yet.
@@ -241,23 +251,6 @@ struct FeedView: View {
         }
     }
 
-    /// Top brand banner — terminal-style "SPINES // FEED" with an ASCII rule below.
-    private var spinesHeader: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("SPINE // SOCIAL")
-                .font(.system(size: 22, weight: .bold, design: .monospaced))
-                .tracking(2)
-                .foregroundStyle(Theme.textPrimary)
-            Text(SpinesGlyphs.rule(width: 32))
-                .font(.system(size: 12, weight: .regular, design: .monospaced))
-                .foregroundStyle(Theme.chromeTeal)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, Theme.horizontalPadding)
-        .padding(.top, 8)
-        .padding(.bottom, 12)
-    }
-
     /// Hairline rule between the "Following" row and posts.
     private var feedFriendsDivider: some View {
         Rectangle()
@@ -270,7 +263,7 @@ struct FeedView: View {
     private var feedSectionLabel: some View {
         HStack {
             Text("FEED")
-                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .font(.system(size: 12, weight: .bold))
                 .tracking(1)
                 .foregroundStyle(Theme.chromeTeal)
             Spacer(minLength: 0)
@@ -327,18 +320,18 @@ struct FeedView: View {
     private var friendsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("FOLLOWING")
-                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .font(.system(size: 12, weight: .bold))
                 .tracking(1)
                 .foregroundStyle(Theme.chromeTeal)
                 .padding(.horizontal, Theme.horizontalPadding)
 
             if isLoadingOtherReaders {
                 HStack(spacing: 8) {
-                    Text(SpinesGlyphs.phosphorFade)
-                        .font(.system(size: 14, weight: .regular, design: .monospaced))
-                        .foregroundStyle(Theme.chromeTeal)
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(Theme.chromeTeal)
                     Text("loading readers")
-                        .font(.system(size: 13, weight: .regular, design: .monospaced))
+                        .font(.system(size: 13, weight: .regular))
                         .foregroundStyle(Theme.textTertiary)
                     Spacer(minLength: 0)
                 }
@@ -361,6 +354,9 @@ struct FeedView: View {
                         }
                     }
                     .padding(.horizontal, Theme.horizontalPadding)
+                    // Headroom for the quick-follow plus, which overhangs the avatar's
+                    // top edge — without it the ScrollView clips the button.
+                    .padding(.top, 7)
                     .padding(.bottom, 12)
                     .animation(.easeInOut(duration: 0.25), value: myFollowingSet)
                 }
@@ -376,7 +372,7 @@ struct FeedView: View {
                 .fill(Theme.chromeTeal.opacity(0.45))
                 .frame(width: 1.5, height: 56)
             Text("ALL")
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .font(.system(size: 9, weight: .bold))
                 .tracking(1)
                 .foregroundStyle(Theme.chromeTeal)
         }
@@ -405,7 +401,7 @@ struct FeedView: View {
                         }
                     }
                 Text(item.user.displayName)
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(Theme.textSecondary)
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
@@ -425,7 +421,7 @@ struct FeedView: View {
                 .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(Theme.phosphorWhite)
                 .frame(width: 22, height: 22)
-                .background(Circle().fill(Theme.accent))
+                .background(Circle().fill(Theme.accentGloss))
                 .overlay(Circle().strokeBorder(Theme.background, lineWidth: 2))
         }
         .buttonStyle(.plain)
@@ -474,7 +470,7 @@ struct FeedView: View {
             .fill(Theme.chromeTeal)
             .overlay(
                 Text(initial.uppercased())
-                    .font(.system(size: size * 0.42, weight: .bold, design: .monospaced))
+                    .font(.system(size: size * 0.42, weight: .bold))
                     .foregroundStyle(Theme.phosphorWhite)
             )
     }
@@ -491,6 +487,9 @@ struct FeedPostRow: View {
     var onEditReviewTap: (() -> Void)? = nil
     /// Tier to display on the post. Lets the feed pass a fallback (e.g. the current user's UserBook tier) for legacy posts where `post.tier` hasn't been backfilled yet.
     var displayTier: String? = nil
+    /// The author's reading-now covers, fanned beside their avatar (same treatment
+    /// as the Following row and the profile header).
+    var readingNowBooks: [Book] = []
 
     /// Latest comments shown inline under the post (Instagram-style, max 2).
     @State private var previewComments: [Comment] = []
@@ -586,7 +585,7 @@ struct FeedPostRow: View {
                 .symbolEffect(.bounce, value: active)
             if count > 0 {
                 Text("\(count)")
-                    .font(.system(size: 15, weight: .bold, design: .monospaced))
+                    .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(active ? activeColor : Theme.textSecondary)
                     .contentTransition(.numericText())
             }
@@ -613,14 +612,14 @@ struct FeedPostRow: View {
                         previewCommentAvatar(c)
                         VStack(alignment: .leading, spacing: 3) {
                             Text(c.displayName ?? "User")
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .font(.system(size: 10, weight: .bold))
                                 .tracking(0.5)
                                 .foregroundStyle(Theme.chromeTeal)
                                 .padding(.horizontal, 7)
                                 .padding(.vertical, 2)
                                 .background(Capsule().fill(Theme.chromeTeal.opacity(0.12)))
                             Text(c.text)
-                                .font(.system(size: 14, design: .serif))
+                                .font(.system(size: 14))
                                 .foregroundStyle(Theme.textPrimary)
                                 .lineLimit(2)
                         }
@@ -629,7 +628,7 @@ struct FeedPostRow: View {
                 }
                 if post.commentCount > previewComments.count {
                     Text("View all \(post.commentCount) comments")
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Theme.textTertiary)
                 }
             }
@@ -652,7 +651,7 @@ struct FeedPostRow: View {
             .fill(Theme.chromeTeal)
             .overlay(
                 Text(initial.uppercased())
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(Theme.phosphorWhite)
             )
         return Group {
@@ -679,13 +678,16 @@ struct FeedPostRow: View {
         HStack(alignment: .center, spacing: 12) {
             NavigationLink(value: post.userId) {
                 HStack(spacing: 10) {
-                    feedAvatar
+                    HStack(spacing: 2) {
+                        feedAvatar
+                        ReadingNowFanStack(books: readingNowBooks, coverWidth: 17)
+                    }
                     VStack(alignment: .leading, spacing: 2) {
                         Text(post.user?.displayName ?? "User")
-                            .font(.system(size: 14, weight: .bold, design: .monospaced))
+                            .font(.system(size: 14, weight: .bold))
                             .foregroundStyle(Theme.textPrimary)
                         Text(Theme.feedRelativeTimestamp(post.createdAt))
-                            .font(.system(size: 10, weight: .regular, design: .monospaced))
+                            .font(.system(size: 10, weight: .regular))
                             .tracking(0.5)
                             .foregroundStyle(Theme.chromeTeal)
                     }
@@ -730,7 +732,7 @@ struct FeedPostRow: View {
             .frame(width: 40, height: 40)
             .overlay(
                 Text(initial.uppercased())
-                    .font(.system(size: 16, weight: .bold, design: .monospaced))
+                    .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(Theme.phosphorWhite)
             )
     }
@@ -755,7 +757,7 @@ struct ExpandableReviewText: View {
                 .lineLimit(expanded ? nil : Self.collapsedLineLimit)
             if truncatable {
                 Text(expanded ? "show less" : "…read more")
-                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(Theme.chromeTeal)
             }
         }

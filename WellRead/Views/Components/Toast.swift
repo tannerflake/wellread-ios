@@ -180,7 +180,7 @@ private struct ToastView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(SpinesGlyphs.caps(toast.status))
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .font(.system(size: 12, weight: .bold))
                     .tracking(0.5)
                     .foregroundStyle(toast.style.chrome)
                 if let message = toast.message {
@@ -213,7 +213,7 @@ private struct ToastView: View {
             RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
                 .stroke(toast.style.chrome.opacity(0.45), lineWidth: Theme.chromeHairline)
         )
-        .shadow(color: Theme.textPrimary.opacity(0.14), radius: 10, x: 0, y: 4)
+        .shadow(color: Theme.shadowInk.opacity(0.14), radius: 10, x: 0, y: 4)
         .contentShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
         .onTapGesture(perform: onDismiss)
         // Swipe up to dismiss early.

@@ -11,6 +11,7 @@ struct ProfileView: View {
     @EnvironmentObject var authService: AuthService
     @EnvironmentObject var appState: AppState
     @State private var followerCount: Int?
+    @AppStorage(AppearancePreference.storageKey) private var appearanceRaw = AppearancePreference.defaultValue.rawValue
     private let userRepo = UserRepository()
 
     var body: some View {
@@ -26,6 +27,7 @@ struct ProfileView: View {
                                 goalProgress(current: user.totalBooksRead, goal: goal)
                             }
                             recentReadsSection
+                            appearanceSection
                         }
                         .padding(.bottom, 100)
                     }
@@ -41,7 +43,6 @@ struct ProfileView: View {
             .navigationTitle("Profile")
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(Theme.background, for: .navigationBar)
-            .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
@@ -141,7 +142,7 @@ struct ProfileView: View {
                     RoundedRectangle(cornerRadius: 4)
                         .fill(Theme.surface)
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(Theme.accent)
+                        .fill(Theme.accentGloss)
                         .frame(width: geo.size.width * min(1, CGFloat(current) / CGFloat(goal)))
                 }
             }
@@ -152,6 +153,50 @@ struct ProfileView: View {
         .padding(.horizontal)
     }
     
+    // MARK: - Appearance (Light / Dark / System)
+
+    private var appearanceSection: some View {
+        HStack(spacing: 8) {
+            ForEach(AppearancePreference.allCases) { option in
+                appearanceOption(option)
+            }
+        }
+        .hingeSectionCard(title: "Appearance")
+        .padding(.horizontal)
+    }
+
+    private func appearanceOption(_ option: AppearancePreference) -> some View {
+        let isSelected = appearanceRaw == option.rawValue
+        return Button {
+            withAnimation(.easeInOut(duration: 0.25)) {
+                appearanceRaw = option.rawValue
+            }
+        } label: {
+            VStack(spacing: 6) {
+                Image(systemName: option.iconName)
+                    .font(.system(size: 16, weight: .semibold))
+                Text(option.label)
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .foregroundStyle(isSelected ? Theme.phosphorWhite : Theme.textSecondary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(isSelected ? AnyShapeStyle(Theme.gloss(Theme.chromeTeal)) : AnyShapeStyle(Theme.surface))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(
+                        isSelected ? Theme.chromeTeal : Theme.textTertiary.opacity(0.35),
+                        lineWidth: isSelected ? Theme.windowBorderWidth : Theme.chromeHairline
+                    )
+            )
+        }
+        .buttonStyle(.springPress)
+        .sensoryFeedback(.selection, trigger: isSelected)
+    }
+
     private var recentReadsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Recent reads")

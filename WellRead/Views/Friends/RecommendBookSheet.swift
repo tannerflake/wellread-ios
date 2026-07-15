@@ -153,7 +153,7 @@ struct RecommendBookSheet: View {
             Spacer()
             if sentTo.contains(reader.uid) {
                 Text("SENT ✓")
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(Theme.textTertiary)
             } else if sendingTo.contains(reader.uid) {
                 ProgressView().tint(Theme.accent)
@@ -162,7 +162,7 @@ struct RecommendBookSheet: View {
                     send(to: reader)
                 } label: {
                     Text("SEND")
-                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(Theme.accent)
                 }
                 .buttonStyle(.plain)
@@ -182,7 +182,7 @@ struct RecommendBookSheet: View {
                 showInviteContacts = true
             } label: {
                 Text("INVITE FROM CONTACTS")
-                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .font(.system(size: 13, weight: .bold))
                     .tracking(1)
                     .foregroundStyle(Theme.textSecondary)
                     .frame(maxWidth: .infinity)

@@ -4,7 +4,7 @@
 //
 //  Hero book profile — cover front-and-center with a status badge, then airy
 //  Hinge-style section cards (review, summary, similar, quote, recommend) with
-//  small overline labels. Action bar below uses mono labels.
+//  small overline labels. Action bar below uses glossy CTA buttons.
 //
 
 import SwiftUI
@@ -212,11 +212,11 @@ struct BookProfileView: View {
     private var hero: some View {
         VStack(spacing: 14) {
             BookCoverView(book: book, size: 220)
-                .shadow(color: Theme.textPrimary.opacity(0.18), radius: 14, x: 0, y: 6)
+                .shadow(color: Theme.shadowInk.opacity(0.18), radius: 14, x: 0, y: 6)
                 .overlay(alignment: .topTrailing) {
                     if let badge = statusBadge {
                         Text(badge.label)
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .font(.system(size: 11, weight: .bold))
                             .tracking(0.8)
                             .foregroundStyle(Theme.phosphorWhite)
                             .padding(.horizontal, 10)
@@ -224,7 +224,7 @@ struct BookProfileView: View {
                             .background(Capsule().fill(badge.color))
                             .overlay(Capsule().stroke(Theme.phosphorWhite.opacity(0.85), lineWidth: 1.5))
                             .rotationEffect(.degrees(6))
-                            .shadow(color: Theme.textPrimary.opacity(0.25), radius: 4, x: 0, y: 2)
+                            .shadow(color: Theme.shadowInk.opacity(0.25), radius: 4, x: 0, y: 2)
                             .offset(x: 14, y: -10)
                     }
                 }
@@ -236,22 +236,20 @@ struct BookProfileView: View {
                     .foregroundStyle(Theme.textPrimary)
                     .multilineTextAlignment(.center)
 
-                Text("by \(book.author)")
+                Text(book.author)
                     .font(Theme.callout())
                     .foregroundStyle(Theme.textSecondary)
                     .multilineTextAlignment(.center)
 
                 if let published = book.publishedDate {
-                    Text("published \(Self.publishedYearFormatter.string(from: published))")
-                        .font(.system(size: 12, weight: .regular, design: .monospaced))
+                    Text(Self.publishedYearFormatter.string(from: published))
+                        .font(.system(size: 12, weight: .regular))
                         .foregroundStyle(Theme.textTertiary)
                 }
             }
             .padding(.horizontal, 24)
 
-            Text(SpinesGlyphs.rule(width: 28))
-                .font(.system(size: 14, weight: .regular, design: .monospaced))
-                .foregroundStyle(Theme.chromeTeal)
+            BrandRule(width: 44)
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 12)
@@ -268,43 +266,42 @@ struct BookProfileView: View {
                     .lineSpacing(Theme.bodyLineSpacing)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if !ub.allReadDates.isEmpty || canEditReadReview {
+            if !ub.allReadDates.isEmpty {
                 reviewFooter(ub: ub)
             }
         }
         .hingeSectionCard(title: reviewSectionHeading) {
+            if canEditReadReview {
+                Button {
+                    userBookToEdit = ub
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.textSecondary)
+                        .padding(6)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(-6)
+            }
+        } titleAccessory: {
             if let t = ub.tier {
                 TierBadge(tier: t, size: .mini)
             }
         }
     }
 
-    /// Read date(s) on the left — every recorded read, so re-reads are visible — pencil on the right.
+    /// Read date(s), every recorded read, so re-reads are visible.
     private func reviewFooter(ub: UserBook) -> some View {
         let dates = ub.allReadDates
-        return HStack(alignment: .bottom, spacing: 12) {
-            if !dates.isEmpty {
-                (
-                    Text(dates.count > 1 ? "read \u{00D7}\(dates.count): " : "read: ")
-                        .foregroundColor(Theme.chromeTeal)
-                    + Text(dates.map { Self.readDateFormatter.string(from: $0) }.joined(separator: " \u{00B7} "))
-                        .foregroundColor(Theme.textTertiary)
-                )
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 0)
-            if canEditReadReview {
-                Button {
-                    userBookToEdit = ub
-                } label: {
-                    Image(systemName: "pencil")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(Theme.textSecondary)
-                }
-                .buttonStyle(.plain)
-            }
-        }
+        return (
+            Text(dates.count > 1 ? "read \u{00D7}\(dates.count): " : "read: ")
+                .foregroundColor(Theme.chromeTeal)
+            + Text(dates.map { Self.readDateFormatter.string(from: $0) }.joined(separator: " \u{00B7} "))
+                .foregroundColor(Theme.textTertiary)
+        )
+        .font(.system(size: 12, weight: .medium))
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private static let readDateFormatter: DateFormatter = {
@@ -353,7 +350,7 @@ struct BookProfileView: View {
 
     private func tagChip(_ tag: String) -> some View {
         Text(tag.lowercased())
-            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+            .font(.system(size: 11, weight: .semibold))
             .tracking(0.4)
             .foregroundStyle(Theme.chromeTeal)
             .padding(.horizontal, 7)
@@ -379,9 +376,9 @@ struct BookProfileView: View {
                             .fill(Theme.surface)
                             .frame(width: 52, height: 52 * 1.5)
                             .overlay(
-                                Text(SpinesGlyphs.phosphorFade)
-                                    .font(.system(size: 12, weight: .regular, design: .monospaced))
-                                    .foregroundStyle(Theme.chromeTeal.opacity(0.7))
+                                Image(systemName: "book.closed")
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundStyle(Theme.chromeTeal.opacity(0.5))
                             )
                     }
                 }
@@ -393,7 +390,7 @@ struct BookProfileView: View {
                                 BookCoverView(book: similar, size: 52, onTap: onBookTap != nil ? { onBookTap?(similar) } : nil)
                                     .clipShape(RoundedRectangle(cornerRadius: 6))
                                 Text(similar.title)
-                                    .font(.system(size: 10, weight: .regular, design: .monospaced))
+                                    .font(.system(size: 10, weight: .regular))
                                     .foregroundStyle(Theme.textSecondary)
                                     .lineLimit(2)
                                     .multilineTextAlignment(.center)
@@ -417,7 +414,7 @@ struct BookProfileView: View {
             } else if let q = notableQuote, !q.isEmpty {
                 HStack(alignment: .top, spacing: 8) {
                     Text("\u{201C}")
-                        .font(.system(size: 28, weight: .bold, design: .monospaced))
+                        .font(.system(size: 28, weight: .bold))
                         .foregroundStyle(Theme.chromeTeal)
                         .offset(y: -2)
                         .accessibilityHidden(true)
@@ -491,7 +488,7 @@ struct BookProfileView: View {
                         }
                     }
                 Text(reader.user.displayName)
-                    .font(.system(size: 10, weight: .regular, design: .monospaced))
+                    .font(.system(size: 10, weight: .regular))
                     .foregroundStyle(sent ? Theme.textTertiary : Theme.textSecondary)
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
@@ -524,7 +521,7 @@ struct BookProfileView: View {
                             .stroke(Theme.chromeTeal.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
                     )
                 Text("invite via text")
-                    .font(.system(size: 10, weight: .regular, design: .monospaced))
+                    .font(.system(size: 10, weight: .regular))
                     .foregroundStyle(Theme.textSecondary)
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
@@ -589,11 +586,11 @@ struct BookProfileView: View {
 
     private func phosphorLoader(label: String, compact: Bool = false) -> some View {
         HStack(spacing: 8) {
-            Text(SpinesGlyphs.phosphorFade)
-                .font(.system(size: compact ? 12 : 14, weight: .regular, design: .monospaced))
-                .foregroundStyle(Theme.chromeTeal)
+            ProgressView()
+                .controlSize(compact ? .mini : .small)
+                .tint(Theme.chromeTeal)
             Text(label)
-                .font(.system(size: compact ? 11 : 13, weight: .regular, design: .monospaced))
+                .font(.system(size: compact ? 11 : 13, weight: .regular))
                 .foregroundStyle(Theme.textTertiary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -602,7 +599,7 @@ struct BookProfileView: View {
 
     private func emptyState(text: String) -> some View {
         Text(text)
-            .font(.system(size: 13, weight: .regular, design: .monospaced))
+            .font(.system(size: 13, weight: .regular))
             .tracking(0.5)
             .foregroundStyle(Theme.textTertiary)
     }
@@ -613,9 +610,9 @@ struct BookProfileView: View {
         VStack(spacing: 10) {
             if showShelfAction, let title = shelfActionTitle {
                 Button(action: { onAddToShelf?() }) {
-                    actionLabel(title, foreground: Theme.phosphorWhite, background: Theme.accent, border: .clear)
+                    actionLabel(title, foreground: Theme.background, background: Theme.accent, border: .clear)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.springPress)
             }
             actionButtonRow
         }
@@ -639,7 +636,7 @@ struct BookProfileView: View {
                 Button(action: { onNotInterested?() }) {
                     actionLabel("PASS", foreground: Theme.textSecondary, background: Theme.surface, border: Theme.chromeTeal.opacity(0.5))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.springPress)
             }
             if onWantToRead != nil || onRemoveFromQueue != nil {
                 Group {
@@ -647,18 +644,18 @@ struct BookProfileView: View {
                         Button(action: { onRemoveFromQueue?() }) {
                             actionLabel("REMOVE", foreground: Theme.phosphorWhite, background: Color(red: 0.86, green: 0.32, blue: 0.30), border: .clear)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.springPress)
                     } else if isInQueue {
                         Button {} label: {
                             actionLabel("IN QUEUE", foreground: Theme.textTertiary, background: Theme.surface, border: Theme.chromeTeal.opacity(0.3))
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.springPress)
                         .disabled(true)
                     } else {
                         Button(action: { onWantToRead?() }) {
                             actionLabel("QUEUE", foreground: Theme.queuePowderBlueLabel, background: Theme.queuePowderBlue, border: .clear)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.springPress)
                     }
                 }
             }
@@ -672,15 +669,15 @@ struct BookProfileView: View {
                     actionLabel(
                         isOnReadList ? "READ \u{2714}" : "READ",
                         foreground: isOnReadList
-                            ? Theme.phosphorWhite
-                            : (showShelfAction ? Theme.textSecondary : Theme.phosphorWhite),
+                            ? Theme.background
+                            : (showShelfAction ? Theme.textSecondary : Theme.background),
                         background: isOnReadList
                             ? Theme.textTertiary
                             : (showShelfAction ? Theme.surface : Theme.accent),
                         border: showShelfAction && !isOnReadList ? Theme.chromeTeal.opacity(0.5) : .clear
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.springPress)
                 .disabled(isOnReadList)
             }
         }
@@ -688,19 +685,31 @@ struct BookProfileView: View {
 
     private func actionLabel(_ text: String, foreground: Color, background: Color, border: Color) -> some View {
         Text(text)
-            .font(.system(size: 14, weight: .bold, design: .monospaced))
+            .font(.system(size: 14, weight: .bold))
             .tracking(1)
             .foregroundStyle(foreground)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
             .background(
                 RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
-                    .fill(background)
+                    .fill(Theme.gloss(background))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [Theme.phosphorWhite.opacity(0.45), Theme.phosphorWhite.opacity(0.04)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 1
+                    )
             )
             .overlay(
                 RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
                     .stroke(border, lineWidth: 1)
             )
+            .shadow(color: background.opacity(0.32), radius: 8, x: 0, y: 3)
     }
 }
 

@@ -29,11 +29,11 @@ struct CommentsView: View {
                 VStack(spacing: 0) {
                     if viewModel.comments.isEmpty && !viewModel.isLoading {
                         VStack(spacing: 8) {
-                            Text(SpinesGlyphs.phosphorFade)
-                                .font(.system(size: 18, weight: .regular, design: .monospaced))
+                            Image(systemName: "bubble.left")
+                                .font(.system(size: 20, weight: .medium))
                                 .foregroundStyle(Theme.chromeTeal.opacity(0.7))
                             Text("no comments yet")
-                                .font(.system(size: 13, weight: .regular, design: .monospaced))
+                                .font(.system(size: 13, weight: .regular))
                                 .tracking(0.5)
                                 .foregroundStyle(Theme.textTertiary)
                         }
@@ -61,7 +61,6 @@ struct CommentsView: View {
             .navigationTitle("Comments")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Theme.background, for: .navigationBar)
-            .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -93,7 +92,7 @@ struct CommentsView: View {
             if let replyTarget = viewModel.replyingTo {
                 HStack(spacing: 8) {
                     Text("Replying to \(replyTarget.displayName ?? "comment")")
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Theme.textSecondary)
                         .lineLimit(1)
                     Spacer(minLength: 0)
@@ -178,11 +177,11 @@ struct CommentRow: View {
                         commentAvatar
                         HStack(spacing: 8) {
                             Text(comment.displayName ?? "User")
-                                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                                .font(.system(size: 13, weight: .bold))
                                 .foregroundStyle(Theme.textPrimary)
                             TimelineView(.periodic(from: .now, by: 15)) { context in
                                 Text(Theme.commentRelativeTimestamp(comment.createdAt, now: context.date))
-                                    .font(.system(size: 10, weight: .regular, design: .monospaced))
+                                    .font(.system(size: 10, weight: .regular))
                                     .tracking(0.5)
                                     .foregroundStyle(Theme.chromeTeal)
                             }
@@ -200,7 +199,7 @@ struct CommentRow: View {
             if let onReply {
                 Button(action: onReply) {
                     Text("Reply")
-                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(Theme.textTertiary)
                 }
                 .buttonStyle(.plain)
@@ -236,7 +235,7 @@ struct CommentRow: View {
             .frame(width: Self.avatarSize, height: Self.avatarSize)
             .overlay(
                 Text(initial.uppercased())
-                    .font(.system(size: 14, weight: .bold, design: .monospaced))
+                    .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(Theme.phosphorWhite)
             )
     }

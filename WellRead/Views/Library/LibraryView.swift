@@ -23,11 +23,11 @@ struct ProfileLibraryView: View {
     @State private var pendingMarkReadFromQueue: UserBook?
     /// Shelf whose "Add" tile was tapped — presents the search sheet scoped to that shelf.
     @State private var addToShelfTarget: ShelfAddTarget? = nil
-    @State private var addToShelfDetent: PresentationDetent = AddBookFlowView.smallDetent
     @State private var readTabDropTargeted = false
     @State private var queueTabDropTargeted = false
     @State private var showEditProfile = false
     @State private var showFindFriends = false
+    @AppStorage(AppearancePreference.storageKey) private var appearanceRaw = AppearancePreference.defaultValue.rawValue
     #if DEBUG
     @State private var showPushDiagnostics = false
     #endif
@@ -67,24 +67,26 @@ struct ProfileLibraryView: View {
                 VStack(spacing: 0) {
                     spineProfileHeader
 
-                    if let goal = activeReadingGoal {
-                        LibraryReadingGoalProgressStrip(
-                            calendarYear: calendarYear,
-                            booksRead: booksFinishedThisCalendarYear,
-                            goal: goal,
-                            copy: .own
-                        )
-                    }
+                    if activeReadingGoal != nil || !availableYears.isEmpty {
+                        HStack(alignment: .center, spacing: 12) {
+                            if let goal = activeReadingGoal {
+                                LibraryReadingGoalProgressStrip(
+                                    calendarYear: calendarYear,
+                                    booksRead: booksFinishedThisCalendarYear,
+                                    goal: goal,
+                                    copy: .own
+                                )
+                            } else {
+                                Spacer(minLength: 0)
+                            }
 
-                    HStack(alignment: .center, spacing: 12) {
-                        librarySegmentControl
-                            .frame(maxWidth: .infinity)
-
-                        if !availableYears.isEmpty {
-                            yearFilterInline
+                            if !availableYears.isEmpty {
+                                yearFilterInline
+                            }
                         }
+                        .padding(.horizontal, Theme.horizontalPadding)
+                        .padding(.vertical, 6)
                     }
-                    .padding(.vertical, 10)
 
                     if segment == .read && appState.goodreadsWizardRemainingCount > 0 {
                         goodreadsResumeCallout
@@ -96,7 +98,6 @@ struct ProfileLibraryView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Theme.background, for: .navigationBar)
-            .toolbarColorScheme(.light, for: .navigationBar)
             .onAppear { appState.refreshGoodreadsWizardResumeState() }
             .navigationDestination(item: $selectedBookForProfile) { book in
                 BookProfileView(
@@ -130,11 +131,21 @@ struct ProfileLibraryView: View {
                 FindFriendsView()
                     .environmentObject(appState)
             }
-            .sheet(item: $addToShelfTarget, onDismiss: { addToShelfDetent = AddBookFlowView.smallDetent }) { target in
-                AddBookFlowView(detent: $addToShelfDetent, targetShelf: target.shelf)
-                    .environment(\.mainTabBarOverlapExtraHeight, 0)
-                    .presentationDetents([AddBookFlowView.smallDetent, AddBookFlowView.expandedDetent], selection: $addToShelfDetent)
-                    .presentationDragIndicator(.visible)
+            // Custom overlay drawer (not a .sheet) — see MainTabView's add-book overlay.
+            .overlay {
+                ZStack(alignment: .bottom) {
+                    if let target = addToShelfTarget {
+                        Color.black.opacity(0.25)
+                            .ignoresSafeArea()
+                            .onTapGesture { addToShelfTarget = nil }
+                            .transition(.opacity)
+                        AddBookFlowView(targetShelf: target.shelf, onDismiss: { addToShelfTarget = nil })
+                            .environment(\.mainTabBarOverlapExtraHeight, 0)
+                            .transition(.move(edge: .bottom))
+                    }
+                }
+                .animation(.spring(response: 0.38, dampingFraction: 0.86), value: addToShelfTarget != nil)
+                .ignoresSafeArea(.keyboard, edges: .bottom)
             }
             .sheet(isPresented: $showGoodreadsImport, onDismiss: {
                 appState.refreshGoodreadsWizardResumeState()
@@ -231,30 +242,23 @@ struct ProfileLibraryView: View {
         queueDragCoordinator.isDraggingQueueBook || queueDragCoordinator.isDraggingReadBook
     }
 
-    /// Brand banner at the top of the Profile/Library tab — matches the Feed's `SPINE // FEED` treatment exactly so the header doesn't visually move when switching tabs. The avatar menu is rendered inline on the right (rather than in the toolbar) so the nav bar stays empty and the same height as on Feed/Discover.
+    /// Profile header — no wordmark: the Read/Queue control lives on the left,
+    /// with the floating reading-now fan tucked right up against the avatar menu.
     private var spineProfileHeader: some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 6) {
-                // Unlike Feed/Discover, the title shares its row with the fan stack + avatar — keep it on one line and scale down before wrapping.
-                Text("SPINE // PROFILE")
-                    .font(.system(size: 22, weight: .bold, design: .monospaced))
-                    .tracking(2)
-                    .foregroundStyle(Theme.textPrimary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                Text(SpinesGlyphs.rule(width: 18))
-                    .font(.system(size: 12, weight: .regular, design: .monospaced))
-                    .foregroundStyle(Theme.chromeTeal)
-                    .lineLimit(1)
-            }
+        HStack(alignment: .center, spacing: 12) {
+            librarySegmentControl
+                .frame(maxWidth: .infinity)
             Spacer(minLength: 8)
             // What you're reading right now, floating beside your avatar. Tap a cover for its profile.
-            ReadingNowFanStack(
-                books: appState.wantToReadReadingNow.compactMap(\.book),
-                coverWidth: 30,
-                onTap: { selectedBookForProfile = $0 }
-            )
-            toolbarProfilePhoto
+            HStack(alignment: .center, spacing: 2) {
+                ReadingNowFanStack(
+                    books: appState.wantToReadReadingNow.compactMap(\.book),
+                    coverWidth: 30,
+                    onTap: { selectedBookForProfile = $0 },
+                    floats: true
+                )
+                toolbarProfilePhoto
+            }
         }
         .padding(.horizontal, Theme.horizontalPadding)
         .padding(.top, 8)
@@ -275,13 +279,7 @@ struct ProfileLibraryView: View {
                     GeometryReader { geo in
                         let half = geo.size.width / 2
                         let pillW = max(0, half - 6)
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Theme.surfaceElevated)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .strokeBorder(Theme.chromeTeal.opacity(0.55), lineWidth: 1.25)
-                            )
-                            .shadow(color: Theme.textPrimary.opacity(0.12), radius: 4, y: 1)
+                        LibrarySegmentGlassLens()
                             .frame(width: pillW)
                             .offset(x: 3 + (segment == .read ? 0 : half))
                             .animation(LibrarySegmentControlAnimation.selection, value: segment)
@@ -337,7 +335,7 @@ struct ProfileLibraryView: View {
         let readShadowColor: Color = {
             if showReadMarkReadChrome { return Theme.accent.opacity(emphasizeReadHover ? 0.55 : 0.45) }
             if showReadRemoveChrome { return Color.red.opacity(emphasizeReadHover ? 0.55 : 0.45) }
-            if readStaticSelectedWhileDragging { return Theme.textPrimary.opacity(0.12) }
+            if readStaticSelectedWhileDragging { return Theme.shadowInk.opacity(0.12) }
             if isSelected && !isDraggingBooksForChrome { return .clear }
             return .clear
         }()
@@ -421,7 +419,7 @@ struct ProfileLibraryView: View {
         }()
         let queueShadowColor: Color = {
             if showQueueRemoveChrome { return Color.red.opacity(emphasizeQueueHover ? 0.55 : 0.45) }
-            if queueStaticSelectedWhileDragging { return Theme.textPrimary.opacity(0.12) }
+            if queueStaticSelectedWhileDragging { return Theme.shadowInk.opacity(0.12) }
             if isSelected && !isDraggingBooksForChrome { return .clear }
             return .clear
         }()
@@ -513,6 +511,7 @@ struct ProfileLibraryView: View {
                 } label: {
                     Label("Import from Goodreads", systemImage: "square.and.arrow.down")
                 }
+                appearanceMenu
                 #if DEBUG
                 Button {
                     showPushDiagnostics = true
@@ -550,6 +549,7 @@ struct ProfileLibraryView: View {
                 } label: {
                     Label("Edit profile", systemImage: "person.crop.circle")
                 }
+                appearanceMenu
                 #if DEBUG
                 Button {
                     showPushDiagnostics = true
@@ -568,12 +568,28 @@ struct ProfileLibraryView: View {
         }
     }
 
+    /// Light / Dark / System picker in the profile menu — persisted app-wide
+    /// via `AppearancePreference` and applied at the root `preferredColorScheme`.
+    private var appearanceMenu: some View {
+        Menu {
+            Picker("Appearance", selection: $appearanceRaw) {
+                ForEach(AppearancePreference.allCases) { option in
+                    Label(option.label, systemImage: option.iconName)
+                        .tag(option.rawValue)
+                }
+            }
+        } label: {
+            let current = AppearancePreference(rawValue: appearanceRaw) ?? .defaultValue
+            Label("Appearance: \(current.label)", systemImage: current.iconName)
+        }
+    }
+
     private func avatarPlaceholder(initial: String, compact: Bool = false) -> some View {
         Circle()
             .fill(Theme.chromeTeal)
             .overlay(
                 Text(initial.uppercased())
-                    .font(.system(size: compact ? 18 : 28, weight: .bold, design: .monospaced))
+                    .font(.system(size: compact ? 18 : 28, weight: .bold))
                     .foregroundStyle(Theme.phosphorWhite)
             )
     }
@@ -613,11 +629,11 @@ struct ProfileLibraryView: View {
                     .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(Theme.phosphorWhite)
                     .frame(width: 30, height: 30)
-                    .background(Theme.accent)
+                    .background(Theme.accentGloss)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(SpinesGlyphs.caps("Finish importing!"))
-                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .font(.system(size: 12, weight: .bold))
                         .tracking(0.5)
                         .foregroundStyle(Theme.accent)
                     Text(goodreadsResumeMessage)
@@ -767,7 +783,7 @@ private struct MarkAsReadQueueSheet: View {
                                     .foregroundStyle(Theme.background)
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 14)
-                                    .background(Theme.accent)
+                                    .background(Theme.accentGloss)
                                     .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
                             }
                             .buttonStyle(.plain)

@@ -92,14 +92,6 @@ struct UserLibraryDetailView: View {
         ZStack {
             Theme.background.ignoresSafeArea()
             VStack(spacing: 0) {
-                if let goal = activeReadingGoal {
-                    LibraryReadingGoalProgressStrip(
-                        calendarYear: calendarYear,
-                        booksRead: booksFinishedThisCalendarYear,
-                        goal: goal,
-                        copy: .other(displayFirstName: profileUser?.firstName)
-                    )
-                }
                 HStack(alignment: .center, spacing: 12) {
                     followToggleButton
 
@@ -112,32 +104,23 @@ struct UserLibraryDetailView: View {
                 }
                 .padding(.vertical, 10)
 
+                if let goal = activeReadingGoal {
+                    LibraryReadingGoalProgressStrip(
+                        calendarYear: calendarYear,
+                        booksRead: booksFinishedThisCalendarYear,
+                        goal: goal,
+                        copy: .other(displayFirstName: profileUser?.firstName)
+                    )
+                    .padding(.bottom, 4)
+                }
+
                 libraryContent
             }
             .padding(.horizontal, 4)
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Theme.background, for: .navigationBar)
-        .toolbarColorScheme(.light, for: .navigationBar)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Text(libraryTitle)
-                    .font(Theme.title())
-                    .foregroundStyle(Theme.textPrimary)
-                    .lineLimit(1)
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                HStack(spacing: 8) {
-                    // Their current reads float beside the avatar; tap a cover for its profile.
-                    ReadingNowFanStack(
-                        books: wantToReadReadingNow.compactMap(\.book),
-                        coverWidth: 20,
-                        onTap: { selectedBookForProfile = $0 }
-                    )
-                    otherUserAvatar
-                }
-            }
-        }
+        .toolbar { libraryToolbar }
         .navigationDestination(item: $selectedBookForProfile) { book in
             BookProfileView(
                 book: book,
@@ -170,6 +153,40 @@ struct UserLibraryDetailView: View {
         .onDisappear {
             booksListener?.remove()
             booksListener = nil
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var libraryToolbar: some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            Text(libraryTitle)
+                .font(Theme.title())
+                .foregroundStyle(Theme.textPrimary)
+                .lineLimit(1)
+        }
+        // Bare covers + avatar like the own-library header — no glass capsule behind
+        // them on iOS 26+ (`sharedBackgroundVisibility` doesn't exist pre-26).
+        if #available(iOS 26.0, *) {
+            ToolbarItem(placement: .topBarTrailing) {
+                fanAndAvatarToolbarContent
+            }
+            .sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItem(placement: .topBarTrailing) {
+                fanAndAvatarToolbarContent
+            }
+        }
+    }
+
+    private var fanAndAvatarToolbarContent: some View {
+        HStack(spacing: 8) {
+            ReadingNowFanStack(
+                books: wantToReadReadingNow.compactMap(\.book),
+                coverWidth: 20,
+                onTap: { selectedBookForProfile = $0 },
+                floats: true
+            )
+            otherUserAvatar
         }
     }
 

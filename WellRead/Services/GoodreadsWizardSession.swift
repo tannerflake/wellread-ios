@@ -17,7 +17,8 @@ enum GoodreadsRowDecision: String, Codable {
     case skipped
     /// Already in the library — auto-skipped.
     case duplicate
-    /// No confident catalog match — auto-skipped, never surfaced.
+    /// No catalog match, even after the manual search-to-match card — the user
+    /// gave up on it there. Never applied automatically.
     case unmatched
     /// User declined the whole queue phase ("No thanks").
     case declined

@@ -56,6 +56,12 @@ enum ProfileEditorMode {
     case edit
 }
 
+/// Identifiable wrapper so a freshly picked photo can drive a `fullScreenCover(item:)` crop step.
+private struct PendingCropPhoto: Identifiable {
+    let id = UUID()
+    let image: UIImage
+}
+
 struct ProfileCompletionView: View {
     @EnvironmentObject var authService: AuthService
     @EnvironmentObject private var appState: AppState
@@ -84,6 +90,7 @@ struct ProfileCompletionView: View {
     @State private var handleCheckError: String?
     @State private var handleCheckTask: Task<Void, Never>?
     @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var photoPendingCrop: PendingCropPhoto?
     @State private var showPhotoPicker = false
     @State private var isUploadingPhoto = false
     @State private var photoUploadError: String?
@@ -325,10 +332,18 @@ struct ProfileCompletionView: View {
                     await MainActor.run { photoUploadError = "Could not load image. Try another photo." }
                     return
                 }
-                await uploadProfileImage(image)
+                await MainActor.run { photoPendingCrop = PendingCropPhoto(image: image) }
             }
         }
         .photosPicker(isPresented: $showPhotoPicker, selection: $selectedPhotoItem, matching: .images, photoLibrary: .shared())
+        .fullScreenCover(item: $photoPendingCrop) { pending in
+            CircularPhotoCropView(image: pending.image) {
+                photoPendingCrop = nil
+            } onCrop: { cropped in
+                photoPendingCrop = nil
+                Task { await uploadProfileImage(cropped) }
+            }
+        }
         .alert("Photo", isPresented: Binding(
             get: { photoUploadError != nil },
             set: { if !$0 { photoUploadError = nil } }

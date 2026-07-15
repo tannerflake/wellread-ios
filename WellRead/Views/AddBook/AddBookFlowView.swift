@@ -7,6 +7,41 @@
 
 import SwiftUI
 
+/// Local-only recent activity for the search drawer (per signed-in uid, capped,
+/// never synced): submitted queries and book profiles the user opened.
+enum SearchRecents {
+    private static let queryCap = 8
+    private static let bookCap = 12
+    private static func queriesKey(_ uid: String) -> String { "searchRecentQueries.\(uid)" }
+    private static func booksKey(_ uid: String) -> String { "searchRecentBooks.\(uid)" }
+
+    static func queries(uid: String) -> [String] {
+        UserDefaults.standard.stringArray(forKey: queriesKey(uid)) ?? []
+    }
+
+    static func addQuery(_ q: String, uid: String) {
+        let t = q.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return }
+        var list = queries(uid: uid).filter { $0.caseInsensitiveCompare(t) != .orderedSame }
+        list.insert(t, at: 0)
+        UserDefaults.standard.set(Array(list.prefix(queryCap)), forKey: queriesKey(uid))
+    }
+
+    static func books(uid: String) -> [Book] {
+        guard let data = UserDefaults.standard.data(forKey: booksKey(uid)),
+              let list = try? JSONDecoder().decode([Book].self, from: data) else { return [] }
+        return list
+    }
+
+    static func addBook(_ b: Book, uid: String) {
+        var list = books(uid: uid).filter { $0.id != b.id }
+        list.insert(b, at: 0)
+        if let data = try? JSONEncoder().encode(Array(list.prefix(bookCap))) {
+            UserDefaults.standard.set(data, forKey: booksKey(uid))
+        }
+    }
+}
+
 struct AddBookFlowView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var authService: AuthService
@@ -26,24 +61,34 @@ struct AddBookFlowView: View {
     @State private var status: ReadingStatus = .read
     @State private var step: Step = .search
     @State private var searchTask: Task<Void, Never>?
-    /// Height the drawer is showing at. Starts compact and grows to `.large` once a search runs.
-    @Binding var detent: PresentationDetent
+    /// Recent search activity shown while the field is empty.
+    @State private var recentQueries: [String] = []
+    @State private var recentBooks: [Book] = []
     /// When set (opened from a queue shelf's "Add" tile), book profiles show a primary
     /// CTA that adds the book straight onto this shelf.
     var targetShelf: QueueShelf? = nil
+    /// Set when presented as a custom overlay (not a system sheet) — called instead of
+    /// `dismiss()` so the parent can drop the drawer from its view tree.
+    var onDismiss: (() -> Void)? = nil
 
-    /// Compact height the search drawer opens at before any books are loaded.
-    static let smallDetent: PresentationDetent = .fraction(0.5)
+    /// Closes the drawer regardless of how it was presented.
+    private func close() {
+        if let onDismiss {
+            onDismiss()
+        } else {
+            dismiss()
+        }
+    }
 
-    /// Height the drawer grows to once a search runs — stops short of the top so
-    /// there's room to tap out and dismiss.
-    static let expandedDetent: PresentationDetent = .fraction(0.8)
+    /// Fraction of the screen left as a see-through tap-out strip above the drawer.
+    /// The drawer is a custom overlay (not a system sheet) because sheet detents
+    /// re-resolve when the keyboard appears, jumping the drawer to full height —
+    /// and iOS 26 ignores `presentationBackground(.clear)`.
+    private static let tapOutStripFraction: CGFloat = 0.12
 
-    /// UIKit equivalent of `Theme.body()` (serif, size 17) for the search field.
+    /// UIKit equivalent of `Theme.body()` (SF Pro, size 17) for the search field.
     private static var searchFieldUIFont: UIFont {
-        let size: CGFloat = 17
-        let base = UIFont.systemFont(ofSize: size, weight: .regular)
-        return base.fontDescriptor.withDesign(.serif).map { UIFont(descriptor: $0, size: size) } ?? base
+        UIFont.systemFont(ofSize: 17, weight: .regular)
     }
 
     enum Step {
@@ -53,6 +98,41 @@ struct AddBookFlowView: View {
     }
     
     var body: some View {
+        GeometryReader { geo in
+            VStack(spacing: 0) {
+                // Transparent strip above the drawer — tapping it dismisses the sheet.
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture { close() }
+                    .frame(height: max(60, geo.size.height * Self.tapOutStripFraction))
+                drawerContent
+                    .clipShape(UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
+                    .overlay(alignment: .top) {
+                        // Grab handle — swiping it down dismisses (replaces the system
+                        // sheet's interactive dismissal).
+                        Capsule()
+                            .fill(Theme.textTertiary.opacity(0.5))
+                            .frame(width: 40, height: 5)
+                            .padding(.top, 9)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 34, alignment: .top)
+                            .contentShape(Rectangle())
+                            .gesture(
+                                DragGesture(minimumDistance: 12)
+                                    .onEnded { value in
+                                        if value.translation.height > 60 { close() }
+                                    }
+                            )
+                    }
+                    .shadow(color: .black.opacity(0.18), radius: 18, y: -4)
+            }
+        }
+        // Pin the drawer: without this, keyboard avoidance shrinks the geometry and
+        // the drawer rides up under the keyboard.
+        .ignoresSafeArea(.keyboard, edges: .bottom)
+    }
+
+    private var drawerContent: some View {
         NavigationStack {
             ZStack {
                 Theme.background.ignoresSafeArea()
@@ -69,11 +149,10 @@ struct AddBookFlowView: View {
             .navigationTitle(step == .search ? "" : stepTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Theme.background, for: .navigationBar)
-            .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
                 if step != .search {
                     ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") { dismiss() }
+                        Button("Cancel") { close() }
                             .foregroundStyle(Theme.accent)
                     }
                 }
@@ -85,11 +164,11 @@ struct AddBookFlowView: View {
                     onNotInterested: nil,
                     // Adding to the queue should land the user on their queue (with the success
                     // toast), not drop them back on the search bar. Dismiss the whole search sheet.
-                    onWantToRead: { appState.addToWantToRead(book: book); appState.openQueue(); dismiss() },
+                    onWantToRead: { appState.addToWantToRead(book: book); appState.openQueue(); close() },
                     // Marking read fires the tier-highlight flow (switches to Profile → Read and
                     // scrolls to the book). Dismiss the whole search sheet so that lands in view,
                     // rather than popping back to the search bar.
-                    onConfirmRead: { date, rating, post, caption, tier in appState.addAsRead(book: book, dateFinished: date, rating: rating, postToFeed: post, caption: caption, tier: tier); dismiss() },
+                    onConfirmRead: { date, rating, post, caption, tier in appState.addAsRead(book: book, dateFinished: date, rating: rating, postToFeed: post, caption: caption, tier: tier); close() },
                     isOnReadList: appState.isBookOnReadList(bookId: book.id),
                     isInQueue: appState.isBookInQueue(bookId: book.id),
                     onRemoveFromQueue: { appState.removeFromQueue(book: book); selectedBookForProfile = nil },
@@ -98,7 +177,7 @@ struct AddBookFlowView: View {
                     shelfActionTitle: targetShelf.map(Self.shelfCTATitle),
                     onAddToShelf: targetShelf.map { shelf in
                         // Same landing behavior as Queue: dismiss the search sheet onto the queue.
-                        { appState.addToQueue(book: book, shelf: shelf); appState.openQueue(); dismiss() }
+                        { appState.addToQueue(book: book, shelf: shelf); appState.openQueue(); close() }
                     }
                 )
             }
@@ -140,7 +219,21 @@ struct AddBookFlowView: View {
                         .onChange(of: query) { _, newValue in
                             scheduleSearch(for: newValue)
                         }
+                    if !query.isEmpty {
+                        Button {
+                            query = ""
+                            isSearchFocused = true
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 17))
+                                .foregroundStyle(Theme.textTertiary)
+                        }
+                        .buttonStyle(.plain)
+                        .transition(.opacity.combined(with: .scale(scale: 0.8)))
+                        .accessibilityLabel("Clear search")
+                    }
                 }
+                .animation(.easeInOut(duration: 0.15), value: query.isEmpty)
                 .padding()
                 .background(Theme.surface)
                 .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
@@ -184,36 +277,35 @@ struct AddBookFlowView: View {
             }
 
             ScrollView {
-                LazyVStack(spacing: 12) {
-                    ForEach(results) { book in
-                        BookSearchRow(book: book) {
-                            selectedBookForProfile = book
+                if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    recentsSection
+                        .padding()
+                } else {
+                    LazyVStack(spacing: 12) {
+                        ForEach(results) { book in
+                            BookSearchRow(book: book) {
+                                openBookProfile(book)
+                            }
+                        }
+                        if hasSearched && !isSearching && !results.isEmpty && !showingAllEditions {
+                            VStack(spacing: 4) {
+                                Text("Can't find what you're looking for?")
+                                    .font(Theme.caption())
+                                    .foregroundStyle(Theme.textSecondary)
+                                Button("Show every edition") { showAllEditions() }
+                                    .font(Theme.callout())
+                                    .foregroundStyle(Theme.accent)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 8)
                         }
                     }
-                    if hasSearched && !isSearching && !results.isEmpty && !showingAllEditions {
-                        VStack(spacing: 4) {
-                            Text("Can't find what you're looking for?")
-                                .font(Theme.caption())
-                                .foregroundStyle(Theme.textSecondary)
-                            Button("Show every edition") { showAllEditions() }
-                                .font(Theme.callout())
-                                .foregroundStyle(Theme.accent)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 8)
-                    }
+                    .padding()
                 }
-                .padding()
             }
         }
         .padding(.top, 28)
-        // Grow the drawer once books start loading; stay compact until then.
-        .onChange(of: isSearching) { _, searching in
-            if searching { withAnimation(.easeInOut(duration: 0.25)) { detent = Self.expandedDetent } }
-        }
-        .onChange(of: results.isEmpty) { _, empty in
-            if !empty { withAnimation(.easeInOut(duration: 0.25)) { detent = Self.expandedDetent } }
-        }
+        .onAppear { refreshRecents() }
         .task {
             // Sheet presentation animations interfere with focus assignment if it
             // happens too early; a small delay reliably brings up the keyboard.
@@ -222,6 +314,79 @@ struct AddBookFlowView: View {
         }
     }
     
+    // MARK: - Recents
+
+    private var recentsUid: String {
+        authService.firebaseUser?.uid ?? "anon"
+    }
+
+    private func refreshRecents() {
+        recentQueries = SearchRecents.queries(uid: recentsUid)
+        recentBooks = SearchRecents.books(uid: recentsUid)
+    }
+
+    /// Opens a book profile from search results or recents, recording both the book
+    /// and the query that surfaced it.
+    private func openBookProfile(_ book: Book) {
+        SearchRecents.addBook(book, uid: recentsUid)
+        SearchRecents.addQuery(query, uid: recentsUid)
+        refreshRecents()
+        selectedBookForProfile = book
+    }
+
+    /// Shown while the search field is empty: past queries and recently opened books.
+    @ViewBuilder
+    private var recentsSection: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            if !recentQueries.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Recent searches")
+                        .font(Theme.headline())
+                        .foregroundStyle(Theme.textSecondary)
+                        .padding(.bottom, 4)
+                    ForEach(recentQueries, id: \.self) { q in
+                        Button {
+                            query = q
+                            runSearch()
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "clock.arrow.circlepath")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundStyle(Theme.textTertiary)
+                                Text(q)
+                                    .font(Theme.callout())
+                                    .foregroundStyle(Theme.textPrimary)
+                                    .lineLimit(1)
+                                Spacer(minLength: 0)
+                                Image(systemName: "arrow.up.left")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(Theme.textTertiary)
+                            }
+                            .padding(.vertical, 8)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            if !recentBooks.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Recent books")
+                        .font(Theme.headline())
+                        .foregroundStyle(Theme.textSecondary)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 12) {
+                            ForEach(recentBooks) { b in
+                                BookCoverView(book: b, size: 84, onTap: { openBookProfile(b) })
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     /// Debounces keystrokes so results populate automatically as the user types,
     /// without firing a request on every character.
     private func scheduleSearch(for value: String) {
@@ -230,12 +395,11 @@ struct AddBookFlowView: View {
         showingAllEditions = false
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            // Clear stale results when the field is emptied, and shrink back to compact.
+            // Clear stale results when the field is emptied.
             results = []
             hasSearched = false
             searchError = nil
             isSearching = false
-            withAnimation(.easeInOut(duration: 0.25)) { detent = Self.smallDetent }
             return
         }
         searchTask = Task {
@@ -250,6 +414,8 @@ struct AddBookFlowView: View {
         searchTask?.cancel()
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        SearchRecents.addQuery(trimmed, uid: recentsUid)
+        refreshRecents()
         searchTask = Task { await performSearch(trimmed) }
     }
 
@@ -340,7 +506,7 @@ struct AddBookFlowView: View {
                 .foregroundStyle(Theme.background)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
-                .background(Theme.accent)
+                .background(Theme.accentGloss)
                 .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
                 .padding(.horizontal)
             }
@@ -357,7 +523,7 @@ struct AddBookFlowView: View {
     }
 
     private func saveAndDismiss(ratingStepReview: String? = nil) {
-        guard let book = selectedBook, let uid = authService.firebaseUser?.uid else { dismiss(); return }
+        guard let book = selectedBook, let uid = authService.firebaseUser?.uid else { close(); return }
         let now = Date()
         let tempId = UUID()
         let ratingValue: Double? = nil
@@ -427,7 +593,7 @@ struct AddBookFlowView: View {
                     case .currentlyReading:
                         ToastCenter.shared.show(.startedReading(bookTitle: book.title))
                     }
-                    dismiss()
+                    close()
                 }
             } catch {
                 await MainActor.run {
@@ -474,7 +640,7 @@ private struct AddBookRatingStepView: View {
             .foregroundStyle(Theme.background)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
-            .background(Theme.accent)
+            .background(Theme.accentGloss)
             .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
             .padding(.horizontal)
             .disabled(isSaving)

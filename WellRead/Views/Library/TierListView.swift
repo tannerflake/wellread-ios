@@ -69,7 +69,7 @@ private struct TierHighlightCallout: View {
         VStack(spacing: 0) {
             VStack(spacing: 2) {
                 Text(SpinesGlyphs.caps("Rank me"))
-                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .font(.system(size: 13, weight: .bold))
                     .tracking(0.5)
                 Text("Drag me onto a tier")
                     .font(Theme.caption())
@@ -80,15 +80,15 @@ private struct TierHighlightCallout: View {
             .padding(.vertical, 8)
             .background(
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(Theme.accent)
+                    .fill(Theme.accentGloss)
             )
 
             CalloutTail()
-                .fill(Theme.accent)
+                .fill(Theme.accentGloss)
                 .frame(width: 18, height: 9)
                 .offset(x: tailOffset)
         }
-        .shadow(color: Theme.textPrimary.opacity(0.22), radius: 8, x: 0, y: 3)
+        .shadow(color: Theme.shadowInk.opacity(0.22), radius: 8, x: 0, y: 3)
         .allowsHitTesting(false)
     }
 }

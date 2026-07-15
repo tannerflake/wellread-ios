@@ -47,7 +47,6 @@ struct DiscoverView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Theme.background, for: .navigationBar)
-            .toolbarColorScheme(.light, for: .navigationBar)
             .navigationDestination(item: $selectedBookForProfile) { book in
                 BookProfileView(
                     book: book,
@@ -91,16 +90,14 @@ struct DiscoverView: View {
         }
     }
 
-    /// Brand banner at the top of the Discover tab — matches the Feed's `SPINE // FEED` treatment.
+    /// Banner at the top of the Discover tab.
     private var spineDiscoverHeader: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("SPINE // DISCOVER")
-                .font(.system(size: 22, weight: .bold, design: .monospaced))
+            Text("DISCOVER")
+                .font(.system(size: 22, weight: .bold))
                 .tracking(2)
                 .foregroundStyle(Theme.textPrimary)
-            Text(SpinesGlyphs.rule(width: 32))
-                .font(.system(size: 12, weight: .regular, design: .monospaced))
-                .foregroundStyle(Theme.chromeTeal)
+            BrandRule(width: 48)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, Theme.horizontalPadding)
@@ -139,13 +136,12 @@ struct DiscoverView: View {
             } label: {
                 Text("Start")
                     .font(Theme.headline())
-                    .foregroundStyle(Theme.background)
+                    .foregroundStyle(Theme.phosphorWhite)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
-                    .background(Theme.accent)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+                    .glossyProminent()
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.springPress)
             .padding(.horizontal, 40)
             .padding(.top, 8)
             .disabled(appState.isLoadingDiscoverSuggestions)

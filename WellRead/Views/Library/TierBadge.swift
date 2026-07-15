@@ -34,7 +34,7 @@ struct InlineTierPicker: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(SpinesGlyphs.caps("Tier · optional"))
-                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .font(.system(size: 11, weight: .bold))
                 .tracking(0.5)
                 .foregroundStyle(Theme.chromeTeal)
 
@@ -54,8 +54,10 @@ struct InlineTierPicker: View {
             selection = nil
         } label: {
             Text("UNRANKED")
-                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .font(.system(size: 11, weight: .bold))
                 .tracking(0.5)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
                 .foregroundStyle(isSelected ? Theme.textPrimary : Theme.textTertiary)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 9)
@@ -75,7 +77,7 @@ struct InlineTierPicker: View {
             selection = tier
         } label: {
             Text(tier)
-                .font(.system(size: 15, weight: .bold, design: .monospaced))
+                .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(Color.black.opacity(0.78))
                 .frame(width: 34, height: 34)
                 .background(spineTierColor(for: tier))
@@ -122,7 +124,7 @@ struct TierBadge: View {
 
     var body: some View {
         Text("\(tier) TIER")
-            .font(.system(size: fontSize, weight: .bold, design: .monospaced))
+            .font(.system(size: fontSize, weight: .bold))
             .tracking(0.5)
             .foregroundStyle(Color.black.opacity(0.78))
             .padding(.horizontal, horizontalPadding)

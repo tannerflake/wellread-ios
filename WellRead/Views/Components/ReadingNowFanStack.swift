@@ -15,6 +15,13 @@ struct ReadingNowFanStack: View {
     let books: [Book]
     var coverWidth: CGFloat = 30
     var onTap: ((Book) -> Void)? = nil
+    /// When true, the covers gently bob and sway forever — use where the fan is a
+    /// hero element (own profile header), not in dense lists.
+    var floats: Bool = false
+
+    /// Drives the continuous float; each cover reads it with its own amplitude/sign
+    /// so they drift out of step instead of bobbing in unison.
+    @State private var floatPhase = false
 
     private static let maxCovers = 3
 
@@ -34,6 +41,16 @@ struct ReadingNowFanStack: View {
         [0, 2, 4][index % 3]
     }
 
+    /// Vertical bob amplitude per cover (points, sign alternates direction).
+    private func bob(_ index: Int) -> CGFloat {
+        [3.0, -3.5, 2.5][index % 3]
+    }
+
+    /// Sway amplitude per cover (degrees, sign alternates direction).
+    private func sway(_ index: Int) -> Double {
+        [2.5, -3.0, 2.0][index % 3]
+    }
+
     private var fanWidth: CGFloat {
         coverWidth + CGFloat(max(0, visible.count - 1)) * coverWidth * 0.55 + 6
     }
@@ -48,16 +65,25 @@ struct ReadingNowFanStack: View {
                             size: coverWidth,
                             onTap: onTap != nil ? { onTap?(book) } : nil
                         )
-                        .rotationEffect(.degrees(rotation(index)))
-                        .offset(x: xOffset(index), y: yOffset(index))
+                        .rotationEffect(.degrees(rotation(index) + (floats && floatPhase ? sway(index) : 0)))
+                        .offset(
+                            x: xOffset(index),
+                            y: yOffset(index) + (floats && floatPhase ? bob(index) : 0)
+                        )
                         .zIndex(Double(visible.count - index))
                     }
                 }
                 .frame(width: fanWidth, height: coverWidth * 1.5 + 6, alignment: .topLeading)
+                .onAppear {
+                    guard floats else { return }
+                    withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) {
+                        floatPhase = true
+                    }
+                }
 
                 if overflow > 0 {
                     Text("+\(overflow)")
-                        .font(.system(size: max(9, coverWidth * 0.3), weight: .bold, design: .monospaced))
+                        .font(.system(size: max(9, coverWidth * 0.3), weight: .bold))
                         .foregroundStyle(Theme.textSecondary)
                         .padding(.horizontal, 5)
                         .padding(.vertical, 3)

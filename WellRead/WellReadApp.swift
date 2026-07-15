@@ -2,7 +2,7 @@
 //  WellReadApp.swift
 //  WellRead
 //
-//  Book tracking platform — modern, minimal, dark-first.
+//  Book tracking platform — modern, minimal, paper-light.
 //
 
 import SwiftUI
@@ -123,6 +123,11 @@ struct WellReadApp: App {
     @StateObject private var authService = AuthService()
     @StateObject private var appState = AppState()
     @StateObject private var queueDragCoordinator = QueueBookDragCoordinator()
+    @AppStorage(AppearancePreference.storageKey) private var appearanceRaw = AppearancePreference.defaultValue.rawValue
+
+    private var appearance: AppearancePreference {
+        AppearancePreference(rawValue: appearanceRaw) ?? .defaultValue
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -130,7 +135,10 @@ struct WellReadApp: App {
                 .environmentObject(authService)
                 .environmentObject(appState)
                 .environmentObject(queueDragCoordinator)
-                .preferredColorScheme(.dark)
+                // Theme palette is fully dynamic (light paper / dark CRT); this
+                // drives system materials, nav bars, keyboards, and sheets too.
+                // `nil` (System) follows the device setting.
+                .preferredColorScheme(appearance.colorScheme)
                 .onOpenURL { url in
                     if url.scheme == "wellread", url.host == "goodreads-import" {
                         handleGoodreadsImportFromShare()

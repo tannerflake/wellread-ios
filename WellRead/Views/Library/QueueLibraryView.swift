@@ -121,7 +121,7 @@ private struct QueueAddBookTile: View {
                 Image(systemName: "plus")
                     .font(.system(size: max(16, bookSize * 0.22), weight: .semibold))
                 Text("Add")
-                    .font(.system(size: max(10, bookSize * 0.12), weight: .semibold, design: .monospaced))
+                    .font(.system(size: max(10, bookSize * 0.12), weight: .semibold))
                     .tracking(0.5)
             }
             .foregroundStyle(Theme.textTertiary)
@@ -154,7 +154,7 @@ private struct QueueEmptyShelfAddTile: View {
                 Image(systemName: "plus")
                     .font(.system(size: 30, weight: .semibold))
                 Text("Add a book")
-                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .font(.system(size: 12, weight: .semibold))
                     .tracking(0.5)
             }
             .foregroundStyle(Theme.textTertiary)
@@ -469,20 +469,20 @@ struct QueueLibraryView: View {
                 HStack(spacing: 10) {
                     Button(action: { onAcceptRecommendation?(rec) }) {
                         Text("+ QUEUE")
-                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .font(.system(size: 12, weight: .bold))
                             .tracking(0.5)
                             .foregroundStyle(Theme.phosphorWhite)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
                             .background(
                                 RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
-                                    .fill(Theme.accent)
+                                    .fill(Theme.accentGloss)
                             )
                     }
                     .buttonStyle(.plain)
                     Button(action: { onDismissRecommendation?(rec) }) {
                         Text("DISMISS")
-                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .font(.system(size: 12, weight: .bold))
                             .tracking(0.5)
                             .foregroundStyle(Theme.textSecondary)
                             .frame(maxWidth: .infinity)

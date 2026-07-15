@@ -29,7 +29,10 @@ final class GoodreadsWizardModel: ObservableObject {
     enum MatchState: Equatable {
         case matching
         case matched(Book)
+        /// Lookups completed and nothing met the confidence bar — a real no-match.
         case unmatched
+        /// Lookup errored (offline, rate limit) — retryable, never auto-skipped.
+        case failed
     }
 
     @Published var step: Step = .explainer
@@ -38,10 +41,17 @@ final class GoodreadsWizardModel: ObservableObject {
     @Published var bulkDone = 0
     @Published var bulkTotal = 0
     @Published var parseError: String?
+    /// Non-fatal problem to surface on the wizard (failed save, bulk-import hiccups).
+    @Published var importError: String?
 
     private let service = GoodreadsImportService()
     private weak var appState: AppState?
     private var inFlightRowIds: Set<String> = []
+    /// Rows already pushed to the end of the review queue because they didn't
+    /// match cleanly. When one of these comes up again it gets a manual-match
+    /// card instead of being deferred a second time. In-memory only: on a fresh
+    /// launch every problem row gets one more automatic try first.
+    private var deferredRowIds: Set<String> = []
     /// Imported this session — the Firestore listener lags the write, so `appState.userBooks` alone can't catch same-session duplicates.
     private var importedBookIds: Set<String> = []
     private var configured = false
@@ -58,6 +68,15 @@ final class GoodreadsWizardModel: ObservableObject {
     var currentBook: Book? {
         if case .matched(let b)? = currentMatch { return b }
         return nil
+    }
+
+    /// True when the current row couldn't be matched automatically (no confident
+    /// match, or lookups kept erroring) — shows the search-to-match card.
+    var currentNeedsManualMatch: Bool {
+        switch currentMatch {
+        case .unmatched?, .failed?: return true
+        default: return false
+        }
     }
 
     func configure(appState: AppState, initialRows: [GoodreadsRow]?) {
@@ -80,11 +99,28 @@ final class GoodreadsWizardModel: ObservableObject {
             parseError = "No books were found in that file. Make sure it's your Goodreads library export (goodreads_library_export.csv)."
             return
         }
+        // Re-importing a fresh export must not lose progress: Goodreads row ids
+        // (Book Id column) are stable, so carry over the saved session's decisions
+        // and cached matches for rows present in both. "Start over and delete
+        // progress" is the explicit reset path.
+        if let saved = appState?.loadGoodreadsWizardSession() {
+            let ids = Set((s.readRows + s.queueRows).map(\.id))
+            for (id, decision) in saved.decisions where ids.contains(id) {
+                // `.unmatched` is machine-derived (and was historically written even
+                // for transient lookup errors) — always re-derive it on a fresh
+                // import instead of inheriting a possibly-bogus skip.
+                if decision == .unmatched { continue }
+                s.decisions[id] = decision
+            }
+            for (id, book) in saved.matchedBooks where ids.contains(id) {
+                s.matchedBooks[id] = book
+            }
+        }
         if s.readRows.isEmpty {
             s.phase = .queuePrompt
         }
         session = s
-        matchStates = [:]
+        matchStates = s.matchedBooks.mapValues { .matched($0) }
         importedBookIds = []
         persist()
         enterStep(for: s.phase)
@@ -104,6 +140,7 @@ final class GoodreadsWizardModel: ObservableObject {
         matchStates = [:]
         importedBookIds = []
         parseError = nil
+        importError = nil
         step = .explainer
     }
 
@@ -136,22 +173,46 @@ final class GoodreadsWizardModel: ObservableObject {
             matchStates[row.id] = .matching
             Task { [weak self] in
                 guard let self else { return }
-                let book = await self.service.matchRowToBook(row)
+                let outcome = await self.service.matchRow(row)
                 self.inFlightRowIds.remove(row.id)
-                if let book {
+                switch outcome {
+                case .matched(let book):
                     self.matchStates[row.id] = .matched(book)
                     self.session?.matchedBooks[row.id] = book
                     self.persist()
-                } else {
+                case .noMatch:
                     self.matchStates[row.id] = .unmatched
+                case .failed:
+                    self.matchStates[row.id] = .failed
                 }
                 self.advancePastUndecidable()
             }
         }
     }
 
-    /// Skip forward over rows the user never needs to see: unmatched rows
-    /// (never surface unconfident matches) and books already in the library.
+    /// The user found the book by hand on the match card: treat it exactly like
+    /// an automatic match — the normal review card takes over (or the duplicate
+    /// merge runs) with the row's Goodreads data.
+    func applyManualMatch(_ book: Book) {
+        guard let row = currentRow else { return }
+        importError = nil
+        matchStates[row.id] = .matched(book)
+        session?.matchedBooks[row.id] = book
+        persist()
+        advancePastUndecidable()
+    }
+
+    /// Give up on a book from the manual-match card. Recorded as `.unmatched`
+    /// (listed under "Couldn't match" on the summary), distinct from a user
+    /// skipping a book we did find.
+    func markCurrentUnmatched() {
+        decideCurrent(.unmatched)
+    }
+
+    /// Skip forward over rows the user never needs to see, and push rows that
+    /// didn't match cleanly (no confident match, or errored lookups) to the very
+    /// end of the review queue — they come back as manual-match cards, never
+    /// silently skipped.
     private func advancePastUndecidable() {
         guard var s = session else { return }
         var changed = false
@@ -159,8 +220,20 @@ final class GoodreadsWizardModel: ObservableObject {
             switch matchStates[row.id] {
             case .none, .matching:
                 break loop
-            case .unmatched:
-                s.decisions[row.id] = .unmatched
+            case .unmatched, .failed:
+                // Second encounter: it's already at the end — stop and show the
+                // manual-match card.
+                if deferredRowIds.contains(row.id) { break loop }
+                deferredRowIds.insert(row.id)
+                if let idx = s.readRows.firstIndex(where: { $0.id == row.id }) {
+                    s.readRows.append(s.readRows.remove(at: idx))
+                } else if let idx = s.queueRows.firstIndex(where: { $0.id == row.id }) {
+                    s.queueRows.append(s.queueRows.remove(at: idx))
+                }
+                // Errored lookups get one fresh automatic try when they resurface.
+                if matchStates[row.id] == .failed {
+                    matchStates.removeValue(forKey: row.id)
+                }
                 changed = true
             case .matched(let book):
                 if isDuplicate(book) {
@@ -200,10 +273,30 @@ final class GoodreadsWizardModel: ObservableObject {
 
     private func decideCurrent(_ decision: GoodreadsRowDecision) {
         guard var s = session, let row = s.currentRow else { return }
+        importError = nil
         s.decisions[row.id] = decision
         session = s
         persist()
         advancePastUndecidable()
+    }
+
+    /// A Firestore write failed after the row was optimistically marked imported:
+    /// put the row back in play (and rewind the phase if it already advanced) so
+    /// the book is never silently lost.
+    private func revertFailedImport(rowId: String, book: Book) {
+        importedBookIds.remove(book.id)
+        guard var s = session else { return }
+        s.decisions.removeValue(forKey: rowId)
+        let isReadRow = s.readRows.contains { $0.id == rowId }
+        if isReadRow, s.phase != .readBooks {
+            s.phase = .readBooks
+        } else if !isReadRow, s.phase == .done {
+            s.phase = .queueBooks
+        }
+        session = s
+        persist()
+        enterStep(for: s.phase)
+        importError = "\"\(book.title)\" didn't save — check your connection, then tap Add again."
     }
 
     func skipCurrent() {
@@ -223,11 +316,14 @@ final class GoodreadsWizardModel: ObservableObject {
     }
 
     private func importRead(book: Book, rating: Double?, review: String?, dateFinished: Date?, tier: String?) {
-        guard let appState else { return }
+        guard let appState, let rowId = session?.currentRow?.id else { return }
         importedBookIds.insert(book.id)
         decideCurrent(.imported)
-        Task {
-            _ = await appState.importGoodreadsReadBook(book: book, rating: rating, review: review, dateFinished: dateFinished, tier: tier)
+        Task { [weak self] in
+            let outcome = await appState.importGoodreadsReadBook(book: book, rating: rating, review: review, dateFinished: dateFinished, tier: tier)
+            if case .failed = outcome {
+                self?.revertFailedImport(rowId: rowId, book: book)
+            }
         }
     }
 
@@ -289,11 +385,14 @@ final class GoodreadsWizardModel: ObservableObject {
     }
 
     func acceptCurrentQueueBook() {
-        guard let book = currentBook, let appState else { return }
+        guard let book = currentBook, let appState, let rowId = session?.currentRow?.id else { return }
         importedBookIds.insert(book.id)
         decideCurrent(.imported)
-        Task {
-            _ = await appState.importGoodreadsQueueBook(book: book)
+        Task { [weak self] in
+            let outcome = await appState.importGoodreadsQueueBook(book: book)
+            if case .failed = outcome {
+                self?.revertFailedImport(rowId: rowId, book: book)
+            }
         }
     }
 
@@ -313,52 +412,84 @@ final class GoodreadsWizardModel: ObservableObject {
         let phase = s.phase
         bulkTotal = rows.count
         bulkDone = 0
+        importError = nil
         step = .bulkImporting
         Task { [weak self] in
-            guard let self else { return }
+            guard let self, let appState = self.appState else { return }
+            var failedCount = 0
             for row in rows {
-                let book: Book?
+                var outcome: GoodreadsMatchOutcome
                 switch self.matchStates[row.id] {
-                case .matched(let b): book = b
-                case .unmatched: book = nil
-                default: book = await self.service.matchRowToBook(row)
+                case .matched(let b):
+                    outcome = .matched(b)
+                case .unmatched:
+                    outcome = .noMatch
+                default:
+                    outcome = await self.service.matchRow(row)
+                    if case .failed = outcome {
+                        // Likely throttling — wait it out once before giving up on the row.
+                        try? await Task.sleep(nanoseconds: 2_000_000_000)
+                        outcome = await self.service.matchRow(row)
+                    }
+                    // Pace the API: a large library in a tight loop trips rate limits,
+                    // and every throttled row used to be silently skipped.
+                    try? await Task.sleep(nanoseconds: 150_000_000)
                 }
-                let decision: GoodreadsRowDecision
-                if let book {
+                switch outcome {
+                case .failed:
+                    // Transient error: leave the row pending (no decision) so it
+                    // comes back as a manual-match card instead of being dropped.
+                    self.matchStates[row.id] = .failed
+                    self.deferredRowIds.insert(row.id)
+                    failedCount += 1
+                case .noMatch:
+                    // Same: no decision — the user matches or skips it by hand.
+                    self.matchStates[row.id] = .unmatched
+                    self.deferredRowIds.insert(row.id)
+                    failedCount += 1
+                case .matched(let book):
                     self.matchStates[row.id] = .matched(book)
                     self.session?.matchedBooks[row.id] = book
                     if self.isDuplicate(book) {
                         if phase == .readBooks {
-                            await self.appState?.mergeGoodreadsReReadDate(bookId: book.id, dateRead: row.dateRead)
+                            await appState.mergeGoodreadsReReadDate(bookId: book.id, dateRead: row.dateRead)
                         }
-                        decision = .duplicate
-                    } else if let appState = self.appState {
-                        let ok: Bool
+                        self.session?.decisions[row.id] = .duplicate
+                    } else {
+                        let importOutcome: AppState.GoodreadsImportOutcome
                         if phase == .readBooks {
-                            ok = await appState.importGoodreadsReadBook(
+                            importOutcome = await appState.importGoodreadsReadBook(
                                 book: book,
                                 rating: GoodreadsImportService.ratingOutOfTen(from: row.myRating),
                                 review: row.myReview,
-                                dateFinished: row.dateRead,
+                                dateFinished: row.dateRead ?? row.dateAdded,
                                 tier: nil
                             )
                         } else {
-                            ok = await appState.importGoodreadsQueueBook(book: book)
+                            importOutcome = await appState.importGoodreadsQueueBook(book: book)
                         }
-                        if ok { self.importedBookIds.insert(book.id) }
-                        decision = ok ? .imported : .duplicate
-                    } else {
-                        decision = .skipped
+                        switch importOutcome {
+                        case .imported:
+                            self.importedBookIds.insert(book.id)
+                            self.session?.decisions[row.id] = .imported
+                        case .duplicate:
+                            self.session?.decisions[row.id] = .duplicate
+                        case .failed:
+                            failedCount += 1
+                        }
                     }
-                } else {
-                    self.matchStates[row.id] = .unmatched
-                    decision = .unmatched
                 }
-                self.session?.decisions[row.id] = decision
                 self.bulkDone += 1
                 self.persist()
             }
-            self.transitionIfPhaseFinished()
+            if failedCount > 0 {
+                // Problem rows are still pending — drop back into the wizard,
+                // where each gets a search-to-match card. Never silently lost.
+                self.importError = "\(failedCount) book\(failedCount == 1 ? "" : "s") couldn't be imported automatically — match \(failedCount == 1 ? "it" : "them") by hand below, or skip."
+                self.enterStep(for: phase)
+            } else {
+                self.transitionIfPhaseFinished()
+            }
         }
     }
 
@@ -414,6 +545,9 @@ struct GoodreadsImportView: View {
     @State private var selectedTier: String? = nil
     @State private var cardReview: String = ""
     @State private var cardDateRead: Date = Date()
+    // Where the seeded date came from, so a missing Goodreads read date is
+    // flagged instead of silently defaulting to today.
+    @State private var cardDateNote: String? = nil
 
     init(initialRows: [GoodreadsRow]? = nil) {
         self.initialRows = initialRows
@@ -428,7 +562,6 @@ struct GoodreadsImportView: View {
             .navigationTitle("Import from Goodreads")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Theme.background, for: .navigationBar)
-            .toolbarColorScheme(.light, for: .navigationBar)
             // Mid-import, a scroll attempt on the card easily reads as a sheet drag
             // and throws the drawer away. Kill swipe-to-dismiss there — Close (with
             // its progress-saved modal) is the exit. Explainer/summary stay swipeable.
@@ -501,11 +634,22 @@ struct GoodreadsImportView: View {
     }
 
     /// Seed the inline-editable card fields from the current Goodreads row.
+    /// Rows without a "Date Read" fall back to the Goodreads "Date Added"
+    /// (flagged), never silently to today.
     private func syncCardState() {
         selectedTier = nil
         guard let row = model.currentRow else { return }
         cardReview = row.myReview ?? ""
-        cardDateRead = row.dateRead ?? Date()
+        if let dateRead = row.dateRead {
+            cardDateRead = dateRead
+            cardDateNote = nil
+        } else if let dateAdded = row.dateAdded {
+            cardDateRead = dateAdded
+            cardDateNote = "No read date in your Goodreads export — this is the date you added it. Adjust if needed."
+        } else {
+            cardDateRead = Date()
+            cardDateNote = "No date in your Goodreads export — pick when you finished it."
+        }
     }
 
     @ViewBuilder
@@ -563,7 +707,7 @@ struct GoodreadsImportView: View {
                     .foregroundStyle(Theme.background)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
-                    .background(Theme.accent)
+                    .background(Theme.accentGloss)
                     .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
                 }
                 .buttonStyle(.plain)
@@ -606,7 +750,7 @@ struct GoodreadsImportView: View {
             .font(Theme.headline())
             .foregroundStyle(Theme.background)
             .frame(width: 28, height: 28)
-            .background(Theme.accent)
+            .background(Theme.accentGloss)
             .clipShape(Circle())
     }
 
@@ -631,10 +775,14 @@ struct GoodreadsImportView: View {
                     remaining: session.pendingReadCount
                 )
 
+                importErrorBanner
+
                 ScrollView {
                     VStack(spacing: 20) {
                         if let book = model.currentBook, let row = model.currentRow {
                             readBookCard(book: book, row: row)
+                        } else if model.currentNeedsManualMatch, let row = model.currentRow {
+                            manualMatchCard(row: row)
                         } else {
                             matchingCard
                         }
@@ -643,6 +791,32 @@ struct GoodreadsImportView: View {
                 }
             }
         }
+    }
+
+    /// Shown when a save or bulk import hit a transient problem — the affected books stay pending.
+    @ViewBuilder
+    private var importErrorBanner: some View {
+        if let err = model.importError {
+            Text(err)
+                .font(Theme.caption())
+                .foregroundStyle(Theme.magentaPunch)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, Theme.cardPadding)
+                .padding(.top, 8)
+        }
+    }
+
+    /// Search-to-match card for books that didn't match cleanly. Tapping a
+    /// result matches it to the Goodreads row (the normal review card takes
+    /// over with the row's rating/review/date), instead of opening a profile.
+    private func manualMatchCard(row: GoodreadsRow) -> some View {
+        GoodreadsManualMatchCard(
+            row: row,
+            onMatch: { model.applyManualMatch($0) },
+            onSkip: { model.markCurrentUnmatched() }
+        )
+        .id(row.id)
     }
 
     private func readBookCard(book: Book, row: GoodreadsRow) -> some View {
@@ -669,6 +843,12 @@ struct GoodreadsImportView: View {
                             .datePickerStyle(.compact)
                             .labelsHidden()
                             .tint(Theme.accent)
+                        if let note = cardDateNote {
+                            Text(note)
+                                .font(Theme.caption())
+                                .foregroundStyle(Theme.textTertiary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                     .padding(.top, 2)
                 }
@@ -714,7 +894,7 @@ struct GoodreadsImportView: View {
                     .foregroundStyle(Theme.background)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
-                    .background(Theme.accent)
+                    .background(Theme.accentGloss)
                     .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
                 }
                 .buttonStyle(.plain)
@@ -725,7 +905,7 @@ struct GoodreadsImportView: View {
 
     private func cardSectionLabel(_ text: String) -> some View {
         Text(SpinesGlyphs.caps(text))
-            .font(.system(size: 11, weight: .bold, design: .monospaced))
+            .font(.system(size: 11, weight: .bold))
             .tracking(0.5)
             .foregroundStyle(Theme.chromeTeal)
     }
@@ -744,7 +924,7 @@ struct GoodreadsImportView: View {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.system(size: 12))
                             Text("CLEAR")
-                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .font(.system(size: 11, weight: .bold))
                                 .tracking(0.5)
                         }
                         .foregroundStyle(Theme.textTertiary)
@@ -798,7 +978,7 @@ struct GoodreadsImportView: View {
         VStack(spacing: 8) {
             HStack {
                 Text("BOOK \(position) OF \(total)")
-                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .font(.system(size: 13, weight: .bold))
                     .tracking(1)
                     .foregroundStyle(Theme.textPrimary)
                 Spacer()
@@ -857,7 +1037,7 @@ struct GoodreadsImportView: View {
                         .foregroundStyle(Theme.background)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .background(Theme.accent)
+                        .background(Theme.accentGloss)
                         .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
                 }
                 .buttonStyle(.plain)
@@ -904,10 +1084,14 @@ struct GoodreadsImportView: View {
                     remaining: session.pendingQueueCount
                 )
 
+                importErrorBanner
+
                 ScrollView {
                     VStack(spacing: 20) {
                         if let book = model.currentBook {
                             queueBookCard(book: book)
+                        } else if model.currentNeedsManualMatch, let row = model.currentRow {
+                            manualMatchCard(row: row)
                         } else {
                             matchingCard
                         }
@@ -959,7 +1143,7 @@ struct GoodreadsImportView: View {
                         .foregroundStyle(Theme.background)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .background(Theme.accent)
+                        .background(Theme.accentGloss)
                         .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
                 }
                 .buttonStyle(.plain)
@@ -1020,7 +1204,7 @@ struct GoodreadsImportView: View {
                         .foregroundStyle(Theme.background)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .background(Theme.accent)
+                        .background(Theme.accentGloss)
                         .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
                 }
                 .buttonStyle(.plain)
@@ -1148,6 +1332,182 @@ struct GoodreadsImportView: View {
             }
         } catch {
             model.parseError = "Couldn't read that file. Try downloading your export again."
+        }
+    }
+}
+
+// MARK: - Manual match card
+
+/// Shown for books that didn't match cleanly (deferred to the end of the review
+/// queue). The user searches the catalog and taps a result to match it with the
+/// Goodreads row — the wizard then imports the row's data for that book. Books
+/// are never lost here: the only exits are a manual match or an explicit skip.
+private struct GoodreadsManualMatchCard: View {
+    let row: GoodreadsRow
+    let onMatch: (Book) -> Void
+    let onSkip: () -> Void
+
+    @State private var query: String = ""
+    @State private var results: [Book] = []
+    @State private var isSearching = false
+    @State private var searchError: String?
+    @State private var searchTask: Task<Void, Never>? = nil
+
+    private static let maxResults = 8
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Couldn't match this book automatically")
+                    .font(Theme.headline())
+                    .foregroundStyle(Theme.textPrimary)
+                Text("\(row.title) — \(row.author)")
+                    .font(Theme.callout())
+                    .foregroundStyle(Theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Search for it below and tap the right edition to match it. Your Goodreads rating, review, and dates come along.")
+                    .font(Theme.caption())
+                    .foregroundStyle(Theme.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Theme.textTertiary)
+                TextField("Search by title or author", text: $query)
+                    .font(Theme.body())
+                    .foregroundStyle(Theme.textPrimary)
+                    .autocorrectionDisabled()
+                    .submitLabel(.search)
+                    .onSubmit { runSearch(debounce: false) }
+                if !query.isEmpty {
+                    Button {
+                        query = ""
+                        results = []
+                        searchError = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(Theme.textTertiary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(10)
+            .background(Theme.surfaceElevated)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .strokeBorder(Theme.chromeTeal.opacity(0.3), lineWidth: Theme.chromeHairline)
+            )
+
+            if isSearching {
+                HStack(spacing: 8) {
+                    ProgressView().tint(Theme.accent)
+                    Text("Searching…")
+                        .font(Theme.caption())
+                        .foregroundStyle(Theme.textSecondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+            } else if let err = searchError {
+                Text(err)
+                    .font(Theme.caption())
+                    .foregroundStyle(Theme.magentaPunch)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if results.isEmpty, !query.trimmingCharacters(in: .whitespaces).isEmpty {
+                Text("No results — try fewer words or a different spelling.")
+                    .font(Theme.caption())
+                    .foregroundStyle(Theme.textTertiary)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(results.prefix(Self.maxResults)) { book in
+                        Button {
+                            onMatch(book)
+                        } label: {
+                            HStack(spacing: 10) {
+                                BookCoverView(book: book, size: 48)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(book.title)
+                                        .font(Theme.callout())
+                                        .foregroundStyle(Theme.textPrimary)
+                                        .lineLimit(2)
+                                        .multilineTextAlignment(.leading)
+                                    Text(book.author)
+                                        .font(Theme.caption())
+                                        .foregroundStyle(Theme.textSecondary)
+                                        .lineLimit(1)
+                                }
+                                Spacer()
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.system(size: 20))
+                                    .foregroundStyle(Theme.accent)
+                            }
+                            .padding(8)
+                            .background(Theme.surface)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
+            Button {
+                onSkip()
+            } label: {
+                Text("Skip this book")
+                    .font(Theme.callout())
+                    .foregroundStyle(Theme.textSecondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Theme.surface)
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
+                            .strokeBorder(Theme.textTertiary.opacity(0.35), lineWidth: 1)
+                    )
+            }
+            .buttonStyle(.plain)
+        }
+        .onAppear {
+            let title = GoodreadsTitleMatcher.mainTitle(row.title)
+            let author = GoodreadsTitleMatcher.primaryAuthor(row.author)
+            query = author == "Unknown" ? title : "\(title) \(author)"
+            runSearch(debounce: false)
+        }
+        .onChange(of: query) { _, _ in
+            runSearch(debounce: true)
+        }
+    }
+
+    private func runSearch(debounce: Bool) {
+        searchTask?.cancel()
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            results = []
+            searchError = nil
+            isSearching = false
+            return
+        }
+        searchTask = Task {
+            if debounce {
+                try? await Task.sleep(nanoseconds: 350_000_000)
+            }
+            guard !Task.isCancelled else { return }
+            isSearching = true
+            do {
+                let books = try await GoogleBooksService.shared.search(query: trimmed)
+                // A cancelled task was superseded by a newer search — leave its state alone.
+                guard !Task.isCancelled else { return }
+                results = books
+                searchError = nil
+            } catch {
+                guard !Task.isCancelled else { return }
+                results = []
+                searchError = "Search didn't go through — check your connection and try again."
+            }
+            isSearching = false
         }
     }
 }

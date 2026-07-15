@@ -38,7 +38,7 @@ struct PushNotificationNudgeModal: View {
                         .foregroundStyle(Theme.background)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
-                        .background(Theme.accent)
+                        .background(Theme.accentGloss)
                         .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
                 }
                 .buttonStyle(.plain)

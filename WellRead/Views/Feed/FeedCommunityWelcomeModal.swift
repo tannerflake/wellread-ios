@@ -21,9 +21,7 @@ struct FeedCommunityWelcomeModal: View {
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                Text(SpinesGlyphs.rule(width: 28))
-                    .font(.system(size: 12, weight: .regular, design: .monospaced))
-                    .foregroundStyle(Theme.chromeTeal)
+                BrandRule(width: 44)
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
@@ -38,7 +36,7 @@ struct FeedCommunityWelcomeModal: View {
 
                 Button(action: onGotIt) {
                     Text("I'm glad to be here!")
-                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        .font(.system(size: 13, weight: .bold))
                         .tracking(1)
                         .multilineTextAlignment(.center)
                         .lineLimit(2)
@@ -48,7 +46,7 @@ struct FeedCommunityWelcomeModal: View {
                         .padding(.vertical, 14)
                         .background(
                             RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
-                                .fill(Theme.accent)
+                                .fill(Theme.accentGloss)
                         )
                 }
                 .buttonStyle(.plain)

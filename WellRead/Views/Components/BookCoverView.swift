@@ -402,7 +402,7 @@ struct BookCoverView: View {
             RoundedRectangle(cornerRadius: 6)
                 .strokeBorder(Theme.chromeTeal.opacity(0.35), lineWidth: 0.75)
         )
-        .shadow(color: Theme.textPrimary.opacity(0.12), radius: 3, x: 0, y: 2)
+        .shadow(color: Theme.shadowInk.opacity(0.12), radius: 3, x: 0, y: 2)
         .modifier(CoverTapModifier(onTap: onTap))
     }
 }

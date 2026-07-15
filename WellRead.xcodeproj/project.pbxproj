@@ -97,6 +97,7 @@
 		B001003F /* LibraryDragHaptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001003F /* LibraryDragHaptics.swift */; };
 		B0010040 /* ProfileImageCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010040 /* ProfileImageCache.swift */; };
 		B0010041 /* CachedProfileImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010041 /* CachedProfileImage.swift */; };
+		B0010C47 /* CircularPhotoCropView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010C47 /* CircularPhotoCropView.swift */; };
 		B0010201 /* ReadingNowFanStack.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010201 /* ReadingNowFanStack.swift */; };
 		B0010042 /* EditReadReviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010042 /* EditReadReviewSheet.swift */; };
 		B0010043 /* PushNotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010043 /* PushNotificationService.swift */; };
@@ -228,6 +229,7 @@
 		F001003F /* LibraryDragHaptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryDragHaptics.swift; sourceTree = "<group>"; };
 		F0010040 /* ProfileImageCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileImageCache.swift; sourceTree = "<group>"; };
 		F0010041 /* CachedProfileImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CachedProfileImage.swift; sourceTree = "<group>"; };
+		F0010C47 /* CircularPhotoCropView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CircularPhotoCropView.swift; sourceTree = "<group>"; };
 		F0010201 /* ReadingNowFanStack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingNowFanStack.swift; sourceTree = "<group>"; };
 		F0010042 /* EditReadReviewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditReadReviewSheet.swift; sourceTree = "<group>"; };
 		F0010043 /* PushNotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationService.swift; sourceTree = "<group>"; };
@@ -460,6 +462,7 @@
 				F00100FA /* Toast.swift */,
 				F0010045 /* FlowLayout.swift */,
 				F0010041 /* CachedProfileImage.swift */,
+				F0010C47 /* CircularPhotoCropView.swift */,
 				F0010201 /* ReadingNowFanStack.swift */,
 				F0010206 /* MessageComposeView.swift */,
 			);
@@ -771,6 +774,7 @@
 				B001002F /* ProfilePhotoService.swift in Sources */,
 				B0010040 /* ProfileImageCache.swift in Sources */,
 				B0010041 /* CachedProfileImage.swift in Sources */,
+				B0010C47 /* CircularPhotoCropView.swift in Sources */,
 				B0010201 /* ReadingNowFanStack.swift in Sources */,
 				B0010042 /* EditReadReviewSheet.swift in Sources */,
 				B0010030 /* CommentsView.swift in Sources */,

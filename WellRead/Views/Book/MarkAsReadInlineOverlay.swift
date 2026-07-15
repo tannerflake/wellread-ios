@@ -159,14 +159,14 @@ struct MarkAsReadInlineOverlay: View {
                 onConfirm(date, nil, post, thoughts.isEmpty ? nil : thoughts, tier)
             } label: {
                 Text("MARK AS READ")
-                    .font(.system(size: 14, weight: .bold, design: .monospaced))
+                    .font(.system(size: 14, weight: .bold))
                     .tracking(1)
                     .foregroundStyle(Theme.phosphorWhite)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
                     .background(
                         RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
-                            .fill(Theme.accent)
+                            .fill(Theme.accentGloss)
                     )
             }
             .buttonStyle(.plain)
@@ -179,7 +179,7 @@ struct MarkAsReadInlineOverlay: View {
     /// Mono section label, e.g. "DATE FINISHED".
     private func sectionLabel(_ text: String) -> some View {
         Text(text.uppercased())
-            .font(.system(size: 11, weight: .bold, design: .monospaced))
+            .font(.system(size: 11, weight: .bold))
             .tracking(1)
             .foregroundStyle(Theme.chromeTeal)
     }

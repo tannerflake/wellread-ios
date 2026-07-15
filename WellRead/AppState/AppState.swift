@@ -686,10 +686,19 @@ final class AppState: ObservableObject {
 
     // MARK: - Goodreads import
 
-    /// Import one Goodreads read book (wizard "Looks good" / Edit / import-all). Sets tier when the user picked one. Returns false on failure or duplicate.
-    func importGoodreadsReadBook(book: Book, rating: Double?, review: String?, dateFinished: Date?, tier: String?) async -> Bool {
-        guard let uid = currentUserId else { return false }
-        guard !isBookOnReadList(bookId: book.id) else { return false }
+    /// Outcome of importing one Goodreads row. `failed` (write/network error) is
+    /// distinct from `duplicate` so the wizard can retry instead of silently
+    /// reporting the book as already in the library.
+    enum GoodreadsImportOutcome {
+        case imported
+        case duplicate
+        case failed
+    }
+
+    /// Import one Goodreads read book (wizard "Add" / import-all). Sets tier when the user picked one.
+    func importGoodreadsReadBook(book: Book, rating: Double?, review: String?, dateFinished: Date?, tier: String?) async -> GoodreadsImportOutcome {
+        guard let uid = currentUserId else { return .failed }
+        guard !isBookOnReadList(bookId: book.id) else { return .duplicate }
         let storedRating = rating.map { Theme.normalizeRatingOutOfTen($0) }
         let trimmedReview = (review?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
         let validTier = tier.flatMap { spineTierLabels.contains($0) ? $0 : nil }
@@ -704,18 +713,22 @@ final class AppState: ObservableObject {
             updated.queueShelf = nil
             updated.queueOrder = nil
             updated.updatedAt = Date()
+            do {
+                try await userBookRepo.updateUserBook(updated)
+            } catch {
+                return .failed
+            }
             updateUserBook(updated)
-            try? await userBookRepo.updateUserBook(updated)
-            return true
+            return .imported
         }
         do {
             let ub = try await userBookRepo.addUserBook(userId: uid, book: book, status: .read, rating: storedRating, reviewText: trimmedReview, dateStarted: nil, dateFinished: dateFinished)
             if let validTier {
                 try? await userBookRepo.setTier(userBookId: ub.id, tier: validTier)
             }
-            return true
+            return .imported
         } catch {
-            return false
+            return .failed
         }
     }
 
@@ -738,15 +751,15 @@ final class AppState: ObservableObject {
         try? await userBookRepo.updateUserBook(existing)
     }
 
-    /// Import one Goodreads not-yet-read book into the queue. Returns false on failure or duplicate.
-    func importGoodreadsQueueBook(book: Book) async -> Bool {
-        guard let uid = currentUserId else { return false }
-        guard !isBookInQueue(bookId: book.id), !isBookOnReadList(bookId: book.id) else { return false }
+    /// Import one Goodreads not-yet-read book into the queue.
+    func importGoodreadsQueueBook(book: Book) async -> GoodreadsImportOutcome {
+        guard let uid = currentUserId else { return .failed }
+        guard !isBookInQueue(bookId: book.id), !isBookOnReadList(bookId: book.id) else { return .duplicate }
         do {
             _ = try await userBookRepo.addUserBook(userId: uid, book: book, status: .wantToRead, rating: nil, reviewText: nil, dateStarted: nil, dateFinished: nil)
-            return true
+            return .imported
         } catch {
-            return false
+            return .failed
         }
     }
 

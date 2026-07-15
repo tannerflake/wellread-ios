@@ -17,53 +17,40 @@
 
 import Foundation
 
-struct GoodreadsMatchedItem: Identifiable {
-    let id: String
-    let row: GoodreadsRow
-    let book: Book?
-    let isDuplicate: Bool
-}
-
-struct GoodreadsImportPreview {
-    var matched: [GoodreadsMatchedItem]
-    var unmatched: [GoodreadsRow]
-    var duplicateCount: Int
+/// Result of trying to resolve one Goodreads row against the catalog.
+/// `failed` (network/API error) is kept distinct from `noMatch` so a transient
+/// outage is never recorded as a permanent "couldn't match" skip.
+enum GoodreadsMatchOutcome {
+    case matched(Book)
+    /// Every lookup completed cleanly and nothing met the confidence bar.
+    case noMatch
+    /// A lookup errored (offline, rate limit, timeout) — retryable.
+    case failed
 }
 
 final class GoodreadsImportService {
     private let googleBooks = GoogleBooksService.shared
 
-    /// Match rows to books, confident matches only. Kept for bulk paths (import-all, queue auto-import).
-    func buildPreview(rows: [GoodreadsRow], existingBookIds: Set<String>) async -> GoodreadsImportPreview {
-        var matched: [GoodreadsMatchedItem] = []
-        var unmatched: [GoodreadsRow] = []
-        var duplicateCount = 0
-
-        for row in rows {
-            let book = await matchRowToBook(row)
-            let isDup = book.map { existingBookIds.contains($0.id) } ?? false
-            if isDup { duplicateCount += 1 }
-            if let book = book {
-                matched.append(GoodreadsMatchedItem(id: row.id, row: row, book: book, isDuplicate: isDup))
-            } else {
-                unmatched.append(row)
+    /// Resolve one Goodreads row to a catalog book. Errors from the search API
+    /// surface as `.failed`, never as `.noMatch`.
+    func matchRow(_ row: GoodreadsRow) async -> GoodreadsMatchOutcome {
+        var sawError = false
+        var book: Book?
+        for isbn in [row.isbn13, row.isbn].compactMap({ $0 }) where !isbn.isEmpty {
+            do {
+                if let b = try await lookupByISBN(isbn) { book = b; break }
+            } catch {
+                sawError = true
             }
         }
-        return GoodreadsImportPreview(matched: matched, unmatched: unmatched, duplicateCount: duplicateCount)
-    }
-
-    /// Resolve one Goodreads row to a catalog book, or nil when no confident match exists.
-    func matchRowToBook(_ row: GoodreadsRow) async -> Book? {
-        var book: Book?
-        if let isbn13 = row.isbn13, !isbn13.isEmpty, let b = await lookupByISBN(isbn13) {
-            book = b
-        } else if let isbn10 = row.isbn, !isbn10.isEmpty, let b = await lookupByISBN(isbn10) {
-            book = b
-        }
         if book == nil {
-            book = await lookupByTitleAuthor(row)
+            do {
+                book = try await lookupByTitleAuthor(row)
+            } catch {
+                sawError = true
+            }
         }
-        guard var merged = book else { return nil }
+        guard var merged = book else { return sawError ? .failed : .noMatch }
         // Goodreads ISBN (for Open Library covers); prefer export row over API when present.
         let fromRow = [row.isbn13, row.isbn]
             .compactMap { $0 }
@@ -72,14 +59,14 @@ final class GoodreadsImportService {
         if let d = fromRow {
             merged.isbn = d
         }
-        return merged
+        return .matched(merged)
     }
 
     /// Query Google with `isbn:…` and only accept a volume whose catalog ISBN matches (or a single unambiguous hit).
-    private func lookupByISBN(_ isbn: String) async -> Book? {
+    private func lookupByISBN(_ isbn: String) async throws -> Book? {
         let digits = isbn.filter(\.isNumber)
         guard digits.count == 10 || digits.count == 13 else { return nil }
-        let results = (try? await googleBooks.search(query: "isbn:\(digits)")) ?? []
+        let results = try await googleBooks.search(query: "isbn:\(digits)")
         for book in results {
             if let bid = book.isbn, ISBNMatcher.equivalent(digits, bid) {
                 return book
@@ -93,7 +80,7 @@ final class GoodreadsImportService {
     }
 
     /// Title + author search, verified strictly against the export row.
-    private func lookupByTitleAuthor(_ row: GoodreadsRow) async -> Book? {
+    private func lookupByTitleAuthor(_ row: GoodreadsRow) async throws -> Book? {
         let mainTitle = GoodreadsTitleMatcher.mainTitle(row.title)
         let primaryAuthor = GoodreadsTitleMatcher.primaryAuthor(row.author)
         guard !mainTitle.isEmpty else { return nil }
@@ -102,7 +89,7 @@ final class GoodreadsImportService {
         if let lastName = GoodreadsTitleMatcher.authorLastName(primaryAuthor) {
             query += " inauthor:\"\(lastName)\""
         }
-        let results = (try? await googleBooks.search(query: query)) ?? []
+        let results = try await googleBooks.search(query: query)
         let rowISBNs = [row.isbn13, row.isbn].compactMap { $0 }.map { $0.filter(\.isNumber) }
 
         var confident: [Book] = []

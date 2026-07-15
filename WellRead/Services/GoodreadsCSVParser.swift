@@ -57,24 +57,29 @@ final class GoodreadsCSVParser {
 
     static func parse(csv: String) -> [GoodreadsRow] {
         var rows: [GoodreadsRow] = []
-        let lines = csv.components(separatedBy: .newlines)
-        guard let headerLine = lines.first, !headerLine.isEmpty else { return [] }
         // Goodreads export is often tab-separated when copied (e.g. from file preview or Sheets).
-        let isTSV = headerLine.contains("\t")
-        let headers: [String] = isTSV ? headerLine.components(separatedBy: "\t").map { $0.trimmingCharacters(in: .whitespaces) } : parseCSVLine(headerLine)
+        let firstLine = csv.prefix(while: { $0 != "\n" && $0 != "\r" && $0 != "\r\n" })
+        let isTSV = firstLine.contains("\t")
+        let records: [[String]]
+        if isTSV {
+            records = csv.components(separatedBy: .newlines)
+                .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+                .map { $0.components(separatedBy: "\t").map { $0.trimmingCharacters(in: .whitespaces) } }
+        } else {
+            records = parseCSVRecords(csv)
+        }
+        guard let headers = records.first, !headers.isEmpty else { return [] }
         let columnIndex: [GoodreadsColumn: Int] = {
             var map: [GoodreadsColumn: Int] = [:]
             for (idx, h) in headers.enumerated() {
-                if let col = GoodreadsColumn(rawValue: h) {
+                if let col = GoodreadsColumn(rawValue: h.trimmingCharacters(in: .whitespaces)) {
                     map[col] = idx
                 }
             }
             return map
         }()
-        for line in lines.dropFirst() {
-            guard !line.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
-            let values: [String] = isTSV ? line.components(separatedBy: "\t").map { $0.trimmingCharacters(in: .whitespaces) } : parseCSVLine(line)
-            guard values.count > 0 else { continue }
+        for values in records.dropFirst() {
+            guard values.count > 1 else { continue }
             let bookId = value(at: .bookId, from: values, map: columnIndex) ?? ""
             let title = normalizeTitle(value(at: .title, from: values, map: columnIndex))
             let author = normalizeAuthor(value(at: .author, from: values, map: columnIndex))
@@ -109,25 +114,59 @@ final class GoodreadsCSVParser {
         return values[idx].trimmingCharacters(in: .whitespaces)
     }
 
-    /// Handles quoted fields and commas inside quotes.
-    private static func parseCSVLine(_ line: String) -> [String] {
-        var result: [String] = []
-        var current = ""
+    /// RFC-4180 record scanner: quoted fields may contain commas, escaped quotes
+    /// (""), and — critically — newlines. Goodreads reviews are frequently
+    /// multi-line; splitting the file by lines first truncated those rows and
+    /// spawned junk fragment rows that ended up "unmatched" in the import wizard.
+    private static func parseCSVRecords(_ text: String) -> [[String]] {
+        var records: [[String]] = []
+        var record: [String] = []
+        var field = ""
         var inQuotes = false
-        for ch in line {
-            if ch == "\"" {
-                inQuotes.toggle()
-                continue
+        var i = text.startIndex
+        while i < text.endIndex {
+            let ch = text[i]
+            if inQuotes {
+                if ch == "\"" {
+                    let next = text.index(after: i)
+                    if next < text.endIndex, text[next] == "\"" {
+                        field.append("\"")
+                        i = next
+                    } else {
+                        inQuotes = false
+                    }
+                } else {
+                    field.append(ch)
+                }
+            } else {
+                switch ch {
+                case "\"":
+                    inQuotes = true
+                case ",":
+                    record.append(field)
+                    field = ""
+                case "\r":
+                    break
+                // "\r\n" is a single Character (grapheme cluster) in Swift, so a
+                // CRLF file never hits the "\n" case without it listed explicitly.
+                case "\n", "\r\n":
+                    record.append(field)
+                    field = ""
+                    if !record.allSatisfy({ $0.trimmingCharacters(in: .whitespaces).isEmpty }) {
+                        records.append(record)
+                    }
+                    record = []
+                default:
+                    field.append(ch)
+                }
             }
-            if !inQuotes && ch == "," {
-                result.append(current)
-                current = ""
-                continue
-            }
-            current.append(ch)
+            i = text.index(after: i)
         }
-        result.append(current)
-        return result
+        record.append(field)
+        if !record.allSatisfy({ $0.trimmingCharacters(in: .whitespaces).isEmpty }) {
+            records.append(record)
+        }
+        return records
     }
 
     private static func normalizeTitle(_ s: String?) -> String {
@@ -158,10 +197,14 @@ final class GoodreadsCSVParser {
 
     private static func parseDate(_ s: String?) -> Date? {
         guard let s = s?.trimmingCharacters(in: .whitespaces), !s.isEmpty else { return nil }
+        // Goodreads allows partial read dates, so the export can contain
+        // "2016/04/12", "2016/04", or just "2016" — all must parse.
         let formatters: [DateFormatter] = [
             { let f = DateFormatter(); f.dateFormat = "yyyy/MM/dd"; f.locale = Locale(identifier: "en_US_POSIX"); return f }(),
             { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.locale = Locale(identifier: "en_US_POSIX"); return f }(),
             { let f = DateFormatter(); f.dateFormat = "MM/dd/yyyy"; f.locale = Locale(identifier: "en_US_POSIX"); return f }(),
+            { let f = DateFormatter(); f.dateFormat = "yyyy/MM"; f.locale = Locale(identifier: "en_US_POSIX"); return f }(),
+            { let f = DateFormatter(); f.dateFormat = "yyyy-MM"; f.locale = Locale(identifier: "en_US_POSIX"); return f }(),
             { let f = DateFormatter(); f.dateFormat = "yyyy"; f.locale = Locale(identifier: "en_US_POSIX"); return f }()
         ]
         for f in formatters {
