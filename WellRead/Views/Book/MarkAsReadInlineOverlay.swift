@@ -173,7 +173,9 @@ struct MarkAsReadInlineOverlay: View {
             .padding(.top, 4)
         }
         .padding(20)
-        .windowedCard(title: "Mark As Read")
+        .windowedCard(title: "Mark As Read", onClose: {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { isPresented = false }
+        })
     }
 
     /// Mono section label, e.g. "DATE FINISHED".

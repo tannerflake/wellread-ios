@@ -54,7 +54,7 @@ struct FeedCommunityWelcomeModal: View {
             }
             .padding(20)
         }
-        .windowedCard(title: "Welcome")
+        .windowedCard(title: "Welcome", onClose: onGotIt)
         .padding(.horizontal, Theme.horizontalPadding)
     }
 

@@ -367,9 +367,6 @@ enum AppearancePreference: String, CaseIterable, Identifiable {
 // MARK: - Glyph helpers (terminal ASCII decoration retired — use BrandRule for dividers)
 
 enum SpinesGlyphs {
-    /// Solid square — window close-button glyph (Win95 windowed-card chrome only).
-    static let closeBox = "■"
-
     /// Uppercases a short status/overline label, e.g. `STATUS`.
     static func caps(_ s: String) -> String { s.uppercased() }
 }
@@ -465,8 +462,10 @@ struct ThemeCardStyle: ViewModifier {
 struct WindowedCardStyle<TitleAccessory: View>: ViewModifier {
     let title: String?
     let chromeColor: Color
-    /// Optional trailing view in the title bar (e.g. a tier badge), before the close box.
+    /// Optional trailing view in the title bar (e.g. a tier badge), before the close button.
     let titleAccessory: TitleAccessory
+    /// Tapping the title-bar ✕ runs this. Pass `nil` for no close button.
+    let onClose: (() -> Void)?
 
     func body(content: Content) -> some View {
         VStack(spacing: 0) {
@@ -479,10 +478,17 @@ struct WindowedCardStyle<TitleAccessory: View>: ViewModifier {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.leading, 10)
                     titleAccessory
-                    Text(SpinesGlyphs.closeBox)
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(Theme.phosphorWhite)
-                        .padding(.trailing, 10)
+                    if let onClose {
+                        Button(action: onClose) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(Theme.phosphorWhite)
+                                .padding(.vertical, 4)
+                                .padding(.horizontal, 10)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
                 .padding(.vertical, 6)
                 .background(chromeColor)
@@ -581,17 +587,19 @@ extension View {
     /// - Parameters:
     ///   - title: Title-bar text. Pass `nil` to render just a teal-bordered frame.
     ///   - chrome: Title-bar color. Defaults to teal; use `.chromeNavy` for "system" emphasis.
-    func windowedCard(title: String? = nil, chrome: Color = Theme.chromeTeal) -> some View {
-        modifier(WindowedCardStyle(title: title, chromeColor: chrome, titleAccessory: EmptyView()))
+    ///   - onClose: When set, the title bar shows a tappable ✕ that runs this.
+    func windowedCard(title: String? = nil, chrome: Color = Theme.chromeTeal, onClose: (() -> Void)? = nil) -> some View {
+        modifier(WindowedCardStyle(title: title, chromeColor: chrome, titleAccessory: EmptyView(), onClose: onClose))
     }
 
     /// Windowed card with a trailing view in the title bar (e.g. a tier badge on the review card).
     func windowedCard<Accessory: View>(
         title: String?,
         chrome: Color = Theme.chromeTeal,
+        onClose: (() -> Void)? = nil,
         @ViewBuilder titleAccessory: () -> Accessory
     ) -> some View {
-        modifier(WindowedCardStyle(title: title, chromeColor: chrome, titleAccessory: titleAccessory()))
+        modifier(WindowedCardStyle(title: title, chromeColor: chrome, titleAccessory: titleAccessory(), onClose: onClose))
     }
 }
 
