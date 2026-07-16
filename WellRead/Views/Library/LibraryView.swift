@@ -166,9 +166,7 @@ struct ProfileLibraryView: View {
                 if appState.isFetchingGoodreadsFromURL {
                     Theme.background.ignoresSafeArea()
                     VStack(spacing: 16) {
-                        ProgressView()
-                            .tint(Theme.accent)
-                            .scaleEffect(1.2)
+                        SpineLogoLoadingView(size: 84)
                         Text("Loading Goodreads import…")
                             .font(Theme.callout())
                             .foregroundStyle(Theme.textSecondary)

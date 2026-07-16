@@ -107,9 +107,7 @@ struct DiscoverView: View {
 
     private var loadingView: some View {
         VStack(spacing: 20) {
-            ProgressView()
-                .scaleEffect(1.2)
-                .tint(Theme.accent)
+            SpineLogoLoadingView(size: 84)
             Text("Finding your next read…")
                 .font(Theme.title2())
                 .foregroundStyle(Theme.textSecondary)
