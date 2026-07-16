@@ -29,7 +29,7 @@ struct PushDiagnosticsView: View {
                 if let err = diag.apnsRegistrationError {
                     Text(err)
                         .font(Theme.caption())
-                        .foregroundStyle(.red)
+                        .foregroundStyle(Theme.danger)
                 }
                 Text(diag.apnsDeviceTokenHex ?? "Not received (needs real device + permission + registerForRemoteNotifications)")
                     .font(.caption.monospaced())

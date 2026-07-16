@@ -400,7 +400,7 @@ struct BookCoverView: View {
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(
             RoundedRectangle(cornerRadius: 6)
-                .strokeBorder(Theme.chromeTeal.opacity(0.35), lineWidth: 0.75)
+                .strokeBorder(Theme.chrome.opacity(0.35), lineWidth: 0.75)
         )
         .shadow(color: Theme.shadowInk.opacity(0.12), radius: 3, x: 0, y: 2)
         .modifier(CoverTapModifier(onTap: onTap))
@@ -737,7 +737,7 @@ private struct CoverShimmer: View {
                 LinearGradient(
                     stops: [
                         .init(color: .clear, location: 0.0),
-                        .init(color: Theme.chromeTeal.opacity(0.32), location: 0.5),
+                        .init(color: Theme.chrome.opacity(0.32), location: 0.5),
                         .init(color: .clear, location: 1.0)
                     ],
                     startPoint: .leading,

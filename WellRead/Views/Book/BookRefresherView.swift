@@ -71,7 +71,7 @@ struct BookRefresherView: View {
                     .background(
                         VStack(spacing: 0) {
                             Rectangle()
-                                .fill(Theme.chromeTeal.opacity(0.35))
+                                .fill(Theme.chrome.opacity(0.35))
                                 .frame(height: Theme.chromeHairline)
                             Theme.background
                         }
@@ -93,7 +93,7 @@ struct BookRefresherView: View {
                 Text("AI REFRESHER")
                     .font(.system(size: 11, weight: .bold))
                     .tracking(1.8)
-                    .foregroundStyle(Theme.chromeTeal)
+                    .foregroundStyle(Theme.chrome)
                 Text(book.title)
                     .font(Theme.headline())
                     .foregroundStyle(Theme.textPrimary)
@@ -117,7 +117,7 @@ struct BookRefresherView: View {
             VStack(spacing: 0) {
                 Theme.background
                 Rectangle()
-                    .fill(Theme.chromeTeal.opacity(0.35))
+                    .fill(Theme.chrome.opacity(0.35))
                     .frame(height: Theme.chromeHairline)
             }
         )
@@ -133,7 +133,7 @@ struct BookRefresherView: View {
             HStack(spacing: 8) {
                 ProgressView()
                     .controlSize(.small)
-                    .tint(Theme.chromeTeal)
+                    .tint(Theme.chrome)
                 Text("refreshing your memory…")
                     .font(.system(size: 13, weight: .regular))
                     .foregroundStyle(Theme.textTertiary)
@@ -186,7 +186,7 @@ struct BookRefresherView: View {
             .hingeSectionCard(title: "The Story")
 
         if !r.keyConcepts.isEmpty {
-            bulletList(r.keyConcepts, bulletColor: Theme.chromeTeal)
+            bulletList(r.keyConcepts, bulletColor: Theme.chrome)
                 .hingeSectionCard(title: "Key Concepts")
         }
 
@@ -205,7 +205,7 @@ struct BookRefresherView: View {
                     }
                 }
             }
-            .hingeSectionCard(title: "Characters", accent: Theme.chromeNavy)
+            .hingeSectionCard(title: "Characters", accent: Theme.chromeStrong)
         }
 
         if !r.takeaways.isEmpty {
@@ -218,7 +218,7 @@ struct BookRefresherView: View {
                 ForEach(r.memorableMoments, id: \.self) { moment in
                     HStack(alignment: .top, spacing: 10) {
                         RoundedRectangle(cornerRadius: 2)
-                            .fill(Theme.magentaPunch.opacity(0.7))
+                            .fill(Theme.punch.opacity(0.7))
                             .frame(width: 3)
                         Text(moment)
                             .font(Theme.body())
@@ -230,7 +230,7 @@ struct BookRefresherView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .hingeSectionCard(title: "Memorable Moments", accent: Theme.magentaPunch)
+            .hingeSectionCard(title: "Memorable Moments", accent: Theme.punch)
         }
     }
 
@@ -271,7 +271,7 @@ struct BookRefresherView: View {
                 HStack(spacing: 8) {
                     ProgressView()
                         .controlSize(.mini)
-                        .tint(Theme.chromeTeal)
+                        .tint(Theme.chrome)
                     Text("thinking…")
                         .font(.system(size: 12, weight: .regular))
                         .foregroundStyle(Theme.textTertiary)
@@ -286,13 +286,13 @@ struct BookRefresherView: View {
         if turn.role == .user {
             Text(turn.text)
                 .font(.system(size: 15, weight: .regular))
-                .foregroundStyle(Theme.phosphorWhite)
+                .foregroundStyle(Theme.onChrome)
                 .lineSpacing(2)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(
                     RoundedRectangle(cornerRadius: 16)
-                        .fill(Theme.gloss(Theme.chromeTeal))
+                        .fill(Theme.gloss(Theme.chrome))
                 )
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .padding(.leading, 40)
@@ -309,7 +309,7 @@ struct BookRefresherView: View {
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 16)
-                        .stroke(Theme.chromeTeal.opacity(0.25), lineWidth: 1)
+                        .stroke(Theme.chrome.opacity(0.25), lineWidth: 1)
                 )
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.trailing, 24)
@@ -331,7 +331,7 @@ struct BookRefresherView: View {
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 10)
-                        .stroke(Theme.chromeTeal.opacity(0.4), lineWidth: 1)
+                        .stroke(Theme.chrome.opacity(0.4), lineWidth: 1)
                 )
                 .lineLimit(1...4)
             Button {

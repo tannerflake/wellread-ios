@@ -31,7 +31,7 @@ struct CommentsView: View {
                         VStack(spacing: 8) {
                             Image(systemName: "bubble.left")
                                 .font(.system(size: 20, weight: .medium))
-                                .foregroundStyle(Theme.chromeTeal.opacity(0.7))
+                                .foregroundStyle(Theme.chrome.opacity(0.7))
                             Text("no comments yet")
                                 .font(.system(size: 13, weight: .regular))
                                 .tracking(0.5)
@@ -49,7 +49,7 @@ struct CommentsView: View {
                                 )
                                     .padding(.leading, item.isReply ? 38 : 0)
                                     .listRowBackground(Theme.background)
-                                    .listRowSeparatorTint(Theme.chromeTeal.opacity(0.3))
+                                    .listRowSeparatorTint(Theme.chrome.opacity(0.3))
                             }
                         }
                         .listStyle(.plain)
@@ -114,7 +114,7 @@ struct CommentsView: View {
         .background(
             VStack(spacing: 0) {
                 Rectangle()
-                    .fill(Theme.chromeTeal.opacity(0.35))
+                    .fill(Theme.chrome.opacity(0.35))
                     .frame(height: Theme.chromeHairline)
                 Theme.background
             }
@@ -135,7 +135,7 @@ struct CommentsView: View {
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 10)
-                        .stroke(Theme.chromeTeal.opacity(0.4), lineWidth: 1)
+                        .stroke(Theme.chrome.opacity(0.4), lineWidth: 1)
                 )
                 .lineLimit(1...4)
             Button {
@@ -183,7 +183,7 @@ struct CommentRow: View {
                                 Text(Theme.commentRelativeTimestamp(comment.createdAt, now: context.date))
                                     .font(.system(size: 10, weight: .regular))
                                     .tracking(0.5)
-                                    .foregroundStyle(Theme.chromeTeal)
+                                    .foregroundStyle(Theme.chrome)
                             }
                         }
                     }
@@ -221,7 +221,7 @@ struct CommentRow: View {
                 .clipShape(Circle())
                 .overlay(
                     Circle()
-                        .strokeBorder(Theme.chromeTeal.opacity(0.5), lineWidth: 1)
+                        .strokeBorder(Theme.chrome.opacity(0.5), lineWidth: 1)
                 )
             } else {
                 commentAvatarPlaceholder(initial: initial)
@@ -231,12 +231,12 @@ struct CommentRow: View {
 
     private func commentAvatarPlaceholder(initial: String) -> some View {
         Circle()
-            .fill(Theme.chromeTeal)
+            .fill(Theme.chrome)
             .frame(width: Self.avatarSize, height: Self.avatarSize)
             .overlay(
                 Text(initial.uppercased())
                     .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(Theme.phosphorWhite)
+                    .foregroundStyle(Theme.onChrome)
             )
     }
 }

@@ -70,7 +70,7 @@ struct OnboardingFlowView: View {
             if let error = authService.authError {
                 Text(error)
                     .font(Theme.caption())
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Theme.danger)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal)
             }

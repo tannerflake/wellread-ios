@@ -254,7 +254,7 @@ struct FeedView: View {
     /// Hairline rule between the "Following" row and posts.
     private var feedFriendsDivider: some View {
         Rectangle()
-            .fill(Theme.chromeTeal.opacity(0.35))
+            .fill(Theme.chrome.opacity(0.35))
             .frame(height: Theme.chromeHairline)
             .padding(.horizontal, Theme.horizontalPadding)
             .padding(.vertical, 10)
@@ -265,7 +265,7 @@ struct FeedView: View {
             Text("FEED")
                 .font(.system(size: 12, weight: .bold))
                 .tracking(1)
-                .foregroundStyle(Theme.chromeTeal)
+                .foregroundStyle(Theme.chrome)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, Theme.horizontalPadding)
@@ -322,14 +322,14 @@ struct FeedView: View {
             Text("FOLLOWING")
                 .font(.system(size: 12, weight: .bold))
                 .tracking(1)
-                .foregroundStyle(Theme.chromeTeal)
+                .foregroundStyle(Theme.chrome)
                 .padding(.horizontal, Theme.horizontalPadding)
 
             if isLoadingOtherReaders {
                 HStack(spacing: 8) {
                     ProgressView()
                         .controlSize(.small)
-                        .tint(Theme.chromeTeal)
+                        .tint(Theme.chrome)
                     Text("loading readers")
                         .font(.system(size: 13, weight: .regular))
                         .foregroundStyle(Theme.textTertiary)
@@ -369,12 +369,12 @@ struct FeedView: View {
     private var allReadersDivider: some View {
         VStack(spacing: 6) {
             Rectangle()
-                .fill(Theme.chromeTeal.opacity(0.45))
+                .fill(Theme.chrome.opacity(0.45))
                 .frame(width: 1.5, height: 56)
             Text("ALL")
                 .font(.system(size: 9, weight: .bold))
                 .tracking(1)
-                .foregroundStyle(Theme.chromeTeal)
+                .foregroundStyle(Theme.chrome)
         }
         .padding(.top, 4)
         .padding(.horizontal, 2)
@@ -419,7 +419,7 @@ struct FeedView: View {
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(Theme.phosphorWhite)
+                .foregroundStyle(Theme.onChrome)
                 .frame(width: 22, height: 22)
                 .background(Circle().fill(Theme.accentGloss))
                 .overlay(Circle().strokeBorder(Theme.background, lineWidth: 2))
@@ -464,17 +464,17 @@ struct FeedView: View {
         .clipShape(Circle())
         .overlay(
             Circle()
-                .strokeBorder(Theme.chromeTeal.opacity(0.55), lineWidth: 1.5)
+                .strokeBorder(Theme.chrome.opacity(0.55), lineWidth: 1.5)
         )
     }
 
     private func otherReaderPlaceholder(initial: String, size: CGFloat) -> some View {
         Circle()
-            .fill(Theme.chromeTeal)
+            .fill(Theme.chrome)
             .overlay(
                 Text(initial.uppercased())
                     .font(.system(size: size * 0.42, weight: .bold))
-                    .foregroundStyle(Theme.phosphorWhite)
+                    .foregroundStyle(Theme.onChrome)
             )
     }
 }
@@ -535,9 +535,9 @@ struct FeedPostRow: View {
                     engagementPill(
                         icon: isLiked ? "heart.fill" : "heart",
                         count: post.likeCount,
-                        tint: isLiked ? Theme.magentaPunch : Theme.textSecondary,
+                        tint: isLiked ? Theme.punch : Theme.textSecondary,
                         active: isLiked,
-                        activeColor: Theme.magentaPunch
+                        activeColor: Theme.punch
                     )
                 }
                 .buttonStyle(.plain)
@@ -550,7 +550,7 @@ struct FeedPostRow: View {
                         count: post.commentCount,
                         tint: Theme.textSecondary,
                         active: false,
-                        activeColor: Theme.chromeTeal
+                        activeColor: Theme.chrome
                     )
                 }
                 .buttonStyle(.plain)
@@ -563,7 +563,7 @@ struct FeedPostRow: View {
 
             // Receipt-style hairline between posts
             Rectangle()
-                .fill(Theme.chromeTeal.opacity(0.25))
+                .fill(Theme.chrome.opacity(0.25))
                 .frame(height: Theme.chromeHairline)
                 .padding(.horizontal, Theme.horizontalPadding)
         }
@@ -599,7 +599,7 @@ struct FeedPostRow: View {
             Capsule().fill(active ? activeColor.opacity(0.14) : Theme.surface)
         )
         .overlay(
-            Capsule().stroke(active ? activeColor.opacity(0.55) : Theme.chromeTeal.opacity(0.35), lineWidth: 1)
+            Capsule().stroke(active ? activeColor.opacity(0.55) : Theme.chrome.opacity(0.35), lineWidth: 1)
         )
         .animation(.spring(response: 0.3, dampingFraction: 0.6), value: active)
     }
@@ -617,10 +617,10 @@ struct FeedPostRow: View {
                             Text(c.displayName ?? "User")
                                 .font(.system(size: 10, weight: .bold))
                                 .tracking(0.5)
-                                .foregroundStyle(Theme.chromeTeal)
+                                .foregroundStyle(Theme.chrome)
                                 .padding(.horizontal, 7)
                                 .padding(.vertical, 2)
-                                .background(Capsule().fill(Theme.chromeTeal.opacity(0.12)))
+                                .background(Capsule().fill(Theme.chrome.opacity(0.12)))
                             Text(c.text)
                                 .font(.system(size: 14))
                                 .foregroundStyle(Theme.textPrimary)
@@ -651,11 +651,11 @@ struct FeedPostRow: View {
     private func previewCommentAvatar(_ c: Comment) -> some View {
         let initial = String((c.displayName ?? "?").prefix(1))
         let placeholder = Circle()
-            .fill(Theme.chromeTeal)
+            .fill(Theme.chrome)
             .overlay(
                 Text(initial.uppercased())
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(Theme.phosphorWhite)
+                    .foregroundStyle(Theme.onChrome)
             )
         return Group {
             if let urlStr = c.profileImageURL, let url = URL(string: urlStr) {
@@ -692,7 +692,7 @@ struct FeedPostRow: View {
                         Text(Theme.feedRelativeTimestamp(post.createdAt))
                             .font(.system(size: 10, weight: .regular))
                             .tracking(0.5)
-                            .foregroundStyle(Theme.chromeTeal)
+                            .foregroundStyle(Theme.chrome)
                     }
                 }
             }
@@ -722,7 +722,7 @@ struct FeedPostRow: View {
             .clipShape(Circle())
             .overlay(
                 Circle()
-                    .strokeBorder(Theme.chromeTeal.opacity(0.55), lineWidth: 1)
+                    .strokeBorder(Theme.chrome.opacity(0.55), lineWidth: 1)
             )
         } else {
             feedAvatarPlaceholder(initial: initial)
@@ -731,12 +731,12 @@ struct FeedPostRow: View {
 
     private func feedAvatarPlaceholder(initial: String) -> some View {
         Circle()
-            .fill(Theme.chromeTeal)
+            .fill(Theme.chrome)
             .frame(width: 40, height: 40)
             .overlay(
                 Text(initial.uppercased())
                     .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(Theme.phosphorWhite)
+                    .foregroundStyle(Theme.onChrome)
             )
     }
 }
@@ -761,7 +761,7 @@ struct ExpandableReviewText: View {
             if truncatable {
                 Text(expanded ? "show less" : "…read more")
                     .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(Theme.chromeTeal)
+                    .foregroundStyle(Theme.chrome)
             }
         }
         .contentShape(Rectangle())

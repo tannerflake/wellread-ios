@@ -6,32 +6,39 @@
 import SwiftUI
 import WidgetKit
 
-/// Local echo of the app's Theme palette (light paper / dark CRT). The widget
-/// target doesn't compile app sources, so these are duplicated on purpose.
+/// Local echo of the app's Theme palette (SPINE paper #EDEEE3 / ink #141018,
+/// inverted in dark). The widget target doesn't compile app sources, so these
+/// are duplicated on purpose.
 enum SpinePalette {
     private static func dynamic(light: UIColor, dark: UIColor) -> Color {
         Color(UIColor { $0.userInterfaceStyle == .dark ? dark : light })
     }
 
     static let paper = dynamic(
-        light: UIColor(red: 0.910, green: 0.894, blue: 0.859, alpha: 1),
-        dark: UIColor(red: 20/255, green: 18/255, blue: 15/255, alpha: 1)
+        light: UIColor(red: 237/255, green: 238/255, blue: 227/255, alpha: 1),
+        dark: UIColor(red: 20/255, green: 16/255, blue: 24/255, alpha: 1)
     )
     static let surface = dynamic(
-        light: UIColor(red: 0.863, green: 0.843, blue: 0.800, alpha: 1),
-        dark: UIColor(red: 31/255, green: 29/255, blue: 25/255, alpha: 1)
+        light: UIColor(red: 226/255, green: 227/255, blue: 214/255, alpha: 1),
+        dark: UIColor(red: 29/255, green: 25/255, blue: 36/255, alpha: 1)
     )
     static let textPrimary = dynamic(
-        light: UIColor(red: 0.039, green: 0.039, blue: 0.039, alpha: 1),
-        dark: UIColor(red: 236/255, green: 232/255, blue: 222/255, alpha: 1)
+        light: UIColor(red: 20/255, green: 16/255, blue: 24/255, alpha: 1),
+        dark: UIColor(red: 237/255, green: 238/255, blue: 227/255, alpha: 1)
     )
     static let textSecondary = dynamic(
-        light: UIColor(red: 0.34, green: 0.32, blue: 0.30, alpha: 1),
-        dark: UIColor(red: 181/255, green: 175/255, blue: 163/255, alpha: 1)
+        light: UIColor(red: 69/255, green: 66/255, blue: 75/255, alpha: 1),
+        dark: UIColor(red: 181/255, green: 182/255, blue: 171/255, alpha: 1)
     )
-    static let teal = dynamic(
-        light: UIColor(red: 0.106, green: 0.482, blue: 0.494, alpha: 1),
-        dark: UIColor(red: 63/255, green: 169/255, blue: 173/255, alpha: 1)
+    /// Chrome — solid ink (paper in dark); replaces the retired teal.
+    static let chrome = dynamic(
+        light: UIColor(red: 20/255, green: 16/255, blue: 24/255, alpha: 1),
+        dark: UIColor(red: 237/255, green: 238/255, blue: 227/255, alpha: 1)
+    )
+    /// Text on a `chrome` fill.
+    static let onChrome = dynamic(
+        light: UIColor(red: 237/255, green: 238/255, blue: 227/255, alpha: 1),
+        dark: UIColor(red: 20/255, green: 16/255, blue: 24/255, alpha: 1)
     )
 }
 
@@ -213,17 +220,17 @@ struct FriendCoverCell: View {
                     .resizable()
                     .scaledToFill()
             } else {
-                SpinePalette.teal
+                SpinePalette.chrome
                     .overlay {
                         Text(friend.displayName.prefix(1).uppercased())
                             .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(SpinePalette.onChrome)
                     }
             }
         }
         .frame(width: 21, height: 21)
         .clipShape(Circle())
-        .overlay(Circle().strokeBorder(.white, lineWidth: 1.5))
+        .overlay(Circle().strokeBorder(SpinePalette.paper, lineWidth: 1.5))
     }
 }
 

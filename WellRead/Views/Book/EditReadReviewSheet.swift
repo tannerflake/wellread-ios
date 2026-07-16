@@ -166,7 +166,7 @@ struct EditReadReviewSheet: View {
                     if let saveError {
                         Text(saveError)
                             .font(Theme.caption())
-                            .foregroundStyle(.red)
+                            .foregroundStyle(Theme.danger)
                     }
 
                     Button {
@@ -188,7 +188,7 @@ struct EditReadReviewSheet: View {
                     } label: {
                         Text("Delete review")
                             .font(Theme.headline())
-                            .foregroundStyle(.red)
+                            .foregroundStyle(Theme.danger)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
                     }

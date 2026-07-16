@@ -38,19 +38,6 @@ struct DiscoverCriteriaEditorSheet: View {
                     tiersSection
                     tagsSection
 
-                    Button {
-                        save()
-                    } label: {
-                        Text("Save")
-                            .font(Theme.headline())
-                            .foregroundStyle(Theme.background)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(Theme.accentGloss)
-                            .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
-                    }
-                    .buttonStyle(.plain)
-
                     if !isDraftDefault {
                         Button {
                             draft = .default
@@ -59,7 +46,7 @@ struct DiscoverCriteriaEditorSheet: View {
                             VStack(spacing: 4) {
                                 Text("Reset to default")
                                     .font(Theme.headline())
-                                    .foregroundStyle(.red)
+                                    .foregroundStyle(Theme.danger)
                                 Text("Back to recommendations from your whole library and interests.")
                                     .font(Theme.caption())
                                     .foregroundStyle(Theme.textTertiary)
@@ -80,6 +67,20 @@ struct DiscoverCriteriaEditorSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                         .foregroundStyle(Theme.accent)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        save()
+                    } label: {
+                        Text("Save")
+                            .font(Theme.headline())
+                            .foregroundStyle(Theme.onChrome)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 7)
+                            .background(Theme.accentGloss)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }

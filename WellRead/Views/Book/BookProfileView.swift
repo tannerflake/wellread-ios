@@ -152,10 +152,15 @@ struct BookProfileView: View {
                             .padding(.horizontal)
                     }
                 }
-                .padding(.bottom, 32)
+                // Extra room when the floating action bar is up, so the last card
+                // can scroll clear of the buttons.
+                .padding(.bottom, showActionBar ? 108 : 32)
             }
             .background(Theme.background)
-
+        }
+        // Blackbird-style: the buttons float over the scrolling page — no panel,
+        // no divider — so the content area runs the full height.
+        .overlay(alignment: .bottom) {
             if showActionBar {
                 actionBar
             }
@@ -261,14 +266,14 @@ struct BookProfileView: View {
         guard let ub = appState.userBooks.first(where: { $0.bookId == book.id }) else { return nil }
         switch ub.status {
         case .read:
-            return ("READ", Theme.chromeTeal)
+            return ("READ", Theme.chrome)
         case .currentlyReading:
-            return ("READING NOW", Theme.magentaPunch)
+            return ("READING NOW", Theme.punch)
         case .wantToRead:
             switch ub.queueShelf {
-            case .readingNow: return ("READING NOW", Theme.magentaPunch)
+            case .readingNow: return ("READING NOW", Theme.punch)
             case .upNext: return ("UP NEXT", Theme.accent)
-            case .backlog, nil: return ("BACKLOG", Theme.chromeNavy)
+            case .backlog, nil: return ("BACKLOG", Theme.chromeStrong)
             }
         }
     }
@@ -282,11 +287,11 @@ struct BookProfileView: View {
                         Text(badge.label)
                             .font(.system(size: 11, weight: .bold))
                             .tracking(0.8)
-                            .foregroundStyle(Theme.phosphorWhite)
+                            .foregroundStyle(Theme.onChrome)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
                             .background(Capsule().fill(badge.color))
-                            .overlay(Capsule().stroke(Theme.phosphorWhite.opacity(0.85), lineWidth: 1.5))
+                            .overlay(Capsule().stroke(Theme.onChrome.opacity(0.85), lineWidth: 1.5))
                             .rotationEffect(.degrees(6))
                             .shadow(color: Theme.shadowInk.opacity(0.25), radius: 4, x: 0, y: 2)
                             .offset(x: 14, y: -10)
@@ -333,10 +338,10 @@ struct BookProfileView: View {
 
     // MARK: - Match score
 
-    /// Netflix-green for strong matches; cooler theme colors as the fit drops off.
+    /// Monochrome match ramp — strong matches get full ink, weak ones fade toward the page.
     private func matchColor(_ score: Int) -> Color {
-        if score >= 80 { return Color(red: 0.18, green: 0.65, blue: 0.35) }
-        if score >= 60 { return Theme.accent }
+        if score >= 80 { return Theme.chrome }
+        if score >= 60 { return Theme.textSecondary }
         return Theme.textTertiary
     }
 
@@ -418,7 +423,7 @@ struct BookProfileView: View {
         let dates = ub.allReadDates
         return (
             Text(dates.count > 1 ? "read \u{00D7}\(dates.count): " : "read: ")
-                .foregroundColor(Theme.chromeTeal)
+                .foregroundColor(Theme.chrome)
             + Text(dates.map { Self.readDateFormatter.string(from: $0) }.joined(separator: " \u{00B7} "))
                 .foregroundColor(Theme.textTertiary)
         )
@@ -520,7 +525,7 @@ struct BookProfileView: View {
         Text(tag.lowercased())
             .font(.system(size: 11, weight: .semibold))
             .tracking(0.4)
-            .foregroundStyle(Theme.chromeTeal)
+            .foregroundStyle(Theme.chrome)
             .padding(.horizontal, 7)
             .padding(.vertical, 3)
             .background(
@@ -529,7 +534,7 @@ struct BookProfileView: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 4)
-                    .stroke(Theme.chromeTeal.opacity(0.5), lineWidth: 1)
+                    .stroke(Theme.chrome.opacity(0.5), lineWidth: 1)
             )
     }
 
@@ -546,7 +551,7 @@ struct BookProfileView: View {
                             .overlay(
                                 Image(systemName: "book.closed")
                                     .font(.system(size: 14, weight: .medium))
-                                    .foregroundStyle(Theme.chromeTeal.opacity(0.5))
+                                    .foregroundStyle(Theme.chrome.opacity(0.5))
                             )
                     }
                 }
@@ -583,7 +588,7 @@ struct BookProfileView: View {
                 HStack(alignment: .top, spacing: 8) {
                     Text("\u{201C}")
                         .font(.system(size: 28, weight: .bold))
-                        .foregroundStyle(Theme.chromeTeal)
+                        .foregroundStyle(Theme.chrome)
                         .offset(y: -2)
                         .accessibilityHidden(true)
                     Text(q)
@@ -597,7 +602,7 @@ struct BookProfileView: View {
                 emptyState(text: "no notable quote available")
             }
         }
-        .hingeSectionCard(title: "Notable Quote", accent: Theme.chromeNavy)
+        .hingeSectionCard(title: "Notable Quote", accent: Theme.chromeStrong)
     }
 
     // MARK: - Read by window
@@ -617,9 +622,9 @@ struct BookProfileView: View {
             if overflow > 0 {
                 Text("+\(overflow)")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .foregroundStyle(Theme.phosphorWhite)
+                    .foregroundStyle(Theme.onChrome)
                     .frame(width: 34, height: 34)
-                    .background(Circle().fill(Theme.chromeNavy))
+                    .background(Circle().fill(Theme.chromeStrong))
                     .overlay(Circle().stroke(Theme.background, lineWidth: 2))
                     .shadow(color: Theme.shadowInk.opacity(0.25), radius: 3, x: 0, y: 2)
             }
@@ -632,7 +637,7 @@ struct BookProfileView: View {
                 readByRow(reader)
                 if index < readByReaders.count - 1 {
                     Rectangle()
-                        .fill(Theme.chromeTeal.opacity(0.18))
+                        .fill(Theme.chrome.opacity(0.18))
                         .frame(height: Theme.chromeHairline)
                 }
             }
@@ -752,11 +757,11 @@ struct BookProfileView: View {
                     .overlay(
                         Image(systemName: "plus.message")
                             .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(Theme.chromeTeal)
+                            .foregroundStyle(Theme.chrome)
                     )
                     .overlay(
                         Circle()
-                            .stroke(Theme.chromeTeal.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                            .stroke(Theme.chrome.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
                     )
                 Text("invite via text")
                     .font(.system(size: 10, weight: .regular))
@@ -785,11 +790,11 @@ struct BookProfileView: View {
 
     private func initialCircle(_ name: String, size: CGFloat = 52) -> some View {
         Circle()
-            .fill(Theme.chromeTeal)
+            .fill(Theme.chrome)
             .overlay(
                 Text(String(name.prefix(1)).uppercased())
                     .font(.system(size: size * 0.38, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Theme.phosphorWhite)
+                    .foregroundStyle(Theme.onChrome)
             )
     }
 
@@ -826,7 +831,7 @@ struct BookProfileView: View {
         HStack(spacing: 8) {
             ProgressView()
                 .controlSize(compact ? .mini : .small)
-                .tint(Theme.chromeTeal)
+                .tint(Theme.chrome)
             Text(label)
                 .font(.system(size: compact ? 11 : 13, weight: .regular))
                 .foregroundStyle(Theme.textTertiary)
@@ -855,24 +860,18 @@ struct BookProfileView: View {
             actionButtonRow
         }
         .padding(.horizontal)
-        .padding(.top, 18)
-        .padding(.bottom, 18)
-        .background(
-            VStack(spacing: 0) {
-                Rectangle()
-                    .fill(Theme.chromeTeal.opacity(0.45))
-                    .frame(height: Theme.chromeHairline)
-                Theme.background
-            }
-        )
-        .padding(.bottom, 12)
+        .padding(.top, 10)
+        // No panel or divider behind the buttons (Blackbird-style): they float
+        // over the page, which reads as more usable screen. The buttons' own
+        // fills and shadows carry the separation.
+        .padding(.bottom, 14)
     }
 
     private var actionButtonRow: some View {
         HStack(spacing: 10) {
             if onNotInterested != nil {
                 Button(action: { onNotInterested?() }) {
-                    actionLabel("PASS", foreground: Theme.textSecondary, background: Theme.surface, border: Theme.chromeTeal.opacity(0.5))
+                    actionLabel("PASS", foreground: Theme.textSecondary, background: Theme.surface, border: Theme.chrome.opacity(0.5))
                 }
                 .buttonStyle(.springPress)
             }
@@ -880,18 +879,18 @@ struct BookProfileView: View {
                 Group {
                     if isInQueue && onRemoveFromQueue != nil {
                         Button(action: { onRemoveFromQueue?() }) {
-                            actionLabel("REMOVE", foreground: Theme.phosphorWhite, background: Color(red: 0.86, green: 0.32, blue: 0.30), border: .clear)
+                            actionLabel("REMOVE", foreground: Theme.phosphorWhite, background: Theme.danger, border: .clear)
                         }
                         .buttonStyle(.springPress)
                     } else if isInQueue {
                         Button {} label: {
-                            actionLabel("IN QUEUE", foreground: Theme.textTertiary, background: Theme.surface, border: Theme.chromeTeal.opacity(0.3))
+                            actionLabel("IN QUEUE", foreground: Theme.textTertiary, background: Theme.surface, border: Theme.chrome.opacity(0.3))
                         }
                         .buttonStyle(.springPress)
                         .disabled(true)
                     } else {
                         Button(action: { onWantToRead?() }) {
-                            actionLabel("QUEUE", foreground: Theme.queuePowderBlueLabel, background: Theme.queuePowderBlue, border: .clear)
+                            actionLabel("QUEUE", foreground: Theme.queueTintLabel, background: Theme.queueTint, border: .clear)
                         }
                         .buttonStyle(.springPress)
                     }
@@ -912,7 +911,7 @@ struct BookProfileView: View {
                         background: isOnReadList
                             ? Theme.textTertiary
                             : (showShelfAction ? Theme.surface : Theme.accent),
-                        border: showShelfAction && !isOnReadList ? Theme.chromeTeal.opacity(0.5) : .clear
+                        border: showShelfAction && !isOnReadList ? Theme.chrome.opacity(0.5) : .clear
                     )
                 }
                 .buttonStyle(.springPress)

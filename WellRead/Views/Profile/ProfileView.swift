@@ -178,17 +178,17 @@ struct ProfileView: View {
                 Text(option.label)
                     .font(.system(size: 12, weight: .semibold))
             }
-            .foregroundStyle(isSelected ? Theme.phosphorWhite : Theme.textSecondary)
+            .foregroundStyle(isSelected ? Theme.onChrome : Theme.textSecondary)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(isSelected ? AnyShapeStyle(Theme.gloss(Theme.chromeTeal)) : AnyShapeStyle(Theme.surface))
+                    .fill(isSelected ? AnyShapeStyle(Theme.gloss(Theme.chrome)) : AnyShapeStyle(Theme.surface))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
                     .strokeBorder(
-                        isSelected ? Theme.chromeTeal : Theme.textTertiary.opacity(0.35),
+                        isSelected ? Theme.chrome : Theme.textTertiary.opacity(0.35),
                         lineWidth: isSelected ? Theme.windowBorderWidth : Theme.chromeHairline
                     )
             )

@@ -27,9 +27,9 @@ struct Toast: Identifiable, Equatable {
         /// Leading accent / badge color.
         var chrome: Color {
             switch self {
-            case .success: return Theme.chromeTeal
-            case .info: return Theme.chromeNavy
-            case .error: return Theme.magentaPunch
+            case .success: return Theme.chrome
+            case .info: return Theme.chromeStrong
+            case .error: return Theme.danger
             }
         }
 
@@ -174,7 +174,7 @@ private struct ToastView: View {
                     .fill(toast.style.chrome)
                 Image(systemName: toast.style.icon)
                     .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(Theme.phosphorWhite)
+                    .foregroundStyle(Theme.onChrome)
             }
             .frame(width: 30, height: 30)
 

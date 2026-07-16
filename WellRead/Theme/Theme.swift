@@ -2,10 +2,11 @@
 //  Theme.swift
 //  Spine
 //
-//  Design system: terminal-paper foundation, CRT-black ink, teal chrome.
-//  Translated from the Spine moodboard for iOS — keeps rounded corners,
-//  gradients, and shadows; uses ASCII as accent only (never book covers);
-//  preserves the universal tier-list colors (defined in TierListView.swift).
+//  Design system: SPINE mark language — warm cream paper, near-black ink,
+//  strictly monochrome chrome. Contrast and weight carry the hierarchy;
+//  book covers and the universal tier colors (TierListView.swift) are the
+//  only sustained color in the app. Keeps rounded corners, gradients, and
+//  soft shadows; dark mode is the inverted mark (ink page, paper text).
 //
 
 import SwiftUI
@@ -16,8 +17,7 @@ enum Theme {
     // Every palette color is a UIKit dynamic color: it resolves per trait
     // collection, so the whole `Theme.*` API adapts to light/dark automatically
     // (driven by `preferredColorScheme` at the app root — see AppearancePreference).
-    // Dark mode inverts the paper metaphor: terminal paper becomes the ink,
-    // CRT black becomes the page. Chrome hues are lifted for contrast on dark.
+    // Dark mode inverts the mark: paper becomes the ink, ink becomes the page.
 
     /// Trait-aware color pair — light appearance / dark appearance.
     private static func dynamic(light: Color, dark: Color) -> Color {
@@ -26,109 +26,106 @@ enum Theme {
         })
     }
 
+    // MARK: - Colors — The mark (fixed, appearance-independent)
+
+    /// SPINE paper — the exact cream of the logo field. #EDEEE3.
+    static let paperFixed = Color(red: 237/255, green: 238/255, blue: 227/255)
+    /// SPINE ink — the exact near-black of the logo mark (violet-cast). #141018.
+    static let inkFixed = Color(red: 20/255, green: 16/255, blue: 24/255)
+
     // MARK: - Colors — Foundation
 
-    /// Terminal paper — primary background. Light #E8E4DB / dark warm CRT-black #14120F.
-    static let background = dynamic(
-        light: Color(red: 0.910, green: 0.894, blue: 0.859),
-        dark: Color(red: 20/255, green: 18/255, blue: 15/255)
-    )
-    /// CRT black ink — flips to warm paper-white in dark. #0A0A0A / #ECE8DE.
-    static let textPrimary = dynamic(
-        light: Color(red: 0.039, green: 0.039, blue: 0.039),
-        dark: Color(red: 236/255, green: 232/255, blue: 222/255)
-    )
-    /// Phosphor white — for inverted surfaces (teal/navy/black chrome). Static:
-    /// it always sits on saturated chrome, never on the page. (#FFFFFF)
+    /// Paper — primary background. Light #EDEEE3 / dark #141018 (inverted mark).
+    static let background = dynamic(light: paperFixed, dark: inkFixed)
+    /// Ink — primary text. Flips to paper in dark. #141018 / #EDEEE3.
+    static let textPrimary = dynamic(light: inkFixed, dark: paperFixed)
+    /// Pure white — ONLY for text/icons on saturated content fills (book-cover
+    /// palette, tier colors), which stay saturated in both modes. For text on
+    /// `chrome`/`accent` fills use `onChrome` instead — those fills invert in dark.
     static let phosphorWhite = Color.white
 
     // Surfaces stay close to background; differentiation comes from borders and
     // type, not big fill jumps. In dark they step *lighter* than the background.
-    /// Cards / sheets. Light #DCD7CC / dark #1F1D19.
+    /// Cards / sheets. Light #E2E3D6 / dark #1D1924.
     static let surface = dynamic(
-        light: Color(red: 0.863, green: 0.843, blue: 0.800),
-        dark: Color(red: 31/255, green: 29/255, blue: 25/255)
+        light: Color(red: 226/255, green: 227/255, blue: 214/255),
+        dark: Color(red: 29/255, green: 25/255, blue: 36/255)
     )
-    /// Elevated cards. Light #F2EFE8 (paper-on-paper) / dark #2A2723.
+    /// Elevated cards. Light #F6F7EE (paper-on-paper) / dark #272231.
     static let surfaceElevated = dynamic(
-        light: Color(red: 0.949, green: 0.937, blue: 0.910),
-        dark: Color(red: 42/255, green: 39/255, blue: 35/255)
+        light: Color(red: 246/255, green: 247/255, blue: 238/255),
+        dark: Color(red: 39/255, green: 34/255, blue: 49/255)
     )
 
     // Text hierarchy — fades of the ink toward the page.
     static let textSecondary = dynamic(
-        light: Color(red: 0.34, green: 0.32, blue: 0.30),
-        dark: Color(red: 181/255, green: 175/255, blue: 163/255)
+        light: Color(red: 69/255, green: 66/255, blue: 75/255),
+        dark: Color(red: 181/255, green: 182/255, blue: 171/255)
     )
     static let textTertiary = dynamic(
-        light: Color(red: 0.55, green: 0.53, blue: 0.50),
-        dark: Color(red: 139/255, green: 133/255, blue: 122/255)
+        light: Color(red: 129/255, green: 126/255, blue: 134/255),
+        dark: Color(red: 138/255, green: 139/255, blue: 128/255)
     )
 
     /// Shadow ink — always dark in both modes (never use `textPrimary` for
     /// shadows: it flips light in dark mode and shadows become white glows).
-    static let shadowInk = dynamic(
-        light: Color(red: 0.039, green: 0.039, blue: 0.039),
-        dark: Color.black
-    )
+    static let shadowInk = dynamic(light: inkFixed, dark: Color.black)
 
     // MARK: - Colors — Chrome (load-bearing UI frames)
+    //
+    // One chrome: the ink itself. Frames, dividers, badges, and title bars are
+    // solid ink on paper (paper on ink in dark) — exactly the logo's two tones.
 
-    /// Win95 desktop teal — window frames, dividers, badges, primary border.
-    /// Light #1B7B7E / dark lifted phosphor teal #3FA9AD.
-    static let chromeTeal = dynamic(
-        light: Color(red: 0.106, green: 0.482, blue: 0.494),
-        dark: Color(red: 63/255, green: 169/255, blue: 173/255)
-    )
-    /// Classic title-bar navy — OS-shell title bars / emphatic chrome.
-    /// Light #000080 / dark lifted indigo #5C5CE2 (pure navy vanishes on near-black).
-    static let chromeNavy = dynamic(
-        light: Color(red: 0.000, green: 0.000, blue: 0.502),
-        dark: Color(red: 92/255, green: 92/255, blue: 226/255)
-    )
-    /// Win95 system gray — retro button surfaces, used sparingly.
-    /// Light #C0C0C0 / dark #55524E.
+    /// Primary chrome — borders, dividers, badges, filled title bars.
+    /// Light: ink. Dark: paper.
+    static let chrome = dynamic(light: inkFixed, dark: paperFixed)
+    /// Emphatic chrome — kept as a separate token for hierarchy flexibility,
+    /// currently identical to `chrome`.
+    static let chromeStrong = chrome
+    /// Text/icons sitting ON a `chrome`/`accent`/`punch` fill. Light: paper. Dark: ink.
+    static let onChrome = dynamic(light: paperFixed, dark: inkFixed)
+    /// Quiet neutral for retro button surfaces / disabled fills.
+    /// Light #C8C9BC / dark #353140.
     static let chromeGray = dynamic(
-        light: Color(red: 0.753, green: 0.753, blue: 0.753),
-        dark: Color(red: 85/255, green: 82/255, blue: 78/255)
+        light: Color(red: 200/255, green: 201/255, blue: 188/255),
+        dark: Color(red: 53/255, green: 49/255, blue: 64/255)
     )
 
-    // MARK: - Colors — One-shot accents (used rarely; they hit hard)
+    // MARK: - Colors — Accents (monochrome: emphasis is weight, not hue)
 
-    /// "BANG BANG BANG" magenta — reserve for truly singular punches.
-    /// Light #E8408F / dark #F2609F.
-    static let magentaPunch = dynamic(
-        light: Color(red: 0.910, green: 0.251, blue: 0.561),
-        dark: Color(red: 242/255, green: 96/255, blue: 159/255)
-    )
-    /// ASICS blue — primary CTA / "the real brand color moment".
-    /// Light #0F4FB8 / dark #3D74E6 (holds ≥4:1 both as white-text fill and as
-    /// text on the dark page).
-    static let asicsBlue = dynamic(
-        light: Color(red: 0.059, green: 0.310, blue: 0.722),
-        dark: Color(red: 61/255, green: 116/255, blue: 230/255)
+    /// One-shot punch — was magenta; now full-strength ink. Reserve for truly
+    /// singular moments (liked hearts, READING NOW).
+    static let punch = chrome
+    /// Primary CTA fill (Read button, rating pills). Solid ink; paper in dark.
+    /// Pair with `onChrome` text.
+    static let accent = chrome
+
+    /// Functional danger/error — the one hue allowed to break monochrome,
+    /// because errors and destructive actions must not be mistakable.
+    /// Muted brick, not brand. Light #B0352C / dark #E2685F.
+    static let danger = dynamic(
+        light: Color(red: 176/255, green: 53/255, blue: 44/255),
+        dark: Color(red: 226/255, green: 104/255, blue: 95/255)
     )
 
     // MARK: - Colors — Semantic aliases (stable API for existing views)
 
-    /// Brand chrome (was deep indigo) — now teal.
-    static let primary = chromeTeal
-    /// Primary CTA color (Read button, rating pills) (was soft green) — now ASICS blue.
-    static let accent = asicsBlue
+    /// Brand chrome.
+    static let primary = chrome
 
-    /// Queue button background — pale ASICS-blue tint. Dark: deep navy-blue tint #1D2B47.
-    static let queuePowderBlue = dynamic(
-        light: Color(red: 0.815, green: 0.870, blue: 0.965),
-        dark: Color(red: 29/255, green: 43/255, blue: 71/255)
+    /// Queue button background — quiet paper tint. Light #E0E1D2 / dark #241F2E.
+    static let queueTint = dynamic(
+        light: Color(red: 224/255, green: 225/255, blue: 210/255),
+        dark: Color(red: 36/255, green: 31/255, blue: 46/255)
     )
-    /// Text on `queuePowderBlue` — full-strength blue, lifted light blue in dark. #8FB2F2.
-    static let queuePowderBlueLabel = dynamic(
-        light: Color(red: 0.059, green: 0.310, blue: 0.722),
-        dark: Color(red: 143/255, green: 178/255, blue: 242/255)
+    /// Text on `queueTint` — strong ink fade. Light #45424B / dark #C6C7BC.
+    static let queueTintLabel = dynamic(
+        light: Color(red: 69/255, green: 66/255, blue: 75/255),
+        dark: Color(red: 198/255, green: 199/255, blue: 188/255)
     )
 
-    /// Fallback "spine" color for books with no cover image — Win98-friendly indigo plum
-    /// that harmonizes with chromeNavy and magentaPunch. Use phosphorWhite for text on it.
+    /// Fallback "spine" color for books with no cover image — deep indigo plum.
+    /// Covers are content, not chrome: they keep their color. Use phosphorWhite for text on it.
     static let defaultCoverFill = Color(red: 0.290, green: 0.240, blue: 0.550)
 
     /// Generated-cover palette: 12 deep book-jacket hues, each verified ≥ 7:1 contrast
@@ -167,10 +164,9 @@ enum Theme {
     // MARK: - Typography
     //
     // One voice: SF Pro everywhere — weight and tracking carry the hierarchy,
-    // covers and tier colors carry the personality. The old terminal-mono +
-    // literary-serif pairing is retired; the only exceptions live outside the
-    // theme (serif on generated book-cover placeholders, where it imitates a
-    // printed jacket, and mono in debug diagnostics for raw tokens).
+    // covers and tier colors carry the personality. The only exceptions live
+    // outside the theme (serif on generated book-cover placeholders, where it
+    // imitates a printed jacket, and mono in debug diagnostics for raw tokens).
 
     private static func sans(_ size: CGFloat, weight: Font.Weight) -> Font {
         .system(size: size, weight: weight)
@@ -317,7 +313,7 @@ enum Theme {
     static let horizontalPadding: CGFloat = 20
     /// Approximate height of `MainTabView`'s custom tab bar (icons, labels, padding). Used to inset pushed views that don't inherit the parent's safe area.
     static let mainTabBarChromeHeight: CGFloat = 50
-    /// Stroke width for teal "window" frames around hero surfaces.
+    /// Stroke width for ink "window" frames around hero surfaces.
     static let windowBorderWidth: CGFloat = 2
     /// Hairline width for inline chrome (dividers, list separators, card outlines).
     static let chromeHairline: CGFloat = 1
@@ -364,20 +360,20 @@ enum AppearancePreference: String, CaseIterable, Identifiable {
     }
 }
 
-// MARK: - Glyph helpers (terminal ASCII decoration retired — use BrandRule for dividers)
+// MARK: - Glyph helpers
 
 enum SpinesGlyphs {
-    /// Solid square — window close-button glyph (Win95 windowed-card chrome only).
+    /// Solid square — window close-button glyph (windowed-card chrome only).
     static let closeBox = "■"
 
     /// Uppercases a short status/overline label, e.g. `STATUS`.
     static func caps(_ s: String) -> String { s.uppercased() }
 }
 
-/// Short brand accent rule under wordmark headers — replaces the old ASCII "────" glyph run.
+/// Short brand accent rule under wordmark headers.
 struct BrandRule: View {
     var width: CGFloat = 44
-    var color: Color = Theme.chromeTeal
+    var color: Color = Theme.chrome
 
     var body: some View {
         Capsule()
@@ -389,7 +385,7 @@ struct BrandRule: View {
 // MARK: - Gloss modifiers & press feedback
 
 /// Full liquid-gloss treatment for hero CTAs: top-lit gradient fill, inner top
-/// highlight, and a soft tinted drop shadow — Apple TV icon depth.
+/// highlight, and a soft drop shadow — Apple TV icon depth.
 struct GlossyProminentStyle: ViewModifier {
     let tint: Color
     let cornerRadius: CGFloat
@@ -401,19 +397,19 @@ struct GlossyProminentStyle: ViewModifier {
                 RoundedRectangle(cornerRadius: cornerRadius)
                     .strokeBorder(
                         LinearGradient(
-                            colors: [Theme.phosphorWhite.opacity(0.5), Theme.phosphorWhite.opacity(0.05)],
+                            colors: [Color.white.opacity(0.35), Color.white.opacity(0.05)],
                             startPoint: .top,
                             endPoint: .bottom
                         ),
                         lineWidth: 1
                     )
             )
-            .shadow(color: tint.opacity(0.35), radius: 9, x: 0, y: 4)
+            .shadow(color: Theme.shadowInk.opacity(0.30), radius: 9, x: 0, y: 4)
     }
 }
 
 extension View {
-    /// Hero-CTA gloss: gradient fill + inner highlight + tinted shadow.
+    /// Hero-CTA gloss: gradient fill + inner highlight + soft ink shadow.
     func glossyProminent(_ tint: Color = Theme.accent, cornerRadius: CGFloat = Theme.cardCornerRadius) -> some View {
         modifier(GlossyProminentStyle(tint: tint, cornerRadius: cornerRadius))
     }
@@ -436,7 +432,7 @@ extension ButtonStyle where Self == SpringPressButtonStyle {
 
 // MARK: - Card & window styles
 
-/// Default card surface — paper background with a faint top sheen, subtle teal
+/// Default card surface — paper background with a faint top sheen, subtle ink
 /// hairline, soft shadow.
 struct ThemeCardStyle: ViewModifier {
     func body(content: Content) -> some View {
@@ -453,13 +449,13 @@ struct ThemeCardStyle: ViewModifier {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
-                    .stroke(Theme.chromeTeal.opacity(0.35), lineWidth: Theme.chromeHairline)
+                    .stroke(Theme.chrome.opacity(0.22), lineWidth: Theme.chromeHairline)
             )
             .shadow(color: Theme.shadowInk.opacity(0.10), radius: 10, x: 0, y: 4)
     }
 }
 
-/// Spines "window" — teal (or navy) title bar with optional title text and a
+/// Spine "window" — solid-ink title bar with optional title text and a
 /// close-box glyph; framed body. Use on hero surfaces (book profile sections,
 /// modals) — too many on one screen reads as costume.
 struct WindowedCardStyle<TitleAccessory: View>: ViewModifier {
@@ -475,13 +471,13 @@ struct WindowedCardStyle<TitleAccessory: View>: ViewModifier {
                     Text(title.uppercased())
                         .font(.system(size: 12, weight: .bold))
                         .tracking(1)
-                        .foregroundStyle(Theme.phosphorWhite)
+                        .foregroundStyle(Theme.onChrome)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.leading, 10)
                     titleAccessory
                     Text(SpinesGlyphs.closeBox)
                         .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(Theme.phosphorWhite)
+                        .foregroundStyle(Theme.onChrome)
                         .padding(.trailing, 10)
                 }
                 .padding(.vertical, 6)
@@ -502,7 +498,7 @@ struct WindowedCardStyle<TitleAccessory: View>: ViewModifier {
 
 /// Hinge-style profile section: airy rounded card with a small overline label
 /// inside the card (no title bar), generous padding, and a soft shadow. Used for
-/// book-profile sections; modals keep the Win95 `windowedCard` treatment.
+/// book-profile sections; modals keep the `windowedCard` treatment.
 struct HingeSectionCardStyle<TitleLeadingAccessory: View, TitleAccessory: View>: ViewModifier {
     let title: String?
     let accentColor: Color
@@ -547,20 +543,20 @@ struct HingeSectionCardStyle<TitleLeadingAccessory: View, TitleAccessory: View>:
 }
 
 extension View {
-    /// Plain Spines card (paper surface, hairline teal border).
+    /// Plain Spine card (paper surface, hairline ink border).
     func wellReadCard() -> some View {
         modifier(ThemeCardStyle())
     }
 
     /// Hinge-style profile section card with an overline label.
-    func hingeSectionCard(title: String?, accent: Color = Theme.chromeTeal) -> some View {
+    func hingeSectionCard(title: String?, accent: Color = Theme.chrome) -> some View {
         modifier(HingeSectionCardStyle(title: title, accentColor: accent, titleLeadingAccessory: EmptyView(), titleAccessory: EmptyView()))
     }
 
     /// Hinge-style section card with a trailing view beside the label (e.g. a tier badge).
     func hingeSectionCard<Accessory: View>(
         title: String?,
-        accent: Color = Theme.chromeTeal,
+        accent: Color = Theme.chrome,
         @ViewBuilder titleAccessory: () -> Accessory
     ) -> some View {
         modifier(HingeSectionCardStyle(title: title, accentColor: accent, titleLeadingAccessory: EmptyView(), titleAccessory: titleAccessory()))
@@ -570,25 +566,25 @@ extension View {
     /// pencil) plus the trailing accessory.
     func hingeSectionCard<Leading: View, Accessory: View>(
         title: String?,
-        accent: Color = Theme.chromeTeal,
+        accent: Color = Theme.chrome,
         @ViewBuilder titleLeading: () -> Leading,
         @ViewBuilder titleAccessory: () -> Accessory
     ) -> some View {
         modifier(HingeSectionCardStyle(title: title, accentColor: accent, titleLeadingAccessory: titleLeading(), titleAccessory: titleAccessory()))
     }
 
-    /// Spines card framed as a Win95-style window with an optional title bar.
+    /// Spine card framed as a "window" with an optional solid-ink title bar.
     /// - Parameters:
-    ///   - title: Title-bar text. Pass `nil` to render just a teal-bordered frame.
-    ///   - chrome: Title-bar color. Defaults to teal; use `.chromeNavy` for "system" emphasis.
-    func windowedCard(title: String? = nil, chrome: Color = Theme.chromeTeal) -> some View {
+    ///   - title: Title-bar text. Pass `nil` to render just an ink-bordered frame.
+    ///   - chrome: Title-bar color. Defaults to ink chrome.
+    func windowedCard(title: String? = nil, chrome: Color = Theme.chrome) -> some View {
         modifier(WindowedCardStyle(title: title, chromeColor: chrome, titleAccessory: EmptyView()))
     }
 
     /// Windowed card with a trailing view in the title bar (e.g. a tier badge on the review card).
     func windowedCard<Accessory: View>(
         title: String?,
-        chrome: Color = Theme.chromeTeal,
+        chrome: Color = Theme.chrome,
         @ViewBuilder titleAccessory: () -> Accessory
     ) -> some View {
         modifier(WindowedCardStyle(title: title, chromeColor: chrome, titleAccessory: titleAccessory()))

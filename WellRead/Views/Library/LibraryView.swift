@@ -314,15 +314,15 @@ struct ProfileLibraryView: View {
         }()
         let readFill: Color = {
             if showReadMarkReadChrome { return Theme.accent.opacity(emphasizeReadHover ? 0.58 : 0.5) }
-            if showReadRemoveChrome { return Color.red.opacity(emphasizeReadHover ? 0.58 : 0.5) }
+            if showReadRemoveChrome { return Theme.danger.opacity(emphasizeReadHover ? 0.58 : 0.5) }
             if readStaticSelectedWhileDragging { return Theme.surfaceElevated }
             if isSelected && !isDraggingBooksForChrome { return .clear }
             return .clear
         }()
         let readStrokeColor: Color = {
             if showReadMarkReadChrome { return Theme.accent.opacity(emphasizeReadHover ? 1.0 : 0.95) }
-            if showReadRemoveChrome { return Color.red.opacity(emphasizeReadHover ? 1.0 : 0.95) }
-            if readStaticSelectedWhileDragging { return Theme.chromeTeal.opacity(0.55) }
+            if showReadRemoveChrome { return Theme.danger.opacity(emphasizeReadHover ? 1.0 : 0.95) }
+            if readStaticSelectedWhileDragging { return Theme.chrome.opacity(0.55) }
             if isSelected && !isDraggingBooksForChrome { return .clear }
             return .clear
         }()
@@ -334,7 +334,7 @@ struct ProfileLibraryView: View {
         }()
         let readShadowColor: Color = {
             if showReadMarkReadChrome { return Theme.accent.opacity(emphasizeReadHover ? 0.55 : 0.45) }
-            if showReadRemoveChrome { return Color.red.opacity(emphasizeReadHover ? 0.55 : 0.45) }
+            if showReadRemoveChrome { return Theme.danger.opacity(emphasizeReadHover ? 0.55 : 0.45) }
             if readStaticSelectedWhileDragging { return Theme.shadowInk.opacity(0.12) }
             if isSelected && !isDraggingBooksForChrome { return .clear }
             return .clear
@@ -400,14 +400,14 @@ struct ProfileLibraryView: View {
             return Theme.textSecondary
         }()
         let queueFill: Color = {
-            if showQueueRemoveChrome { return Color.red.opacity(emphasizeQueueHover ? 0.58 : 0.5) }
+            if showQueueRemoveChrome { return Theme.danger.opacity(emphasizeQueueHover ? 0.58 : 0.5) }
             if queueStaticSelectedWhileDragging { return Theme.surfaceElevated }
             if isSelected && !isDraggingBooksForChrome { return .clear }
             return .clear
         }()
         let queueStrokeColor: Color = {
-            if showQueueRemoveChrome { return Color.red.opacity(emphasizeQueueHover ? 1.0 : 0.95) }
-            if queueStaticSelectedWhileDragging { return Theme.chromeTeal.opacity(0.55) }
+            if showQueueRemoveChrome { return Theme.danger.opacity(emphasizeQueueHover ? 1.0 : 0.95) }
+            if queueStaticSelectedWhileDragging { return Theme.chrome.opacity(0.55) }
             if isSelected && !isDraggingBooksForChrome { return .clear }
             return .clear
         }()
@@ -418,7 +418,7 @@ struct ProfileLibraryView: View {
             return 0
         }()
         let queueShadowColor: Color = {
-            if showQueueRemoveChrome { return Color.red.opacity(emphasizeQueueHover ? 0.55 : 0.45) }
+            if showQueueRemoveChrome { return Theme.danger.opacity(emphasizeQueueHover ? 0.55 : 0.45) }
             if queueStaticSelectedWhileDragging { return Theme.shadowInk.opacity(0.12) }
             if isSelected && !isDraggingBooksForChrome { return .clear }
             return .clear
@@ -537,7 +537,7 @@ struct ProfileLibraryView: View {
                 .clipShape(Circle())
                 .overlay(
                     Circle()
-                        .strokeBorder(Theme.chromeTeal.opacity(0.55), lineWidth: 1.5)
+                        .strokeBorder(Theme.chrome.opacity(0.55), lineWidth: 1.5)
                 )
             }
             .buttonStyle(.plain)
@@ -586,11 +586,11 @@ struct ProfileLibraryView: View {
 
     private func avatarPlaceholder(initial: String, compact: Bool = false) -> some View {
         Circle()
-            .fill(Theme.chromeTeal)
+            .fill(Theme.chrome)
             .overlay(
                 Text(initial.uppercased())
                     .font(.system(size: compact ? 18 : 28, weight: .bold))
-                    .foregroundStyle(Theme.phosphorWhite)
+                    .foregroundStyle(Theme.onChrome)
             )
     }
 
@@ -627,7 +627,7 @@ struct ProfileLibraryView: View {
             HStack(spacing: 10) {
                 Image(systemName: "square.and.arrow.down")
                     .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(Theme.phosphorWhite)
+                    .foregroundStyle(Theme.onChrome)
                     .frame(width: 30, height: 30)
                     .background(Theme.accentGloss)
                     .clipShape(RoundedRectangle(cornerRadius: 6))

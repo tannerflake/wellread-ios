@@ -473,7 +473,7 @@ struct QueueLibraryView: View {
                         Text("+ QUEUE")
                             .font(.system(size: 12, weight: .bold))
                             .tracking(0.5)
-                            .foregroundStyle(Theme.phosphorWhite)
+                            .foregroundStyle(Theme.onChrome)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
                             .background(
@@ -495,7 +495,7 @@ struct QueueLibraryView: View {
                             )
                             .overlay(
                                 RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
-                                    .stroke(Theme.chromeTeal.opacity(0.4), lineWidth: 1)
+                                    .stroke(Theme.chrome.opacity(0.4), lineWidth: 1)
                             )
                     }
                     .buttonStyle(.plain)
@@ -508,7 +508,7 @@ struct QueueLibraryView: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
-                    .stroke(Theme.chromeTeal.opacity(0.35), lineWidth: 1)
+                    .stroke(Theme.chrome.opacity(0.35), lineWidth: 1)
             )
         }
     }

@@ -28,17 +28,64 @@ struct LibraryReadingGoalProgressStrip: View {
         max(Double(goal), 1)
     }
 
+    /// Pace vs. a straight-line schedule through the calendar year.
+    private enum GoalPace {
+        case goalMet
+        case ahead(Int)
+        case onTrack
+        case behind(Int)
+    }
+
+    /// On track means within one full book of the straight-line pace; ahead/behind
+    /// only count whole books so the label never overstates a fractional gap.
+    private var pace: GoalPace {
+        if booksRead >= goal { return .goalMet }
+        let cal = Calendar.current
+        let now = Date()
+        let dayOfYear = cal.ordinality(of: .day, in: .year, for: now) ?? 1
+        let daysInYear = cal.range(of: .day, in: .year, for: now)?.count ?? 365
+        let expected = Double(goal) * Double(dayOfYear) / Double(daysInYear)
+        let diff = Double(booksRead) - expected
+        if diff >= 1 { return .ahead(Int(diff)) }
+        if diff <= -1 { return .behind(Int(-diff)) }
+        return .onTrack
+    }
+
+    private var paceText: String {
+        switch pace {
+        case .goalMet:
+            return "goal met!"
+        case .ahead(let n):
+            return "\(n) book\(n == 1 ? "" : "s") ahead"
+        case .onTrack:
+            return "on track"
+        case .behind(let n):
+            return "\(n) book\(n == 1 ? "" : "s") behind"
+        }
+    }
+
+    private var barFill: LinearGradient {
+        switch pace {
+        case .goalMet, .ahead: return Theme.accentGloss
+        case .onTrack: return Theme.gloss(Theme.textSecondary)
+        case .behind: return Theme.gloss(Theme.danger)
+        }
+    }
+
     private var caption: String {
+        let base: String
         switch copy {
         case .own:
-            return "Read \(booksRead) of your \(goal) goal for \(calendarYear)"
+            base = "Read \(booksRead) of your \(goal) goal for \(calendarYear)"
         case .other(let first):
             let trimmed = first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             if !trimmed.isEmpty {
-                return "Read \(booksRead) of \(trimmed)'s \(goal) goal for \(calendarYear)"
+                base = "Read \(booksRead) of \(trimmed)'s \(goal) goal for \(calendarYear)"
+            } else {
+                base = "Read \(booksRead) of their \(goal) goal for \(calendarYear)"
             }
-            return "Read \(booksRead) of their \(goal) goal for \(calendarYear)"
         }
+        return "\(base) (\(paceText))"
     }
 
     var body: some View {
@@ -55,7 +102,7 @@ struct LibraryReadingGoalProgressStrip: View {
                     Capsule().fill(Theme.textSecondary.opacity(0.18))
                     if fraction > 0 {
                         Capsule()
-                            .fill(Theme.accentGloss)
+                            .fill(barFill)
                             .frame(width: max(geo.size.height, geo.size.width * fraction))
                     }
                 }
@@ -63,7 +110,7 @@ struct LibraryReadingGoalProgressStrip: View {
             .frame(height: 6)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(calendarYear) reading goal")
-            .accessibilityValue("\(booksRead) of \(goal) books")
+            .accessibilityValue("\(booksRead) of \(goal) books. \(paceText)")
         }
         .padding(.top, 4)
         .padding(.bottom, 6)
@@ -99,7 +146,7 @@ struct LibrarySegmentGlassLens: View {
                 .fill(Theme.surfaceElevated)
                 .overlay(
                     RoundedRectangle(cornerRadius: cornerRadius)
-                        .strokeBorder(Theme.chromeTeal.opacity(0.55), lineWidth: 1.25)
+                        .strokeBorder(Theme.chrome.opacity(0.55), lineWidth: 1.25)
                 )
                 .shadow(color: Theme.shadowInk.opacity(0.12), radius: 4, y: 1)
         }

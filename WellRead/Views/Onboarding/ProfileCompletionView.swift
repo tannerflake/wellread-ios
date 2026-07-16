@@ -205,7 +205,7 @@ struct ProfileCompletionView: View {
                 if let errorMessage {
                     Text(errorMessage)
                         .font(Theme.caption())
-                        .foregroundStyle(.red.opacity(0.95))
+                        .foregroundStyle(Theme.danger.opacity(0.95))
                 }
 
                 Button(action: primaryBasicsAction) {
@@ -259,7 +259,7 @@ struct ProfileCompletionView: View {
                 if let errorMessage {
                     Text(errorMessage)
                         .font(Theme.caption())
-                        .foregroundStyle(.red.opacity(0.95))
+                        .foregroundStyle(Theme.danger.opacity(0.95))
                 }
 
                 Button(action: submitOnboardingWithInterests) {
@@ -509,7 +509,7 @@ struct ProfileCompletionView: View {
             if let handleCheckError {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.caption)
-                    .foregroundStyle(.orange.opacity(0.9))
+                    .foregroundStyle(Theme.danger.opacity(0.9))
                 Text(handleCheckError)
                     .font(Theme.caption())
                     .foregroundStyle(Theme.textTertiary)
@@ -517,7 +517,7 @@ struct ProfileCompletionView: View {
             } else if let handleAvailable {
                 Image(systemName: handleAvailable ? "checkmark.circle.fill" : "xmark.circle.fill")
                     .font(.caption)
-                    .foregroundStyle(handleAvailable ? Theme.accent : .red.opacity(0.85))
+                    .foregroundStyle(handleAvailable ? Theme.accent : Theme.danger.opacity(0.85))
                 Text(handleAvailable ? "That handle is available." : "That handle is taken.")
                     .font(Theme.caption())
                     .foregroundStyle(Theme.textTertiary)

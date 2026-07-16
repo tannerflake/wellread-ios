@@ -731,7 +731,7 @@ struct GoodreadsImportView: View {
                 if let err = model.parseError {
                     Text(err)
                         .font(Theme.caption())
-                        .foregroundStyle(Theme.magentaPunch)
+                        .foregroundStyle(Theme.danger)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -828,7 +828,7 @@ struct GoodreadsImportView: View {
         if let err = model.importError {
             Text(err)
                 .font(Theme.caption())
-                .foregroundStyle(Theme.magentaPunch)
+                .foregroundStyle(Theme.danger)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, Theme.cardPadding)
@@ -936,7 +936,7 @@ struct GoodreadsImportView: View {
         Text(SpinesGlyphs.caps(text))
             .font(.system(size: 11, weight: .bold))
             .tracking(0.5)
-            .foregroundStyle(Theme.chromeTeal)
+            .foregroundStyle(Theme.chrome)
     }
 
     /// Inline-editable review with a one-tap wipe button (doesn't focus the keyboard).
@@ -981,7 +981,7 @@ struct GoodreadsImportView: View {
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(Theme.chromeTeal.opacity(0.3), lineWidth: Theme.chromeHairline)
+                    .strokeBorder(Theme.chrome.opacity(0.3), lineWidth: Theme.chromeHairline)
             )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1045,7 +1045,7 @@ struct GoodreadsImportView: View {
             Spacer()
             Image(systemName: "books.vertical")
                 .font(.system(size: 44))
-                .foregroundStyle(Theme.chromeTeal)
+                .foregroundStyle(Theme.chrome)
             VStack(spacing: 8) {
                 Text("Read books done!")
                     .font(Theme.title2())
@@ -1298,7 +1298,7 @@ struct GoodreadsImportView: View {
             .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
             .overlay(
                 RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
-                    .strokeBorder(Theme.chromeTeal.opacity(0.3), lineWidth: Theme.chromeHairline)
+                    .strokeBorder(Theme.chrome.opacity(0.3), lineWidth: Theme.chromeHairline)
             )
         }
     }
@@ -1337,7 +1337,7 @@ struct GoodreadsImportView: View {
             .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
             .overlay(
                 RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
-                    .strokeBorder(Theme.chromeTeal.opacity(0.3), lineWidth: Theme.chromeHairline)
+                    .strokeBorder(Theme.chrome.opacity(0.3), lineWidth: Theme.chromeHairline)
             )
         }
     }
@@ -1428,7 +1428,7 @@ private struct GoodreadsManualMatchCard: View {
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(Theme.chromeTeal.opacity(0.3), lineWidth: Theme.chromeHairline)
+                    .strokeBorder(Theme.chrome.opacity(0.3), lineWidth: Theme.chromeHairline)
             )
 
             if isSearching {
@@ -1443,7 +1443,7 @@ private struct GoodreadsManualMatchCard: View {
             } else if let err = searchError {
                 Text(err)
                     .font(Theme.caption())
-                    .foregroundStyle(Theme.magentaPunch)
+                    .foregroundStyle(Theme.danger)
                     .fixedSize(horizontal: false, vertical: true)
             } else if results.isEmpty, !query.trimmingCharacters(in: .whitespaces).isEmpty {
                 Text("No results — try fewer words or a different spelling.")

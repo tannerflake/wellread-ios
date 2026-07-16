@@ -36,7 +36,7 @@ struct InlineTierPicker: View {
             Text(SpinesGlyphs.caps("Tier · optional"))
                 .font(.system(size: 11, weight: .bold))
                 .tracking(0.5)
-                .foregroundStyle(Theme.chromeTeal)
+                .foregroundStyle(Theme.chrome)
 
             HStack(spacing: 8) {
                 unrankedChip
@@ -65,7 +65,7 @@ struct InlineTierPicker: View {
                 .clipShape(Capsule())
                 .overlay(
                     Capsule()
-                        .strokeBorder(isSelected ? Theme.chromeTeal : Theme.textTertiary.opacity(0.3), lineWidth: isSelected ? 2 : 1)
+                        .strokeBorder(isSelected ? Theme.chrome : Theme.textTertiary.opacity(0.3), lineWidth: isSelected ? 2 : 1)
                 )
         }
         .buttonStyle(.plain)

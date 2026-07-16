@@ -56,19 +56,15 @@ struct BookBlendEntryButton: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             }
-            .foregroundStyle(Theme.phosphorWhite)
+            .foregroundStyle(state == .requestedByMe ? Theme.textSecondary : Theme.onChrome)
             .padding(.horizontal, 14)
             .padding(.vertical, 9)
             .frame(maxWidth: .infinity)
             .background(
                 Capsule().fill(
-                    LinearGradient(
-                        colors: state == .requestedByMe
-                            ? [Theme.chromeGray, Theme.chromeGray]
-                            : [Theme.chromeTeal, Theme.asicsBlue, Theme.magentaPunch],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
+                    state == .requestedByMe
+                        ? AnyShapeStyle(Theme.chromeGray)
+                        : AnyShapeStyle(Theme.gloss(Theme.chrome))
                 )
             )
             .overlay(
@@ -76,7 +72,7 @@ struct BookBlendEntryButton: View {
                 Capsule()
                     .fill(
                         LinearGradient(
-                            colors: [.clear, Theme.phosphorWhite.opacity(state == .requestedByMe ? 0 : 0.28), .clear],
+                            colors: [.clear, Color.white.opacity(state == .requestedByMe ? 0 : 0.22), .clear],
                             startPoint: .leading,
                             endPoint: .trailing
                         )
@@ -86,9 +82,9 @@ struct BookBlendEntryButton: View {
             )
             .clipShape(Capsule())
             .overlay(
-                Capsule().strokeBorder(Theme.phosphorWhite.opacity(0.35), lineWidth: 1)
+                Capsule().strokeBorder(Theme.onChrome.opacity(0.35), lineWidth: 1)
             )
-            .shadow(color: Theme.asicsBlue.opacity(state == .requestedByMe ? 0 : 0.35), radius: 8, y: 3)
+            .shadow(color: Theme.accent.opacity(state == .requestedByMe ? 0 : 0.35), radius: 8, y: 3)
         }
         .buttonStyle(.springPress)
         .disabled(state == .requestedByMe)
@@ -194,7 +190,7 @@ struct BookBlendLandingView: View {
 
             switch phase {
             case .loading:
-                ProgressView().tint(Theme.phosphorWhite)
+                ProgressView().tint(Theme.paperFixed)
             case .invite:
                 if let blend {
                     inviteScreen(blend)
@@ -222,7 +218,7 @@ struct BookBlendLandingView: View {
                         Button { dismiss() } label: {
                             Image(systemName: "xmark")
                                 .font(.system(size: 14, weight: .bold))
-                                .foregroundStyle(Theme.phosphorWhite.opacity(0.85))
+                                .foregroundStyle(Theme.paperFixed.opacity(0.85))
                                 .padding(10)
                                 .background(Circle().fill(.white.opacity(0.14)))
                         }
@@ -295,20 +291,20 @@ struct BookBlendLandingView: View {
             Text("BOOK BLEND")
                 .font(.system(size: 13, weight: .heavy))
                 .tracking(4)
-                .foregroundStyle(Theme.phosphorWhite.opacity(0.7))
+                .foregroundStyle(Theme.paperFixed.opacity(0.7))
                 .padding(.bottom, 10)
 
             Text("\(otherName) wants to blend\nlibraries with you")
                 .font(.system(size: 28, weight: .bold))
                 .multilineTextAlignment(.center)
-                .foregroundStyle(Theme.phosphorWhite)
+                .foregroundStyle(Theme.paperFixed)
                 .padding(.horizontal, 28)
                 .padding(.bottom, 14)
 
             Text("One taste match score. Shared favorites, punchy insights, and picks stolen straight off each other's shelves.")
                 .font(Theme.callout())
                 .multilineTextAlignment(.center)
-                .foregroundStyle(Theme.phosphorWhite.opacity(0.75))
+                .foregroundStyle(Theme.paperFixed.opacity(0.75))
                 .padding(.horizontal, 40)
 
             Spacer()
@@ -316,7 +312,7 @@ struct BookBlendLandingView: View {
             if let acceptError {
                 Text(acceptError)
                     .font(Theme.caption())
-                    .foregroundStyle(Theme.phosphorWhite.opacity(0.9))
+                    .foregroundStyle(Theme.paperFixed.opacity(0.9))
                     .padding(.horizontal, 32)
                     .padding(.bottom, 10)
                     .multilineTextAlignment(.center)
@@ -326,17 +322,17 @@ struct BookBlendLandingView: View {
                 Button { accept(blend) } label: {
                     Text("Let's Blend")
                         .font(.system(size: 17, weight: .bold))
-                        .foregroundStyle(Theme.phosphorWhite)
+                        .foregroundStyle(Theme.onChrome)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
                 }
-                .glossyProminent(Theme.asicsBlue, cornerRadius: 28)
+                .glossyProminent(Theme.accent, cornerRadius: 28)
                 .buttonStyle(.springPress)
 
                 Button { declineAndDismiss(blend) } label: {
                     Text("Not now")
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Theme.phosphorWhite.opacity(0.7))
+                        .foregroundStyle(Theme.paperFixed.opacity(0.7))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                 }
@@ -348,7 +344,7 @@ struct BookBlendLandingView: View {
                     Text("Blends are best when your full library is imported.")
                         .font(Theme.caption())
                 }
-                .foregroundStyle(Theme.phosphorWhite.opacity(0.55))
+                .foregroundStyle(Theme.paperFixed.opacity(0.55))
                 .padding(.top, 2)
             }
             .padding(.horizontal, 28)
@@ -394,11 +390,11 @@ struct BookBlendLandingView: View {
             )
             Text("Blend requested")
                 .font(.system(size: 24, weight: .bold))
-                .foregroundStyle(Theme.phosphorWhite)
+                .foregroundStyle(Theme.paperFixed)
             Text("We'll ping you the moment \(otherName) accepts. The blend builds itself from there.")
                 .font(Theme.callout())
                 .multilineTextAlignment(.center)
-                .foregroundStyle(Theme.phosphorWhite.opacity(0.7))
+                .foregroundStyle(Theme.paperFixed.opacity(0.7))
                 .padding(.horizontal, 44)
         }
     }
@@ -409,11 +405,11 @@ struct BookBlendLandingView: View {
                 .font(.system(size: 44))
             Text("No blend here yet")
                 .font(.system(size: 22, weight: .bold))
-                .foregroundStyle(Theme.phosphorWhite)
+                .foregroundStyle(Theme.paperFixed)
             Text("Visit a reader's profile and request a Book Blend to get one going.")
                 .font(Theme.callout())
                 .multilineTextAlignment(.center)
-                .foregroundStyle(Theme.phosphorWhite.opacity(0.7))
+                .foregroundStyle(Theme.paperFixed.opacity(0.7))
                 .padding(.horizontal, 44)
         }
     }
@@ -445,7 +441,7 @@ struct BlendGeneratingView: View {
             Spacer()
             ZStack {
                 Circle()
-                    .strokeBorder(Theme.phosphorWhite.opacity(0.18), lineWidth: 1)
+                    .strokeBorder(Theme.paperFixed.opacity(0.18), lineWidth: 1)
                     .frame(width: 190, height: 190)
                     .scaleEffect(merged ? 1.12 : 0.9)
                     .opacity(merged ? 0.2 : 0.7)
@@ -459,10 +455,10 @@ struct BlendGeneratingView: View {
             VStack(spacing: 10) {
                 Text("Blending")
                     .font(.system(size: 26, weight: .bold))
-                    .foregroundStyle(Theme.phosphorWhite)
+                    .foregroundStyle(Theme.paperFixed)
                 Text(lines[lineIndex])
                     .font(Theme.callout())
-                    .foregroundStyle(Theme.phosphorWhite.opacity(0.7))
+                    .foregroundStyle(Theme.paperFixed.opacity(0.7))
                     .contentTransition(.opacity)
                     .id(lineIndex)
                     .transition(.opacity)
@@ -495,7 +491,7 @@ struct BlendAvatar: View {
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
-        .overlay(Circle().strokeBorder(Theme.phosphorWhite.opacity(0.85), lineWidth: 2))
+        .overlay(Circle().strokeBorder(Theme.paperFixed.opacity(0.85), lineWidth: 2))
         .shadow(color: Theme.shadowInk.opacity(0.35), radius: 8, y: 3)
     }
 
@@ -505,7 +501,7 @@ struct BlendAvatar: View {
             .overlay(
                 Text(String(name.prefix(1)).uppercased())
                     .font(.system(size: size * 0.4, weight: .bold))
-                    .foregroundStyle(Theme.phosphorWhite)
+                    .foregroundStyle(Theme.paperFixed)
             )
     }
 }
@@ -525,23 +521,24 @@ struct BlendAvatarLockup: View {
     }
 }
 
-/// Immersive blend backdrop — deep ink base with drifting chrome-hued auroras.
-/// Fixed dark treatment in both appearance modes (Wrapped-style full bleed).
+/// Immersive blend backdrop — SPINE ink base with drifting paper-glow auroras
+/// (the inverted mark, in motion). Fixed dark treatment in both appearance
+/// modes (Wrapped-style full bleed).
 struct BlendAuroraBackground: View {
     var drift: Bool = true
     @State private var animate = false
 
     var body: some View {
         ZStack {
-            Color(red: 16/255, green: 14/255, blue: 24/255)
+            Theme.inkFixed
 
-            blob(Theme.chromeNavy.opacity(0.85), size: 420)
+            blob(Theme.paperFixed.opacity(0.16), size: 420)
                 .offset(x: animate ? -110 : -30, y: animate ? -220 : -140)
-            blob(Theme.chromeTeal.opacity(0.55), size: 380)
+            blob(Theme.paperFixed.opacity(0.10), size: 380)
                 .offset(x: animate ? 130 : 60, y: animate ? -40 : 60)
-            blob(Theme.magentaPunch.opacity(0.38), size: 360)
+            blob(Theme.paperFixed.opacity(0.07), size: 360)
                 .offset(x: animate ? -70 : 40, y: animate ? 260 : 180)
-            blob(Theme.asicsBlue.opacity(0.45), size: 300)
+            blob(Theme.paperFixed.opacity(0.12), size: 300)
                 .offset(x: animate ? 100 : -60, y: animate ? 120 : 260)
         }
         .ignoresSafeArea()

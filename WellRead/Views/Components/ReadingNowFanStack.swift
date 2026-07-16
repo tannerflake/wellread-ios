@@ -91,7 +91,7 @@ struct ReadingNowFanStack: View {
                             Capsule().fill(Theme.surface)
                         )
                         .overlay(
-                            Capsule().strokeBorder(Theme.chromeTeal.opacity(0.4), lineWidth: 0.75)
+                            Capsule().strokeBorder(Theme.chrome.opacity(0.4), lineWidth: 0.75)
                         )
                 }
             }

@@ -49,8 +49,19 @@ final class ShareViewController: UIViewController {
         processInputItems()
     }
 
+    // SPINE palette — paper #EDEEE3 / ink #141018, inverted in dark.
+    private static let paper = UIColor { $0.userInterfaceStyle == .dark
+        ? UIColor(red: 20/255, green: 16/255, blue: 24/255, alpha: 1)
+        : UIColor(red: 237/255, green: 238/255, blue: 227/255, alpha: 1) }
+    private static let ink = UIColor { $0.userInterfaceStyle == .dark
+        ? UIColor(red: 237/255, green: 238/255, blue: 227/255, alpha: 1)
+        : UIColor(red: 20/255, green: 16/255, blue: 24/255, alpha: 1) }
+    private static let inkSecondary = UIColor { $0.userInterfaceStyle == .dark
+        ? UIColor(red: 181/255, green: 182/255, blue: 171/255, alpha: 1)
+        : UIColor(red: 69/255, green: 66/255, blue: 75/255, alpha: 1) }
+
     private func setupModalCard() {
-        modalCard.backgroundColor = UIColor.systemBackground
+        modalCard.backgroundColor = Self.paper
         modalCard.layer.cornerRadius = 16
         modalCard.clipsToBounds = true
         modalCard.translatesAutoresizingMaskIntoConstraints = false
@@ -58,24 +69,24 @@ final class ShareViewController: UIViewController {
 
         titleLabel.text = "Import from Goodreads"
         titleLabel.font = .systemFont(ofSize: 18, weight: .semibold)
-        titleLabel.textColor = .label
+        titleLabel.textColor = Self.ink
         titleLabel.textAlignment = .center
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         modalCard.addSubview(titleLabel)
 
         messageLabel.numberOfLines = 0
         messageLabel.font = .systemFont(ofSize: 15, weight: .regular)
-        messageLabel.textColor = .secondaryLabel
+        messageLabel.textColor = Self.inkSecondary
         messageLabel.textAlignment = .center
         messageLabel.translatesAutoresizingMaskIntoConstraints = false
         modalCard.addSubview(messageLabel)
 
-        openButton.setTitle("Open Spines", for: .normal)
+        openButton.setTitle("Open SPINE", for: .normal)
         openButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
         openButton.addTarget(self, action: #selector(openThenFinish), for: .touchUpInside)
         openButton.translatesAutoresizingMaskIntoConstraints = false
-        openButton.backgroundColor = .systemBlue
-        openButton.setTitleColor(.white, for: .normal)
+        openButton.backgroundColor = Self.ink
+        openButton.setTitleColor(Self.paper, for: .normal)
         openButton.layer.cornerRadius = 10
         modalCard.addSubview(openButton)
 

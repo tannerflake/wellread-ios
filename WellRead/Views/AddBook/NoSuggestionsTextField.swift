@@ -54,7 +54,17 @@ struct NoSuggestionsTextField: UIViewRepresentable {
         // Keep UIKit focus in sync with SwiftUI's `isFocused` (autofocus on open,
         // resign when a search is submitted).
         if isFocused, !uiView.isFirstResponder {
-            uiView.becomeFirstResponder()
+            if uiView.window != nil {
+                uiView.becomeFirstResponder()
+            } else {
+                // Focus requested before the field is attached (autofocus on the
+                // first layout pass) — becomeFirstResponder would silently fail.
+                DispatchQueue.main.async {
+                    if context.coordinator.parent.isFocused, !uiView.isFirstResponder {
+                        uiView.becomeFirstResponder()
+                    }
+                }
+            }
         } else if !isFocused, uiView.isFirstResponder {
             uiView.resignFirstResponder()
         }

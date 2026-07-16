@@ -20,6 +20,10 @@ struct DiscoverCriteriaStrip: View {
     /// Resolves a seed's full Book (for cover art) — e.g. from the user's library.
     var bookForSeed: ((DiscoverSeedBook) -> Book?)? = nil
 
+    /// One-time onboarding callout on the adjust button; sticks around until the
+    /// user actually opens the criteria editor, then never shows again.
+    @AppStorage("hasSeenDiscoverTuneCallout") private var hasSeenTuneCallout = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(SpinesGlyphs.caps("Suggesting based on"))
@@ -45,9 +49,15 @@ struct DiscoverCriteriaStrip: View {
         .padding(.bottom, 8)
     }
 
+    /// Marks the tune callout as seen (the user found the editor) and opens it.
+    private func openEditor() {
+        hasSeenTuneCallout = true
+        onEdit()
+    }
+
     /// Inline "+ Add" chip at the end of the row — the obvious way to add criteria.
     private var addChip: some View {
-        Button(action: onEdit) {
+        Button(action: openEditor) {
             HStack(spacing: 5) {
                 Image(systemName: "plus")
                     .font(.system(size: 10, weight: .bold))
@@ -69,7 +79,7 @@ struct DiscoverCriteriaStrip: View {
 
     /// Always-visible compact entry to the full criteria editor (never scrolls away).
     private var adjustButton: some View {
-        Button(action: onEdit) {
+        Button(action: openEditor) {
             Image(systemName: "slider.horizontal.3")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Theme.accent)
@@ -83,6 +93,46 @@ struct DiscoverCriteriaStrip: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Adjust suggestion criteria")
+        .overlay(alignment: .topTrailing) {
+            if !hasSeenTuneCallout {
+                tuneCallout
+                    .fixedSize()
+                    .offset(y: 40)
+                    .transition(.opacity)
+            }
+        }
+    }
+
+    /// Tooltip bubble anchored under the adjust button. Tapping it opens the
+    /// editor (which also dismisses it for good). The pulse uses phaseAnimator —
+    /// unlike a repeat-forever animation toggled in onAppear, it never captures
+    /// the initial layout move, so the bubble can't fly in from stale geometry.
+    private var tuneCallout: some View {
+        Button(action: openEditor) {
+            // Negative spacing tucks the arrow into the bubble so it clears the
+            // corner-radius curve — zero spacing leaves a hairline gap there.
+            VStack(alignment: .trailing, spacing: -2) {
+                CalloutArrow()
+                    .fill(Theme.accent)
+                    .frame(width: 14, height: 9)
+                    .padding(.trailing, 14)
+                Text("Tap here to fine-tune your suggestions")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.onChrome)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Theme.accent)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+            .compositingGroup()
+            .shadow(color: Theme.accent.opacity(0.35), radius: 8, y: 3)
+            .phaseAnimator([false, true]) { bubble, pulsing in
+                bubble.scaleEffect(pulsing ? 1.05 : 1.0, anchor: UnitPoint(x: 0.92, y: 0))
+            } animation: { _ in
+                .easeInOut(duration: 0.8)
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Default mode
@@ -147,7 +197,7 @@ struct DiscoverCriteriaStrip: View {
     /// Tap opens the editor; ✕ clears all seed books.
     private var seedBooksChip: some View {
         HStack(spacing: 7) {
-            Button(action: onEdit) {
+            Button(action: openEditor) {
                 HStack(spacing: 7) {
                     Text("Like these:")
                         .font(.system(size: 12, weight: .medium))
@@ -177,7 +227,7 @@ struct DiscoverCriteriaStrip: View {
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay(
             RoundedRectangle(cornerRadius: 14)
-                .strokeBorder(Theme.chromeTeal.opacity(0.5), lineWidth: 1)
+                .strokeBorder(Theme.chrome.opacity(0.5), lineWidth: 1)
         )
     }
 
@@ -219,7 +269,19 @@ struct DiscoverCriteriaStrip: View {
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay(
             RoundedRectangle(cornerRadius: 14)
-                .strokeBorder(Theme.chromeTeal.opacity(0.5), lineWidth: 1)
+                .strokeBorder(Theme.chrome.opacity(0.5), lineWidth: 1)
         )
+    }
+}
+
+/// Small upward-pointing triangle for the tune-callout speech bubble.
+private struct CalloutArrow: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: rect.midX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        p.closeSubpath()
+        return p
     }
 }

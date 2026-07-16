@@ -88,7 +88,7 @@ struct GoodreadsExportWebView: View {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 14))
-                        .foregroundStyle(Theme.magentaPunch)
+                        .foregroundStyle(Theme.danger)
                     Text(errorMessage)
                         .font(Theme.callout())
                         .foregroundStyle(Theme.textPrimary)
@@ -98,7 +98,7 @@ struct GoodreadsExportWebView: View {
                 Text(SpinesGlyphs.caps(mode == .login ? "Step 1 of 2" : "Step 2 of 2"))
                     .font(.system(size: 11, weight: .bold))
                     .tracking(0.5)
-                    .foregroundStyle(Theme.chromeTeal)
+                    .foregroundStyle(Theme.chrome)
                 Text(mode == .login
                      ? "Sign in to Goodreads, then tap “I’m logged in” at the top. Already signed in? Tap it now."
                      : "Tap “Export Library”, then tap the “Your export from…” link when it appears — SPINE takes it from there.")
@@ -114,7 +114,7 @@ struct GoodreadsExportWebView: View {
         .background(Theme.surfaceElevated)
         .overlay(alignment: .bottom) {
             Rectangle()
-                .fill(Theme.chromeTeal.opacity(0.35))
+                .fill(Theme.chrome.opacity(0.35))
                 .frame(height: Theme.chromeHairline)
         }
     }

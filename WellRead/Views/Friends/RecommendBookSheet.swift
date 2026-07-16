@@ -65,7 +65,7 @@ struct RecommendBookSheet: View {
                             if let errorMessage {
                                 Text(errorMessage)
                                     .font(Theme.caption())
-                                    .foregroundStyle(.red.opacity(0.95))
+                                    .foregroundStyle(Theme.danger.opacity(0.95))
                             }
 
                             inviteFooter
@@ -193,7 +193,7 @@ struct RecommendBookSheet: View {
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
-                            .stroke(Theme.chromeTeal.opacity(0.5), lineWidth: 1)
+                            .stroke(Theme.chrome.opacity(0.5), lineWidth: 1)
                     )
             }
             .buttonStyle(.plain)
@@ -218,11 +218,11 @@ struct RecommendBookSheet: View {
 
     private func initialCircle(_ name: String) -> some View {
         Circle()
-            .fill(Theme.chromeTeal)
+            .fill(Theme.chrome)
             .overlay(
                 Text(String(name.prefix(1)).uppercased())
                     .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Theme.phosphorWhite)
+                    .foregroundStyle(Theme.onChrome)
             )
     }
 

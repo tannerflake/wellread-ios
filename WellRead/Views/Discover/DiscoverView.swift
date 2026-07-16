@@ -31,6 +31,8 @@ struct DiscoverView: View {
                             appState.userBooks.first(where: { $0.bookId == seed.bookId })?.book
                         }
                     )
+                    // Keep the tune-callout bubble (which hangs below the strip) above the content underneath.
+                    .zIndex(1)
 
                     Group {
                         if appState.isLoadingDiscoverSuggestions && appState.discoverCurrentSuggestion == nil {
@@ -120,13 +122,11 @@ struct DiscoverView: View {
     private var emptyStateView: some View {
         VStack(spacing: 24) {
             Spacer(minLength: 0)
-            Image(systemName: "sparkles")
-                .font(.system(size: 56))
-                .foregroundStyle(Theme.accent)
+            SparklingSpineLogo()
             Text("Find my next read")
                 .font(Theme.title())
                 .foregroundStyle(Theme.textPrimary)
-            Text("Get a personalized suggestion and swipe through your next favorite book.")
+            Text("Every pick is tailored to the books in your library and your interests — steer it with tiers, tags, or books you loved.")
                 .font(Theme.body())
                 .foregroundStyle(Theme.textSecondary)
                 .multilineTextAlignment(.center)
@@ -136,7 +136,7 @@ struct DiscoverView: View {
             } label: {
                 Text("Start")
                     .font(Theme.headline())
-                    .foregroundStyle(Theme.phosphorWhite)
+                    .foregroundStyle(Theme.onChrome)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
                     .glossyProminent()
@@ -205,5 +205,40 @@ struct DiscoverBookCard: View {
             .foregroundStyle(Theme.accent)
         }
         .frame(width: 100)
+    }
+}
+
+/// SPINE brand mark for the Discover empty state: the transparent logo tinted
+/// with the accent color, with a cluster of gently twinkling sparkles in the
+/// same tint superimposed above the reader's head.
+private struct SparklingSpineLogo: View {
+    @State private var twinkle = false
+
+    var body: some View {
+        ZStack {
+            Image("SpineLogo")
+                .resizable()
+                .renderingMode(.template)
+                .scaledToFit()
+                .frame(width: 120, height: 120)
+            sparkle(size: 22, offset: CGSize(width: 34, height: -36), delay: 0)
+            sparkle(size: 13, offset: CGSize(width: 50, height: -16), delay: 0.5)
+            sparkle(size: 10, offset: CGSize(width: 18, height: -50), delay: 1.0)
+        }
+        .foregroundStyle(Theme.accent)
+        .onAppear { twinkle = true }
+        .accessibilityHidden(true)
+    }
+
+    private func sparkle(size: CGFloat, offset: CGSize, delay: Double) -> some View {
+        Image(systemName: "sparkle")
+            .font(.system(size: size, weight: .medium))
+            .scaleEffect(twinkle ? 1.0 : 0.55)
+            .opacity(twinkle ? 1.0 : 0.35)
+            .offset(offset)
+            .animation(
+                .easeInOut(duration: 1.1).repeatForever(autoreverses: true).delay(delay),
+                value: twinkle
+            )
     }
 }

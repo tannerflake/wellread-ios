@@ -1,0 +1,49 @@
+{
+  "" : {
+    "diagnostics" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/WellReadWidget-primary.dia",
+    "emit-module-dependencies" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/WellReadWidget-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/WellReadWidget-primary-emit-module.dia",
+    "pch" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/WellReadWidget-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/WellReadWidget-primary.swiftdeps"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/WidgetSnapshot.swift" : {
+    "const-values" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/WidgetSnapshot.swiftconstvalues",
+    "dependencies" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/WidgetSnapshot.d",
+    "diagnostics" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/WidgetSnapshot.dia",
+    "index-unit-output-path" : "/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/WidgetSnapshot.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/WidgetSnapshot.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/WidgetSnapshot.o",
+    "swift-dependencies" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/WidgetSnapshot.swiftdeps",
+    "swiftmodule" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/WidgetSnapshot~partial.swiftmodule"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellReadWidget/SpineTimelineProvider.swift" : {
+    "const-values" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/SpineTimelineProvider.swiftconstvalues",
+    "dependencies" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/SpineTimelineProvider.d",
+    "diagnostics" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/SpineTimelineProvider.dia",
+    "index-unit-output-path" : "/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/SpineTimelineProvider.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/SpineTimelineProvider.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/SpineTimelineProvider.o",
+    "swift-dependencies" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/SpineTimelineProvider.swiftdeps",
+    "swiftmodule" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/SpineTimelineProvider~partial.swiftmodule"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellReadWidget/SpineWidgetViews.swift" : {
+    "const-values" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/SpineWidgetViews.swiftconstvalues",
+    "dependencies" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/SpineWidgetViews.d",
+    "diagnostics" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/SpineWidgetViews.dia",
+    "index-unit-output-path" : "/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/SpineWidgetViews.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/SpineWidgetViews.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/SpineWidgetViews.o",
+    "swift-dependencies" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/SpineWidgetViews.swiftdeps",
+    "swiftmodule" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/SpineWidgetViews~partial.swiftmodule"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellReadWidget/WellReadWidgetBundle.swift" : {
+    "const-values" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/WellReadWidgetBundle.swiftconstvalues",
+    "dependencies" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/WellReadWidgetBundle.d",
+    "diagnostics" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/WellReadWidgetBundle.dia",
+    "index-unit-output-path" : "/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/WellReadWidgetBundle.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/WellReadWidgetBundle.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/WellReadWidgetBundle.o",
+    "swift-dependencies" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/WellReadWidgetBundle.swiftdeps",
+    "swiftmodule" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Debug-iphonesimulator/WellReadWidget.build/Objects-normal/arm64/WellReadWidgetBundle~partial.swiftmodule"
+  }
+}

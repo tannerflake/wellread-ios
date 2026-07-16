@@ -92,7 +92,7 @@ struct MarkAsReadInlineOverlay: View {
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
-                        .stroke(Theme.chromeTeal.opacity(0.4), lineWidth: 1)
+                        .stroke(Theme.chrome.opacity(0.4), lineWidth: 1)
                 )
             }
             .buttonStyle(.plain)
@@ -137,7 +137,7 @@ struct MarkAsReadInlineOverlay: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(Theme.chromeTeal.opacity(0.4), lineWidth: 1)
+                    .stroke(Theme.chrome.opacity(0.4), lineWidth: 1)
             )
             .id("inlineThoughts")
 
@@ -161,7 +161,7 @@ struct MarkAsReadInlineOverlay: View {
                 Text("MARK AS READ")
                     .font(.system(size: 14, weight: .bold))
                     .tracking(1)
-                    .foregroundStyle(Theme.phosphorWhite)
+                    .foregroundStyle(Theme.onChrome)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
                     .background(
@@ -181,6 +181,6 @@ struct MarkAsReadInlineOverlay: View {
         Text(text.uppercased())
             .font(.system(size: 11, weight: .bold))
             .tracking(1)
-            .foregroundStyle(Theme.chromeTeal)
+            .foregroundStyle(Theme.chrome)
     }
 }

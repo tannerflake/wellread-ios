@@ -1,0 +1,32 @@
+{
+  "source": "/Users/tannerflake/WellRead-xcode/WellReadWidget/SpineWidgetViews.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Nothing\non deck",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 131
+        }
+      },
+      {
+        "comment": "",
+        "key": "FRIENDS ARE READING",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 141
+        }
+      },
+      {
+        "comment": "",
+        "key": "No friends reading yet",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 147
+        }
+      }
+    ]
+  },
+  "version": 1
+}

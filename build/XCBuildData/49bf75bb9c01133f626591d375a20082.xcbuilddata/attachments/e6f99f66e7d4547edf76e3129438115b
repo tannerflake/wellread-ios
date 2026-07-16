@@ -1,4 +1,0 @@
-module FirebaseInstallations {
-umbrella header "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/FirebaseInstallations/Source/Library/Public/FirebaseInstallations/FirebaseInstallations.h"
-export *
-}

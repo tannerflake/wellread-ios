@@ -67,7 +67,11 @@ struct MainTabView: View {
                 if showAddBook {
                     Color.black.opacity(0.25)
                         .ignoresSafeArea()
-                        .onTapGesture { showAddBook = false }
+                        .onTapGesture {
+                            // Drop the keyboard with the drawer, not after it.
+                            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                            showAddBook = false
+                        }
                         .transition(.opacity)
                     AddBookFlowView(onDismiss: { showAddBook = false })
                         .environment(\.mainTabBarOverlapExtraHeight, 0)
@@ -75,7 +79,10 @@ struct MainTabView: View {
                 }
             }
             .animation(.spring(response: 0.38, dampingFraction: 0.86), value: showAddBook)
-            .ignoresSafeArea(.keyboard, edges: .bottom)
+            // `.all` = container + keyboard: the drawer must reach the physical
+            // bottom edge (past the home-indicator inset, where the tab bar shows
+            // through) and stay pinned when the keyboard rises.
+            .ignoresSafeArea(.all, edges: .bottom)
         }
         .sheet(isPresented: $showCompleteProfileSheet, onDismiss: {
             schedulePostProfileOnboardingFlow()
@@ -301,12 +308,15 @@ struct MainTabView: View {
             Capsule()
                 .fill(.ultraThinMaterial)
                 .overlay(Capsule().fill(Theme.surfaceElevated.opacity(0.6)))
-                .overlay(Capsule().strokeBorder(Theme.chromeTeal.opacity(0.22), lineWidth: 1))
+                .overlay(Capsule().strokeBorder(Theme.chrome.opacity(0.22), lineWidth: 1))
                 .shadow(color: Theme.shadowInk.opacity(0.14), radius: 16, y: 6)
         }
         .padding(.horizontal, 24)
         .padding(.top, 2)
-        .padding(.bottom, 6)
+        // Negative bottom padding sinks the bar into the home-indicator safe
+        // area (Blackbird-style) — it sits low and hands the freed height back
+        // to the content above.
+        .padding(.bottom, -18)
         .sensoryFeedback(.selection, trigger: selectedTab)
     }
 
@@ -343,7 +353,7 @@ struct MainTabView: View {
         } else {
             Capsule()
                 .fill(Theme.surfaceElevated)
-                .overlay(Capsule().strokeBorder(Theme.chromeTeal.opacity(0.35), lineWidth: 1))
+                .overlay(Capsule().strokeBorder(Theme.chrome.opacity(0.35), lineWidth: 1))
                 .shadow(color: Theme.shadowInk.opacity(0.12), radius: 4, y: 1)
         }
     }

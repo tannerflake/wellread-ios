@@ -1,4 +1,0 @@
-module FirebaseFunctions {
-header "FirebaseFunctions-Swift.h"
-export *
-}

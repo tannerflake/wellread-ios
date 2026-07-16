@@ -87,12 +87,12 @@ struct BookBlendStoryView: View {
                     HStack {
                         Text("\(myName) × \(otherName)")
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(Theme.phosphorWhite.opacity(0.7))
+                            .foregroundStyle(Theme.paperFixed.opacity(0.7))
                         Spacer()
                         Button(action: onDismiss) {
                             Image(systemName: "xmark")
                                 .font(.system(size: 13, weight: .bold))
-                                .foregroundStyle(Theme.phosphorWhite.opacity(0.85))
+                                .foregroundStyle(Theme.paperFixed.opacity(0.85))
                                 .padding(9)
                                 .background(Circle().fill(.white.opacity(0.14)))
                         }
@@ -178,7 +178,7 @@ struct BookBlendStoryView: View {
                     ZStack(alignment: .leading) {
                         Capsule().fill(.white.opacity(0.25))
                         Capsule()
-                            .fill(Theme.phosphorWhite)
+                            .fill(Theme.paperFixed)
                             .frame(width: g.size.width * segmentFill(i))
                     }
                 }
@@ -242,20 +242,20 @@ struct BookBlendStoryView: View {
                 Text("BOOK BLEND")
                     .font(.system(size: 14, weight: .heavy))
                     .tracking(5)
-                    .foregroundStyle(Theme.phosphorWhite.opacity(0.7))
+                    .foregroundStyle(Theme.paperFixed.opacity(0.7))
                 Text("\(myName) × \(otherName)")
                     .font(.system(size: 34, weight: .bold))
-                    .foregroundStyle(Theme.phosphorWhite)
+                    .foregroundStyle(Theme.paperFixed)
                 if let count = mergedBookCount {
                     Text("\(count) books, two shelves, one verdict.")
                         .font(Theme.callout())
-                        .foregroundStyle(Theme.phosphorWhite.opacity(0.7))
+                        .foregroundStyle(Theme.paperFixed.opacity(0.7))
                 }
             }
             Spacer()
             Text("Tap to begin")
                 .font(Theme.caption())
-                .foregroundStyle(Theme.phosphorWhite.opacity(0.5))
+                .foregroundStyle(Theme.paperFixed.opacity(0.5))
                 .padding(.bottom, 40)
         }
     }
@@ -271,7 +271,7 @@ struct BookBlendStoryView: View {
             Spacer()
             Text("Your taste match")
                 .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(Theme.phosphorWhite.opacity(0.75))
+                .foregroundStyle(Theme.paperFixed.opacity(0.75))
             ZStack {
                 Circle()
                     .stroke(.white.opacity(0.15), lineWidth: 10)
@@ -279,7 +279,7 @@ struct BookBlendStoryView: View {
                     .trim(from: 0, to: CGFloat(displayedScore) / 100)
                     .stroke(
                         AngularGradient(
-                            colors: [Theme.chromeTeal, Theme.asicsBlue, Theme.magentaPunch, Theme.chromeTeal],
+                            colors: [Theme.paperFixed.opacity(0.55), Theme.paperFixed, Theme.paperFixed.opacity(0.55)],
                             center: .center
                         ),
                         style: StrokeStyle(lineWidth: 10, lineCap: .round)
@@ -287,14 +287,14 @@ struct BookBlendStoryView: View {
                     .rotationEffect(.degrees(-90))
                 Text("\(displayedScore)%")
                     .font(.system(size: 72, weight: .heavy))
-                    .foregroundStyle(Theme.phosphorWhite)
+                    .foregroundStyle(Theme.paperFixed)
                     .contentTransition(.numericText(value: Double(displayedScore)))
             }
             .frame(width: 230, height: 230)
             if let verdict = result?.verdict {
                 Text(verdict)
                     .font(.system(size: 24, weight: .bold))
-                    .foregroundStyle(Theme.phosphorWhite)
+                    .foregroundStyle(Theme.paperFixed)
                     .opacity(displayedScore == result?.score ? 1 : 0)
                     .animation(.easeIn(duration: 0.4), value: displayedScore)
             }
@@ -310,13 +310,13 @@ struct BookBlendStoryView: View {
                 .font(.system(size: 72))
             Text("You two are")
                 .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(Theme.phosphorWhite.opacity(0.75))
+                .foregroundStyle(Theme.paperFixed.opacity(0.75))
             Text(result?.archetype ?? "")
                 .font(.system(size: 38, weight: .heavy))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(
                     LinearGradient(
-                        colors: [Theme.phosphorWhite, Theme.phosphorWhite.opacity(0.75)],
+                        colors: [Theme.paperFixed, Theme.paperFixed.opacity(0.75)],
                         startPoint: .top, endPoint: .bottom
                     )
                 )
@@ -324,7 +324,7 @@ struct BookBlendStoryView: View {
             Text(result?.tagline ?? "")
                 .font(Theme.body())
                 .multilineTextAlignment(.center)
-                .foregroundStyle(Theme.phosphorWhite.opacity(0.8))
+                .foregroundStyle(Theme.paperFixed.opacity(0.8))
                 .padding(.horizontal, 44)
             Spacer()
         }
@@ -342,7 +342,7 @@ struct BookBlendStoryView: View {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(book.title)
                                 .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(Theme.phosphorWhite)
+                                .foregroundStyle(Theme.paperFixed)
                                 .lineLimit(1)
                             HStack(spacing: 8) {
                                 verdictChip(name: myName, uid: myUid, book: book)
@@ -358,7 +358,7 @@ struct BookBlendStoryView: View {
             if shared.count > 4 {
                 Text("+ \(shared.count - 4) more in common")
                     .font(Theme.caption())
-                    .foregroundStyle(Theme.phosphorWhite.opacity(0.6))
+                    .foregroundStyle(Theme.paperFixed.opacity(0.6))
             }
             Spacer()
         }
@@ -376,7 +376,7 @@ struct BookBlendStoryView: View {
         }
         return Text(text)
             .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(Theme.phosphorWhite.opacity(0.85))
+            .foregroundStyle(Theme.paperFixed.opacity(0.85))
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
             .background(Capsule().fill(.white.opacity(0.14)))
@@ -394,10 +394,10 @@ struct BookBlendStoryView: View {
                     ForEach(shared, id: \.self) { genre in
                         Text(genre)
                             .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Theme.phosphorWhite)
+                            .foregroundStyle(Theme.inkFixed)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 7)
-                            .background(Capsule().fill(Theme.asicsBlue.opacity(0.55)))
+                            .background(Capsule().fill(Theme.paperFixed.opacity(0.85)))
                     }
                 }
             }
@@ -415,16 +415,16 @@ struct BookBlendStoryView: View {
             Text("\(name.uppercased()) BRINGS")
                 .font(.system(size: 10, weight: .heavy))
                 .tracking(1.4)
-                .foregroundStyle(Theme.phosphorWhite.opacity(0.55))
+                .foregroundStyle(Theme.paperFixed.opacity(0.55))
             if genres.isEmpty {
                 Text("Pure overlap")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Theme.phosphorWhite.opacity(0.75))
+                    .foregroundStyle(Theme.paperFixed.opacity(0.75))
             } else {
                 ForEach(genres.prefix(3), id: \.self) { genre in
                     Text(genre)
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Theme.phosphorWhite)
+                        .foregroundStyle(Theme.paperFixed)
                 }
             }
         }
@@ -438,17 +438,17 @@ struct BookBlendStoryView: View {
             Spacer()
             Image(systemName: "quote.opening")
                 .font(.system(size: 30, weight: .bold))
-                .foregroundStyle(Theme.magentaPunch)
+                .foregroundStyle(Theme.punch)
             Text(insight.title)
                 .font(.system(size: 30, weight: .heavy))
                 .multilineTextAlignment(.center)
-                .foregroundStyle(Theme.phosphorWhite)
+                .foregroundStyle(Theme.paperFixed)
                 .padding(.horizontal, 30)
             Text(insight.body)
                 .font(.system(size: 18, weight: .medium))
                 .multilineTextAlignment(.center)
                 .lineSpacing(4)
-                .foregroundStyle(Theme.phosphorWhite.opacity(0.85))
+                .foregroundStyle(Theme.paperFixed.opacity(0.85))
                 .padding(.horizontal, 36)
             Spacer()
         }
@@ -471,16 +471,16 @@ struct BookBlendStoryView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(rec.title)
                                 .font(.system(size: 16, weight: .bold))
-                                .foregroundStyle(Theme.phosphorWhite)
+                                .foregroundStyle(Theme.paperFixed)
                                 .lineLimit(2)
                             Text(rec.author)
                                 .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(Theme.phosphorWhite.opacity(0.6))
+                                .foregroundStyle(Theme.paperFixed.opacity(0.6))
                                 .lineLimit(1)
                             if !rec.reason.isEmpty {
                                 Text(rec.reason)
                                     .font(.system(size: 13, weight: .regular).italic())
-                                    .foregroundStyle(Theme.phosphorWhite.opacity(0.85))
+                                    .foregroundStyle(Theme.paperFixed.opacity(0.85))
                                     .lineLimit(3)
                             }
                         }
@@ -507,12 +507,12 @@ struct BookBlendStoryView: View {
                         Text(pick.title)
                             .font(.system(size: 15, weight: .bold))
                             .multilineTextAlignment(.center)
-                            .foregroundStyle(Theme.phosphorWhite)
+                            .foregroundStyle(Theme.paperFixed)
                             .lineLimit(2)
                         Text(pick.reason)
                             .font(.system(size: 12, weight: .regular))
                             .multilineTextAlignment(.center)
-                            .foregroundStyle(Theme.phosphorWhite.opacity(0.75))
+                            .foregroundStyle(Theme.paperFixed.opacity(0.75))
                             .lineLimit(4)
                     }
                     .frame(maxWidth: .infinity)
@@ -529,25 +529,25 @@ struct BookBlendStoryView: View {
             if let result {
                 Text("\(result.score)%")
                     .font(.system(size: 52, weight: .heavy))
-                    .foregroundStyle(Theme.phosphorWhite)
+                    .foregroundStyle(Theme.paperFixed)
                 Text("\(result.archetypeEmoji) \(result.archetype)")
                     .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(Theme.phosphorWhite.opacity(0.9))
+                    .foregroundStyle(Theme.paperFixed.opacity(0.9))
             }
             Text("Saved for both of you — rewatch it anytime from \(otherName)'s profile.")
                 .font(Theme.callout())
                 .multilineTextAlignment(.center)
-                .foregroundStyle(Theme.phosphorWhite.opacity(0.7))
+                .foregroundStyle(Theme.paperFixed.opacity(0.7))
                 .padding(.horizontal, 44)
             Spacer()
             Button(action: onDismiss) {
                 Text("Done")
                     .font(.system(size: 17, weight: .bold))
-                    .foregroundStyle(Theme.phosphorWhite)
+                    .foregroundStyle(Theme.onChrome)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
             }
-            .glossyProminent(Theme.asicsBlue, cornerRadius: 28)
+            .glossyProminent(Theme.accent, cornerRadius: 28)
             .buttonStyle(.springPress)
             .padding(.horizontal, 28)
             .padding(.bottom, 34)
@@ -559,10 +559,10 @@ struct BookBlendStoryView: View {
             Text(small.uppercased())
                 .font(.system(size: 11, weight: .heavy))
                 .tracking(2)
-                .foregroundStyle(Theme.phosphorWhite.opacity(0.6))
+                .foregroundStyle(Theme.paperFixed.opacity(0.6))
             Text(big)
                 .font(.system(size: 27, weight: .bold))
-                .foregroundStyle(Theme.phosphorWhite)
+                .foregroundStyle(Theme.paperFixed)
                 .multilineTextAlignment(centered ? .center : .leading)
         }
         .frame(maxWidth: .infinity, alignment: centered ? .center : .leading)

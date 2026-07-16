@@ -49,7 +49,7 @@ struct ReviewerLoginView: View {
                     if let errorMessage {
                         Text(errorMessage)
                             .font(Theme.caption())
-                            .foregroundStyle(.red)
+                            .foregroundStyle(Theme.danger)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal)
                     }

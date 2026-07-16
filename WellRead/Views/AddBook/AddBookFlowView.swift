@@ -73,6 +73,11 @@ struct AddBookFlowView: View {
 
     /// Closes the drawer regardless of how it was presented.
     private func close() {
+        // Resign the keyboard in the same frame the drawer starts sliding down —
+        // left to itself it only drops once the field leaves the view hierarchy,
+        // well after the drawer is gone.
+        isSearchFocused = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         if let onDismiss {
             onDismiss()
         } else {
@@ -99,13 +104,16 @@ struct AddBookFlowView: View {
     
     var body: some View {
         GeometryReader { geo in
+            let fullHeight = geo.size.height - max(60, geo.size.height * Self.tapOutStripFraction)
             VStack(spacing: 0) {
                 // Transparent strip above the drawer — tapping it dismisses the sheet.
+                // Flexible: it absorbs whatever the drawer doesn't use.
                 Color.clear
                     .contentShape(Rectangle())
                     .onTapGesture { close() }
-                    .frame(height: max(60, geo.size.height * Self.tapOutStripFraction))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 drawerContent
+                    .frame(height: fullHeight)
                     .clipShape(UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
                     .overlay(alignment: .top) {
                         // Grab handle — swiping it down dismisses (replaces the system
@@ -253,7 +261,7 @@ struct AddBookFlowView: View {
                 VStack(spacing: 12) {
                     Text(err)
                         .font(Theme.callout())
-                        .foregroundStyle(.red)
+                        .foregroundStyle(Theme.danger)
                         .multilineTextAlignment(.center)
                     Button("Try Again") { runSearch() }
                         .font(Theme.callout())
@@ -305,11 +313,10 @@ struct AddBookFlowView: View {
             }
         }
         .padding(.top, 28)
-        .onAppear { refreshRecents() }
-        .task {
-            // Sheet presentation animations interfere with focus assignment if it
-            // happens too early; a small delay reliably brings up the keyboard.
-            try? await Task.sleep(nanoseconds: 350_000_000)
+        .onAppear {
+            refreshRecents()
+            // Focus immediately so the keyboard rises alongside the drawer's
+            // slide-up instead of trailing it.
             isSearchFocused = true
         }
     }
@@ -645,7 +652,7 @@ private struct AddBookRatingStepView: View {
             .padding(.horizontal)
             .disabled(isSaving)
             if let err = saveError {
-                Text(err).font(Theme.caption()).foregroundStyle(.red).padding(.horizontal)
+                Text(err).font(Theme.caption()).foregroundStyle(Theme.danger).padding(.horizontal)
             }
         }
         .padding(.top, 24)

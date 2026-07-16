@@ -75,7 +75,7 @@ private struct TierHighlightCallout: View {
                     .font(Theme.caption())
                     .opacity(0.9)
             }
-            .foregroundStyle(Theme.phosphorWhite)
+            .foregroundStyle(Theme.onChrome)
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
             .background(

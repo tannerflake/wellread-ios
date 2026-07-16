@@ -41,7 +41,7 @@ struct FeedCommunityWelcomeModal: View {
                         .multilineTextAlignment(.center)
                         .lineLimit(2)
                         .minimumScaleFactor(0.85)
-                        .foregroundStyle(Theme.phosphorWhite)
+                        .foregroundStyle(Theme.onChrome)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
                         .background(

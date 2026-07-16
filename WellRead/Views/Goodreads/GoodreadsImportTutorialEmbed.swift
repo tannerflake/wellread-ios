@@ -55,7 +55,7 @@ struct GoodreadsImportTutorialEmbed: View {
             HStack(alignment: .center, spacing: 14) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.red.opacity(0.92))
+                        .fill(Theme.danger.opacity(0.92))
                         .frame(width: 56, height: 56)
                     Image(systemName: "play.fill")
                         .font(.system(size: 22))

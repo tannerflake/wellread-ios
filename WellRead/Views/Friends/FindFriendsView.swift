@@ -218,7 +218,7 @@ struct FindFriendsView: View {
                         .font(.system(size: 16, weight: .semibold, design: .rounded))
                         .foregroundStyle(Theme.textSecondary)
                 )
-                .overlay(Circle().strokeBorder(Theme.chromeTeal.opacity(0.35), lineWidth: 1))
+                .overlay(Circle().strokeBorder(Theme.chrome.opacity(0.35), lineWidth: 1))
             Text(contact.displayName)
                 .font(Theme.body())
                 .foregroundStyle(Theme.textPrimary)
@@ -265,11 +265,11 @@ struct FindFriendsView: View {
 
     private func initialCircle(_ name: String) -> some View {
         Circle()
-            .fill(Theme.chromeTeal)
+            .fill(Theme.chrome)
             .overlay(
                 Text(String(name.prefix(1)).uppercased())
                     .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Theme.phosphorWhite)
+                    .foregroundStyle(Theme.onChrome)
             )
     }
 
