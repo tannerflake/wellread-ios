@@ -1,0 +1,46 @@
+{
+  "" : {
+    "const-values" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseFunctions.build/Objects-normal/x86_64/FirebaseFunctions-primary.swiftconstvalues",
+    "dependencies" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseFunctions.build/Objects-normal/x86_64/FirebaseFunctions-primary.d",
+    "diagnostics" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseFunctions.build/Objects-normal/x86_64/FirebaseFunctions-primary.dia",
+    "emit-module-dependencies" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseFunctions.build/Objects-normal/x86_64/FirebaseFunctions-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseFunctions.build/Objects-normal/x86_64/FirebaseFunctions-primary-emit-module.dia",
+    "pch" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseFunctions.build/Objects-normal/x86_64/FirebaseFunctions-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseFunctions.build/Objects-normal/x86_64/FirebaseFunctions-primary.swiftdeps"
+  },
+  "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/FirebaseFunctions/Sources/Callable+Codable.swift" : {
+    "index-unit-output-path" : "/Firebase.build/Release-iphonesimulator/FirebaseFunctions.build/Objects-normal/x86_64/Callable+Codable.o",
+    "llvm-bc" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseFunctions.build/Objects-normal/x86_64/Callable+Codable.bc",
+    "object" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseFunctions.build/Objects-normal/x86_64/Callable+Codable.o"
+  },
+  "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/FirebaseFunctions/Sources/Functions.swift" : {
+    "index-unit-output-path" : "/Firebase.build/Release-iphonesimulator/FirebaseFunctions.build/Objects-normal/x86_64/Functions.o",
+    "llvm-bc" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseFunctions.build/Objects-normal/x86_64/Functions.bc",
+    "object" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseFunctions.build/Objects-normal/x86_64/Functions.o"
+  },
+  "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/FirebaseFunctions/Sources/FunctionsError.swift" : {
+    "index-unit-output-path" : "/Firebase.build/Release-iphonesimulator/FirebaseFunctions.build/Objects-normal/x86_64/FunctionsError.o",
+    "llvm-bc" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseFunctions.build/Objects-normal/x86_64/FunctionsError.bc",
+    "object" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseFunctions.build/Objects-normal/x86_64/FunctionsError.o"
+  },
+  "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/FirebaseFunctions/Sources/HTTPSCallable.swift" : {
+    "index-unit-output-path" : "/Firebase.build/Release-iphonesimulator/FirebaseFunctions.build/Objects-normal/x86_64/HTTPSCallable.o",
+    "llvm-bc" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseFunctions.build/Objects-normal/x86_64/HTTPSCallable.bc",
+    "object" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseFunctions.build/Objects-normal/x86_64/HTTPSCallable.o"
+  },
+  "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/FirebaseFunctions/Sources/HTTPSCallableOptions.swift" : {
+    "index-unit-output-path" : "/Firebase.build/Release-iphonesimulator/FirebaseFunctions.build/Objects-normal/x86_64/HTTPSCallableOptions.o",
+    "llvm-bc" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseFunctions.build/Objects-normal/x86_64/HTTPSCallableOptions.bc",
+    "object" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseFunctions.build/Objects-normal/x86_64/HTTPSCallableOptions.o"
+  },
+  "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/FirebaseFunctions/Sources/Internal/FunctionsContext.swift" : {
+    "index-unit-output-path" : "/Firebase.build/Release-iphonesimulator/FirebaseFunctions.build/Objects-normal/x86_64/FunctionsContext.o",
+    "llvm-bc" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseFunctions.build/Objects-normal/x86_64/FunctionsContext.bc",
+    "object" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseFunctions.build/Objects-normal/x86_64/FunctionsContext.o"
+  },
+  "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/FirebaseFunctions/Sources/Internal/FunctionsSerializer.swift" : {
+    "index-unit-output-path" : "/Firebase.build/Release-iphonesimulator/FirebaseFunctions.build/Objects-normal/x86_64/FunctionsSerializer.o",
+    "llvm-bc" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseFunctions.build/Objects-normal/x86_64/FunctionsSerializer.bc",
+    "object" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseFunctions.build/Objects-normal/x86_64/FunctionsSerializer.o"
+  }
+}

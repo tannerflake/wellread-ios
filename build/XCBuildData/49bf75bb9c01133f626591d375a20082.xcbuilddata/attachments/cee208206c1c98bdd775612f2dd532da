@@ -1,0 +1,4 @@
+module GoogleUtilities_NSData {
+umbrella "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/GoogleUtilities/GoogleUtilities/NSData+zlib/Public"
+export *
+}

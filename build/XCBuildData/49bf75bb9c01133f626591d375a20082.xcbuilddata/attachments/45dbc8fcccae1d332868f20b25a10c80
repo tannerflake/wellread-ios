@@ -1,0 +1,4 @@
+module GoogleUtilities_AppDelegateSwizzler {
+umbrella "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/GoogleUtilities/GoogleUtilities/AppDelegateSwizzler/Public"
+export *
+}

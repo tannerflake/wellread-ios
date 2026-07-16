@@ -165,6 +165,8 @@ struct MainTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: .spineOpenQueue)) { _ in
             selectedTab = .profile
         }
+        // Blend pushes (invite / ready) present the Book Blend landing full-screen.
+        .bookBlendPushPresenter()
         .onAppear {
             #if DEBUG
             // `-uiPreviewTab feed|discover|profile|search` (with `-uiPreview`) starts on a

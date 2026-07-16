@@ -1,0 +1,131 @@
+{
+  "" : {
+    "const-values" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/FirebaseStorage-primary.swiftconstvalues",
+    "dependencies" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/FirebaseStorage-primary.d",
+    "diagnostics" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/FirebaseStorage-primary.dia",
+    "emit-module-dependencies" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/FirebaseStorage-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/FirebaseStorage-primary-emit-module.dia",
+    "pch" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/FirebaseStorage-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/FirebaseStorage-primary.swiftdeps"
+  },
+  "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/FirebaseStorage/Sources/AsyncAwait.swift" : {
+    "index-unit-output-path" : "/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/AsyncAwait.o",
+    "llvm-bc" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/AsyncAwait.bc",
+    "object" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/AsyncAwait.o"
+  },
+  "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/FirebaseStorage/Sources/Internal/StorageDeleteTask.swift" : {
+    "index-unit-output-path" : "/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageDeleteTask.o",
+    "llvm-bc" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageDeleteTask.bc",
+    "object" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageDeleteTask.o"
+  },
+  "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/FirebaseStorage/Sources/Internal/StorageFetcherService.swift" : {
+    "index-unit-output-path" : "/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageFetcherService.o",
+    "llvm-bc" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageFetcherService.bc",
+    "object" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageFetcherService.o"
+  },
+  "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/FirebaseStorage/Sources/Internal/StorageGetDownloadURLTask.swift" : {
+    "index-unit-output-path" : "/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageGetDownloadURLTask.o",
+    "llvm-bc" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageGetDownloadURLTask.bc",
+    "object" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageGetDownloadURLTask.o"
+  },
+  "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/FirebaseStorage/Sources/Internal/StorageGetMetadataTask.swift" : {
+    "index-unit-output-path" : "/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageGetMetadataTask.o",
+    "llvm-bc" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageGetMetadataTask.bc",
+    "object" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageGetMetadataTask.o"
+  },
+  "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/FirebaseStorage/Sources/Internal/StorageInternalTask.swift" : {
+    "index-unit-output-path" : "/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageInternalTask.o",
+    "llvm-bc" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageInternalTask.bc",
+    "object" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageInternalTask.o"
+  },
+  "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/FirebaseStorage/Sources/Internal/StorageListTask.swift" : {
+    "index-unit-output-path" : "/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageListTask.o",
+    "llvm-bc" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageListTask.bc",
+    "object" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageListTask.o"
+  },
+  "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/FirebaseStorage/Sources/Internal/StoragePath.swift" : {
+    "index-unit-output-path" : "/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StoragePath.o",
+    "llvm-bc" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StoragePath.bc",
+    "object" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StoragePath.o"
+  },
+  "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/FirebaseStorage/Sources/Internal/StorageTaskState.swift" : {
+    "index-unit-output-path" : "/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageTaskState.o",
+    "llvm-bc" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageTaskState.bc",
+    "object" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageTaskState.o"
+  },
+  "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/FirebaseStorage/Sources/Internal/StorageTokenAuthorizer.swift" : {
+    "index-unit-output-path" : "/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageTokenAuthorizer.o",
+    "llvm-bc" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageTokenAuthorizer.bc",
+    "object" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageTokenAuthorizer.o"
+  },
+  "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/FirebaseStorage/Sources/Internal/StorageUpdateMetadataTask.swift" : {
+    "index-unit-output-path" : "/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageUpdateMetadataTask.o",
+    "llvm-bc" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageUpdateMetadataTask.bc",
+    "object" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageUpdateMetadataTask.o"
+  },
+  "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/FirebaseStorage/Sources/Internal/StorageUtils.swift" : {
+    "index-unit-output-path" : "/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageUtils.o",
+    "llvm-bc" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageUtils.bc",
+    "object" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageUtils.o"
+  },
+  "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/FirebaseStorage/Sources/Result.swift" : {
+    "index-unit-output-path" : "/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/Result.o",
+    "llvm-bc" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/Result.bc",
+    "object" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/Result.o"
+  },
+  "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/FirebaseStorage/Sources/Storage.swift" : {
+    "index-unit-output-path" : "/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/Storage.o",
+    "llvm-bc" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/Storage.bc",
+    "object" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/Storage.o"
+  },
+  "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/FirebaseStorage/Sources/StorageConstants.swift" : {
+    "index-unit-output-path" : "/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageConstants.o",
+    "llvm-bc" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageConstants.bc",
+    "object" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageConstants.o"
+  },
+  "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/FirebaseStorage/Sources/StorageDownloadTask.swift" : {
+    "index-unit-output-path" : "/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageDownloadTask.o",
+    "llvm-bc" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageDownloadTask.bc",
+    "object" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageDownloadTask.o"
+  },
+  "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/FirebaseStorage/Sources/StorageError.swift" : {
+    "index-unit-output-path" : "/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageError.o",
+    "llvm-bc" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageError.bc",
+    "object" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageError.o"
+  },
+  "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/FirebaseStorage/Sources/StorageListResult.swift" : {
+    "index-unit-output-path" : "/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageListResult.o",
+    "llvm-bc" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageListResult.bc",
+    "object" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageListResult.o"
+  },
+  "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/FirebaseStorage/Sources/StorageMetadata.swift" : {
+    "index-unit-output-path" : "/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageMetadata.o",
+    "llvm-bc" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageMetadata.bc",
+    "object" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageMetadata.o"
+  },
+  "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/FirebaseStorage/Sources/StorageObservableTask.swift" : {
+    "index-unit-output-path" : "/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageObservableTask.o",
+    "llvm-bc" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageObservableTask.bc",
+    "object" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageObservableTask.o"
+  },
+  "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/FirebaseStorage/Sources/StorageReference.swift" : {
+    "index-unit-output-path" : "/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageReference.o",
+    "llvm-bc" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageReference.bc",
+    "object" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageReference.o"
+  },
+  "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/FirebaseStorage/Sources/StorageTask.swift" : {
+    "index-unit-output-path" : "/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageTask.o",
+    "llvm-bc" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageTask.bc",
+    "object" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageTask.o"
+  },
+  "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/FirebaseStorage/Sources/StorageTaskSnapshot.swift" : {
+    "index-unit-output-path" : "/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageTaskSnapshot.o",
+    "llvm-bc" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageTaskSnapshot.bc",
+    "object" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageTaskSnapshot.o"
+  },
+  "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/FirebaseStorage/Sources/StorageUploadTask.swift" : {
+    "index-unit-output-path" : "/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageUploadTask.o",
+    "llvm-bc" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageUploadTask.bc",
+    "object" : "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/build/Firebase.build/Release-iphonesimulator/FirebaseStorage.build/Objects-normal/arm64/StorageUploadTask.o"
+  }
+}

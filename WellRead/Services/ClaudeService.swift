@@ -59,7 +59,16 @@ final class ClaudeService {
     }
 
     /// Sends a user message and returns the assistant's text reply. Requires ApiKeys.claude.
-    func sendMessage(system: String? = nil, userMessage: String) async throws -> String {
+    func sendMessage(system: String? = nil, userMessage: String, maxTokens: Int = 1024) async throws -> String {
+        try await sendConversation(
+            system: system,
+            messages: [.init(role: "user", content: userMessage)],
+            maxTokens: maxTokens
+        )
+    }
+
+    /// Multi-turn variant: sends alternating user/assistant turns (e.g. refresher Q&A follow-ups).
+    func sendConversation(system: String? = nil, messages: [ClaudeMessageRequest.Message], maxTokens: Int = 1024) async throws -> String {
         guard let key = ApiKeys.claude, !key.isEmpty else {
             throw NSError(domain: "ClaudeService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Claude API key not configured. Add CLAUDE_API_KEY to Secrets.plist."])
         }
@@ -68,7 +77,7 @@ final class ClaudeService {
         var lastError: Error?
         for model in modelsToTry {
             do {
-                return try await sendMessage(model: model, key: key, system: system, userMessage: userMessage)
+                return try await send(model: model, key: key, system: system, messages: messages, maxTokens: maxTokens)
             } catch {
                 lastError = error
                 let ns = error as NSError
@@ -81,7 +90,7 @@ final class ClaudeService {
         throw lastError ?? NSError(domain: "ClaudeService", code: -2, userInfo: [NSLocalizedDescriptionKey: "No model available."])
     }
 
-    private func sendMessage(model: String, key: String, system: String?, userMessage: String) async throws -> String {
+    private func send(model: String, key: String, system: String?, messages: [ClaudeMessageRequest.Message], maxTokens: Int) async throws -> String {
         var request = URLRequest(url: messagesURL)
         request.httpMethod = "POST"
         request.setValue(key, forHTTPHeaderField: "x-api-key")
@@ -89,8 +98,8 @@ final class ClaudeService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         var body: [String: Any] = [
             "model": model,
-            "max_tokens": 1024,
-            "messages": [["role": "user", "content": userMessage]]
+            "max_tokens": maxTokens,
+            "messages": messages.map { ["role": $0.role, "content": $0.content] }
         ]
         if let system = system, !system.isEmpty {
             body["system"] = system

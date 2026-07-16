@@ -1,0 +1,4 @@
+module FirebaseCoreExtension {
+umbrella "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/firebase-ios-sdk/FirebaseCore/Extension"
+export *
+}

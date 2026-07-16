@@ -1,0 +1,16 @@
+{
+  "" : {
+    "const-values" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellReadNotificationService.build/Objects-normal/x86_64/WellReadNotificationService-primary.swiftconstvalues",
+    "dependencies" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellReadNotificationService.build/Objects-normal/x86_64/WellReadNotificationService-primary.d",
+    "diagnostics" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellReadNotificationService.build/Objects-normal/x86_64/WellReadNotificationService-primary.dia",
+    "emit-module-dependencies" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellReadNotificationService.build/Objects-normal/x86_64/WellReadNotificationService-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellReadNotificationService.build/Objects-normal/x86_64/WellReadNotificationService-primary-emit-module.dia",
+    "pch" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellReadNotificationService.build/Objects-normal/x86_64/WellReadNotificationService-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellReadNotificationService.build/Objects-normal/x86_64/WellReadNotificationService-primary.swiftdeps"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellReadNotificationService/NotificationService.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellReadNotificationService.build/Objects-normal/x86_64/NotificationService.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellReadNotificationService.build/Objects-normal/x86_64/NotificationService.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellReadNotificationService.build/Objects-normal/x86_64/NotificationService.o"
+  }
+}

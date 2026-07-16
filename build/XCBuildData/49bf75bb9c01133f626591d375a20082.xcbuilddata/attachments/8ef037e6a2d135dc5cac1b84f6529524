@@ -1,0 +1,4 @@
+module leveldb {
+umbrella "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/leveldb/include"
+export *
+}

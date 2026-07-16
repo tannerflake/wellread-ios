@@ -1,7 +1,7 @@
 import { initializeApp, getApps } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
-import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore";
+import { onDocumentCreated, onDocumentUpdated, onDocumentWritten } from "firebase-functions/v2/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
 import type { DocumentData, Firestore } from "firebase-admin/firestore";
@@ -311,6 +311,64 @@ export const onFriendReviewPosted = onDocumentCreated(
     };
     for (const uid of recipients) {
       await sendToUser(uid, title, body, payload, coverURL);
+    }
+  }
+);
+
+/**
+ * Book Blend pair doc (`bookBlends/{uidLow_uidHigh}`) changed:
+ * - created as pending, or re-requested (declined → pending): blend_request push to the recipient.
+ * - pending → ready (the accepter's device saved the generated result): blend_ready push to the requester.
+ * Declines stay silent. Both payloads deep-link via `blendId`.
+ */
+export const onBookBlendWritten = onDocumentWritten(
+  {
+    document: "bookBlends/{blendId}",
+    database: DATABASE_ID,
+  },
+  async (event) => {
+    const blendId = event.params.blendId as string;
+    const before = event.data?.before.exists ? event.data.before.data() : undefined;
+    const after = event.data?.after.exists ? event.data.after.data() : undefined;
+    if (!after) return; // deleted
+
+    const beforeStatus = (before?.status as string | undefined) ?? null;
+    const afterStatus = after.status as string | undefined;
+    if (beforeStatus === afterStatus) return;
+
+    const requesterId = after.requesterId as string | undefined;
+    const recipientId = after.recipientId as string | undefined;
+    if (!requesterId || !recipientId) return;
+
+    const participants = (after.participants ?? {}) as Record<string, { firstName?: string }>;
+    const nameOf = async (uid: string): Promise<string> => {
+      const snapshotName = participants[uid]?.firstName?.trim();
+      if (snapshotName) return snapshotName;
+      return firstNameFromUser((await db.collection("users").doc(uid).get()).data());
+    };
+
+    if (afterStatus === "pending" && (beforeStatus === null || beforeStatus === "declined")) {
+      const requesterName = await nameOf(requesterId);
+      await sendToUser(
+        recipientId,
+        `${requesterName} wants to make a Book Blend with you`,
+        "Merge your libraries into one taste match — tap to accept.",
+        { type: "blend_request", blendId, otherUserId: requesterId }
+      );
+      return;
+    }
+
+    if (afterStatus === "ready" && beforeStatus === "pending") {
+      const recipientName = await nameOf(recipientId);
+      const score = (after.result as { score?: number } | undefined)?.score;
+      await sendToUser(
+        requesterId,
+        `Your Book Blend with ${recipientName} is ready`,
+        typeof score === "number"
+          ? `You two scored ${score}%. Tap to watch it.`
+          : "Tap to watch it.",
+        { type: "blend_ready", blendId, otherUserId: recipientId }
+      );
     }
   }
 );

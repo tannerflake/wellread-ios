@@ -1,0 +1,4 @@
+module AppAuth {
+umbrella "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/AppAuth-iOS/Sources/AppAuth"
+export *
+}

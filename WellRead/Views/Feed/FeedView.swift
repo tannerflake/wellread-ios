@@ -437,6 +437,9 @@ struct FeedView: View {
             do {
                 try await userRepo.setFollowing(currentUid: uid, targetUid: targetUid, follow: true)
                 await authService.refreshAppUser()
+                await MainActor.run {
+                    WidgetDataService.shared.scheduleRefresh(appState: appState, delay: 1.0, forceFriendRefresh: true)
+                }
             } catch {
                 #if DEBUG
                 print("followReader: \(error)")

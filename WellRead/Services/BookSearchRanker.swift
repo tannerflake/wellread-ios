@@ -4,10 +4,12 @@
 //
 //  Ranks and de-duplicates Google Books search results so the edition a user
 //  expects lands at the top. Google's raw relevance order surfaces reissues
-//  ("10th Anniversary Edition"), foreign-language editions, and duplicate
-//  entries of the same work; this re-scores results on query match, popularity
-//  (ratingsCount), metadata completeness, and edition noise, then collapses
-//  editions of the same work down to the best one.
+//  ("10th Anniversary Edition"), foreign-language editions, knockoff listings
+//  with publisher-as-author, and duplicate entries of the same work; this
+//  re-scores results on query match, popularity (ratingsCount, when Google
+//  returns it), metadata completeness, and edition noise, then collapses
+//  editions of the same work down to the best one, backfilling missing
+//  metadata (cover, ISBN, description) from sibling editions.
 //
 
 import Foundation
@@ -54,11 +56,28 @@ enum BookSearchRanker {
             .sorted { $0.score != $1.score ? $0.score > $1.score : $0.index < $1.index }
 
         guard deduplicate else { return scored.map(\.candidate.book) }
-        var seenWorks = Set<String>()
-        return scored.compactMap { entry in
+        // Collapse each work to its best-scored edition, but backfill metadata the
+        // winner lacks from sibling editions: Google often lists the canonical
+        // edition without a cover while a reissue of the same work has one.
+        var order: [String] = []
+        var winners: [String: Book] = [:]
+        for entry in scored {
             let key = workKey(title: entry.candidate.book.title, author: entry.candidate.book.author)
-            return seenWorks.insert(key).inserted ? entry.candidate.book : nil
+            if var winner = winners[key] {
+                let sibling = entry.candidate.book
+                if winner.coverURL.isEmpty && !sibling.coverURL.isEmpty {
+                    winner.coverURL = sibling.coverURL
+                    winner.fallbackCoverURLs = sibling.fallbackCoverURLs
+                }
+                if winner.isbn == nil { winner.isbn = sibling.isbn }
+                if (winner.description ?? "").isEmpty { winner.description = sibling.description }
+                winners[key] = winner
+            } else {
+                order.append(key)
+                winners[key] = entry.candidate.book
+            }
         }
+        return order.compactMap { winners[$0] }
     }
 
     // MARK: - Scoring
@@ -80,9 +99,13 @@ enum BookSearchRanker {
 
         var score = 0.0
 
-        // Title match: exact > prefix (supports search-as-you-type) > token coverage.
-        if normTitle == normQuery || normMainTitle == normQuery {
+        // Title match: exact > main-title exact > prefix (supports search-as-you-type)
+        // > token coverage. A subtitle-only exact match ranks below the whole-title
+        // one so "Sapiens" beats "Sapiens: A Graphic History" for query "sapiens".
+        if normTitle == normQuery {
             score += 120
+        } else if normMainTitle == normQuery {
+            score += 100
         } else if normMainTitle.hasPrefix(normQuery) || normQuery.hasPrefix(normMainTitle) {
             score += 80
         }
@@ -123,6 +146,21 @@ enum BookSearchRanker {
             score -= 18
         }
 
+        // Derivative works (graphic adaptations, workbooks, journals) rank below
+        // the original unless the query asks for them.
+        if containsDerivativeMarker(normTitle) && !containsDerivativeMarker(normQuery) {
+            score -= 18
+        }
+
+        // Knockoff listings credit a publisher-sounding name ("University Press",
+        // "Readtrepreneur Publishing") as the author. Sink them hard: they only
+        // matter when nothing legitimate matches.
+        if authorLooksLikePublisher(book.author) {
+            score -= 60
+        } else if normAuthor.isEmpty || normAuthor == "unknown" {
+            score -= 20
+        }
+
         // Slight preference for concise titles over keyword-stuffed catalog entries.
         let extraTokens = titleTokens.count - queryTokens.count - 2
         if extraTokens > 0 { score -= min(12, Double(extraTokens) * 1.5) }
@@ -159,7 +197,8 @@ enum BookSearchRanker {
     /// Editions of the same work share a key: core title (parentheticals and
     /// edition phrases stripped, subtitle dropped) + primary author. Digits in
     /// the subtitle (volume/part numbers) stay in the key so "Vol 1" and
-    /// "Vol 2" never merge.
+    /// "Vol 2" never merge, and derivative markers ("A Graphic History") stay
+    /// so adaptations never merge with the original work.
     static func workKey(title: String, author: String) -> String {
         var raw = title
         raw = raw.replacingOccurrences(of: #"\([^)]*\)|\[[^\]]*\]"#, with: " ", options: .regularExpression)
@@ -173,12 +212,14 @@ enum BookSearchRanker {
             norm = String(norm.dropFirst(article.count))
             break
         }
+        let normSubtitle = normalize(subtitle)
+        let subtitleMarkers = derivativeMarkers.filter { normSubtitle.contains($0) }.joined(separator: " ")
         let subtitleDigits = subtitle.filter(\.isNumber)
         // Surname only: catalogs list the same author as "J.R.R. Tolkien",
         // "J. R. R. Tolkien", and "John Ronald Reuel Tolkien".
         let primaryAuthor = normalize(String(author.split(separator: ",").first ?? ""))
         let surname = primaryAuthor.split(separator: " ").last.map(String.init) ?? primaryAuthor
-        return norm + "|" + subtitleDigits + "|" + surname
+        return norm + "|" + subtitleMarkers + subtitleDigits + "|" + surname
     }
 
     private static let editionPhrasePatterns: [String] = [
@@ -214,6 +255,31 @@ enum BookSearchRanker {
 
     private static func containsEditionNoise(_ normalized: String) -> Bool {
         editionNoiseTerms.contains { normalized.contains($0) }
+    }
+
+    /// Words marking a distinct derivative work rather than another edition:
+    /// "Sapiens: A Graphic History" is not an edition of "Sapiens".
+    private static let derivativeMarkers: [String] = [
+        "graphic", "workbook", "journal", "coloring", "screenplay", "cookbook", "companion"
+    ]
+
+    private static func containsDerivativeMarker(_ normalized: String) -> Bool {
+        derivativeMarkers.contains { normalized.contains($0) }
+    }
+
+    /// Publisher names credited as the author are a strong knockoff signal
+    /// ("University Press", "Summareads Media"). Matches whole words only, so
+    /// real authors with e.g. surname "Pressfield" are unaffected.
+    private static let publisherAuthorTerms: Set<String> = [
+        "press", "publishing", "publishers", "publication", "publications",
+        "media", "summaries", "library", "editions", "print", "books"
+    ]
+
+    private static func authorLooksLikePublisher(_ author: String) -> Bool {
+        author.split(separator: ",").contains { segment in
+            normalize(String(segment)).split(separator: " ")
+                .contains { publisherAuthorTerms.contains(String($0)) }
+        }
     }
 
     // MARK: - Text utilities

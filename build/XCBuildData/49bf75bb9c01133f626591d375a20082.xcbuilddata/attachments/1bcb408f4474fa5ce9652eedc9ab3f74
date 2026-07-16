@@ -1,0 +1,4 @@
+module grpcppWrapper {
+umbrella "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/grpc-binary/grpcpp-Wrapper/include"
+export *
+}

@@ -42,6 +42,16 @@ enum WellreadDeepLink {
 enum PushNotificationService {
     private static let userRepo = UserRepository()
 
+    /// Blend push tapped before the UI was mounted (cold start): stashed here and
+    /// consumed by `MainTabView.onAppear`, since a NotificationCenter post at tap
+    /// time would land before any listener exists.
+    private static var pendingBlendId: String?
+
+    static func consumePendingBlendTap() -> String? {
+        defer { pendingBlendId = nil }
+        return pendingBlendId
+    }
+
     /// Registers with APNs without showing the permission dialog (for users who already granted alerts, or after cold start).
     static func registerForRemoteNotificationsOnly() {
         DispatchQueue.main.async {
@@ -132,6 +142,19 @@ enum PushNotificationService {
 
     static func handleRemoteNotificationTap(userInfo: [AnyHashable: Any]) {
         let type = WellreadDeepLink.pushNotificationType(from: userInfo)
+        /// Book Blend pushes (invite or ready) land on the blend landing screen,
+        /// which routes by the doc's status — both types carry `blendId`.
+        if type == "blend_request" || type == "blend_ready" {
+            if let blendId = userInfo[AnyHashable("blendId")] as? String, !blendId.isEmpty {
+                pendingBlendId = blendId
+                NotificationCenter.default.post(
+                    name: .spineOpenBookBlend,
+                    object: nil,
+                    userInfo: ["blendId": blendId]
+                )
+            }
+            return
+        }
         /// Friend-review pushes land on the feed scrolled to that review (no comment thread).
         if type == "friend_review_posted" {
             if let postId = WellreadDeepLink.postId(fromNotificationUserInfo: userInfo) {
@@ -169,4 +192,6 @@ extension Notification.Name {
     static let spineHighlightTierBook = Notification.Name("spineHighlightTierBook")
     /// After a user adds a book to their queue from the search flow: switch to Profile tab → Queue segment so they land on the queue and see it was added.
     static let spineOpenQueue = Notification.Name("spineOpenQueue")
+    /// Blend push tapped: present the Book Blend landing screen. `userInfo["blendId"]` is the pair doc id.
+    static let spineOpenBookBlend = Notification.Name("spineOpenBookBlend")
 }

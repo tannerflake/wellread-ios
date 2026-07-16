@@ -1,0 +1,16 @@
+{
+  "" : {
+    "const-values" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellReadWidget.build/Objects-normal/x86_64/WellReadWidget-primary.swiftconstvalues",
+    "dependencies" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellReadWidget.build/Objects-normal/x86_64/WellReadWidget-primary.d",
+    "diagnostics" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellReadWidget.build/Objects-normal/x86_64/WellReadWidget-primary.dia",
+    "emit-module-dependencies" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellReadWidget.build/Objects-normal/x86_64/WellReadWidget-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellReadWidget.build/Objects-normal/x86_64/WellReadWidget-primary-emit-module.dia",
+    "pch" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellReadWidget.build/Objects-normal/x86_64/WellReadWidget-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellReadWidget.build/Objects-normal/x86_64/WellReadWidget-primary.swiftdeps"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/WidgetSnapshot.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellReadWidget.build/Objects-normal/x86_64/WidgetSnapshot.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellReadWidget.build/Objects-normal/x86_64/WidgetSnapshot.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellReadWidget.build/Objects-normal/x86_64/WidgetSnapshot.o"
+  }
+}

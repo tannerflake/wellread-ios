@@ -104,6 +104,40 @@ final class UserBookRepository {
         }
     }
 
+    /// All members' read rows for one book ("Read by" on the book profile).
+    /// No orderBy so the two equality filters run on merged single-field indexes;
+    /// callers filter to followed uids and sort client-side. Book left unhydrated.
+    func fetchReadEntries(bookId: String) async -> [UserBook] {
+        do {
+            let snapshot = try await db.collection(userBooks)
+                .whereField("bookId", isEqualTo: bookId)
+                .whereField("status", isEqualTo: ReadingStatus.read.rawValue)
+                .getDocuments()
+            return snapshot.documents.compactMap { doc in
+                userBook(from: doc.data(), docId: doc.documentID)
+            }
+        } catch {
+            return []
+        }
+    }
+
+    /// One member's read rows without book hydration — bookId/rating/tier are all
+    /// the match scorer needs for trust weighting. Same index-friendly shape as
+    /// `fetchReadEntries(bookId:)` (two equality filters, no orderBy).
+    func fetchReadEntriesLite(userId: String) async -> [UserBook] {
+        do {
+            let snapshot = try await db.collection(userBooks)
+                .whereField("userId", isEqualTo: userId)
+                .whereField("status", isEqualTo: ReadingStatus.read.rawValue)
+                .getDocuments()
+            return snapshot.documents.compactMap { doc in
+                userBook(from: doc.data(), docId: doc.documentID)
+            }
+        } catch {
+            return []
+        }
+    }
+
     /// Every member's "Reading now" covers in one query (Feed following strip): uid → books in shelf order.
     func fetchAllReadingNowBooks() async -> [String: [Book]] {
         do {

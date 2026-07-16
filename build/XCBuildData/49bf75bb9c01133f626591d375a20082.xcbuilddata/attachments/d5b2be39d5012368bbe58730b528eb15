@@ -1,0 +1,4 @@
+module abslWrapper {
+umbrella "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/abseil-cpp-binary/absl-Wrapper/include"
+export *
+}

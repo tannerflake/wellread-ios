@@ -1,0 +1,4 @@
+module GTMSessionFetcherCore {
+umbrella "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/gtm-session-fetcher/Sources/Core/Public"
+export *
+}

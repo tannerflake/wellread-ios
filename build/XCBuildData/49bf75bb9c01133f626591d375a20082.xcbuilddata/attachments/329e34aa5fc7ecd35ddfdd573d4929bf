@@ -1,0 +1,476 @@
+{
+  "" : {
+    "const-values" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/WellRead-primary.swiftconstvalues",
+    "dependencies" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/WellRead-primary.d",
+    "diagnostics" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/WellRead-primary.dia",
+    "emit-module-dependencies" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/WellRead-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/WellRead-primary-emit-module.dia",
+    "pch" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/WellRead-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/WellRead-primary.swiftdeps"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/AppState/AppState.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/AppState.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/AppState.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/AppState.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Helpers/RootViewController.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/RootViewController.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/RootViewController.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/RootViewController.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Models/Book.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/Book.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/Book.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/Book.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Models/BookRecommendation.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/BookRecommendation.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/BookRecommendation.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/BookRecommendation.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Models/Comment.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/Comment.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/Comment.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/Comment.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Models/DiscoverCriteria.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/DiscoverCriteria.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/DiscoverCriteria.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/DiscoverCriteria.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Models/Post.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/Post.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/Post.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/Post.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Models/User.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/User.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/User.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/User.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Models/UserBook.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/UserBook.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/UserBook.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/UserBook.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/RootView.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/RootView.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/RootView.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/RootView.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/ApiKeys.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/ApiKeys.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/ApiKeys.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/ApiKeys.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/AppLinks.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/AppLinks.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/AppLinks.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/AppLinks.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/AuthService.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/AuthService.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/AuthService.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/AuthService.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/BookProfileService.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/BookProfileService.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/BookProfileService.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/BookProfileService.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/BookRefresherService.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/BookRefresherService.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/BookRefresherService.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/BookRefresherService.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/BookRepository.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/BookRepository.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/BookRepository.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/BookRepository.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/BookSearchRanker.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/BookSearchRanker.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/BookSearchRanker.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/BookSearchRanker.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/ClaudeService.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/ClaudeService.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/ClaudeService.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/ClaudeService.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/CommentRepository.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/CommentRepository.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/CommentRepository.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/CommentRepository.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/ContactSyncService.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/ContactSyncService.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/ContactSyncService.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/ContactSyncService.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/CoverResolutionStore.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/CoverResolutionStore.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/CoverResolutionStore.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/CoverResolutionStore.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/DiscoverSuggestionsService.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/DiscoverSuggestionsService.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/DiscoverSuggestionsService.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/DiscoverSuggestionsService.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/DismissedSuggestionsRepository.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/DismissedSuggestionsRepository.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/DismissedSuggestionsRepository.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/DismissedSuggestionsRepository.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/GoodreadsCSVParser.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/GoodreadsCSVParser.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/GoodreadsCSVParser.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/GoodreadsCSVParser.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/GoodreadsImportService.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/GoodreadsImportService.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/GoodreadsImportService.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/GoodreadsImportService.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/GoodreadsShareHelper.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/GoodreadsShareHelper.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/GoodreadsShareHelper.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/GoodreadsShareHelper.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/GoodreadsWizardSession.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/GoodreadsWizardSession.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/GoodreadsWizardSession.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/GoodreadsWizardSession.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/GoogleBooksService.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/GoogleBooksService.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/GoogleBooksService.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/GoogleBooksService.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/ITunesCoverService.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/ITunesCoverService.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/ITunesCoverService.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/ITunesCoverService.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/LocalLibraryCache.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/LocalLibraryCache.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/LocalLibraryCache.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/LocalLibraryCache.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/MatchScoreService.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/MatchScoreService.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/MatchScoreService.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/MatchScoreService.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/PostRepository.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/PostRepository.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/PostRepository.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/PostRepository.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/ProfileImageCache.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/ProfileImageCache.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/ProfileImageCache.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/ProfileImageCache.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/ProfilePhotoService.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/ProfilePhotoService.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/ProfilePhotoService.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/ProfilePhotoService.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/PushNotificationNudgeStorage.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/PushNotificationNudgeStorage.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/PushNotificationNudgeStorage.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/PushNotificationNudgeStorage.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/PushNotificationService.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/PushNotificationService.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/PushNotificationService.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/PushNotificationService.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/PushRegistrationDiagnostics.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/PushRegistrationDiagnostics.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/PushRegistrationDiagnostics.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/PushRegistrationDiagnostics.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/RecommendationRepository.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/RecommendationRepository.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/RecommendationRepository.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/RecommendationRepository.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/UserBookRepository.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/UserBookRepository.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/UserBookRepository.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/UserBookRepository.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/UserRepository.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/UserRepository.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/UserRepository.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/UserRepository.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/WellReadTagCatalog.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/WellReadTagCatalog.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/WellReadTagCatalog.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/WellReadTagCatalog.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/WidgetDataService.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/WidgetDataService.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/WidgetDataService.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/WidgetDataService.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Services/WidgetSnapshot.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/WidgetSnapshot.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/WidgetSnapshot.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/WidgetSnapshot.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Theme/Theme.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/Theme.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/Theme.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/Theme.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/AddBook/AddBookFlowView.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/AddBookFlowView.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/AddBookFlowView.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/AddBookFlowView.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/AddBook/BookSearchRow.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/BookSearchRow.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/BookSearchRow.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/BookSearchRow.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/AddBook/NoSuggestionsTextField.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/NoSuggestionsTextField.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/NoSuggestionsTextField.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/NoSuggestionsTextField.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Book/BookProfileView.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/BookProfileView.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/BookProfileView.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/BookProfileView.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Book/BookRefresherView.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/BookRefresherView.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/BookRefresherView.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/BookRefresherView.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Book/EditReadReviewSheet.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/EditReadReviewSheet.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/EditReadReviewSheet.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/EditReadReviewSheet.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Book/MarkAsReadInlineOverlay.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/MarkAsReadInlineOverlay.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/MarkAsReadInlineOverlay.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/MarkAsReadInlineOverlay.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Components/BookCoverView.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/BookCoverView.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/BookCoverView.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/BookCoverView.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Components/CachedProfileImage.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/CachedProfileImage.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/CachedProfileImage.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/CachedProfileImage.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Components/CircularPhotoCropView.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/CircularPhotoCropView.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/CircularPhotoCropView.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/CircularPhotoCropView.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Components/FlowLayout.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/FlowLayout.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/FlowLayout.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/FlowLayout.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Components/MessageComposeView.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/MessageComposeView.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/MessageComposeView.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/MessageComposeView.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Components/ReadingNowFanStack.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/ReadingNowFanStack.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/ReadingNowFanStack.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/ReadingNowFanStack.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Components/TagCatalogPicker.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/TagCatalogPicker.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/TagCatalogPicker.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/TagCatalogPicker.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Components/Toast.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/Toast.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/Toast.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/Toast.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Discover/DiscoverBookPickerView.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/DiscoverBookPickerView.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/DiscoverBookPickerView.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/DiscoverBookPickerView.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Discover/DiscoverCriteriaEditorSheet.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/DiscoverCriteriaEditorSheet.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/DiscoverCriteriaEditorSheet.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/DiscoverCriteriaEditorSheet.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Discover/DiscoverCriteriaStrip.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/DiscoverCriteriaStrip.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/DiscoverCriteriaStrip.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/DiscoverCriteriaStrip.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Discover/DiscoverView.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/DiscoverView.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/DiscoverView.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/DiscoverView.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Feed/CommentsView.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/CommentsView.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/CommentsView.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/CommentsView.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Feed/FeedCommunityWelcomeModal.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/FeedCommunityWelcomeModal.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/FeedCommunityWelcomeModal.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/FeedCommunityWelcomeModal.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Feed/FeedView.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/FeedView.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/FeedView.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/FeedView.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Friends/FindFriendsView.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/FindFriendsView.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/FindFriendsView.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/FindFriendsView.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Friends/RecommendBookSheet.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/RecommendBookSheet.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/RecommendBookSheet.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/RecommendBookSheet.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Goodreads/GoodreadsExportWebView.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/GoodreadsExportWebView.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/GoodreadsExportWebView.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/GoodreadsExportWebView.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Goodreads/GoodreadsImportTutorialEmbed.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/GoodreadsImportTutorialEmbed.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/GoodreadsImportTutorialEmbed.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/GoodreadsImportTutorialEmbed.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Goodreads/GoodreadsImportView.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/GoodreadsImportView.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/GoodreadsImportView.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/GoodreadsImportView.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Library/GridLibraryView.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/GridLibraryView.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/GridLibraryView.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/GridLibraryView.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Library/LibraryDragHaptics.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/LibraryDragHaptics.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/LibraryDragHaptics.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/LibraryDragHaptics.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Library/LibraryReadQueueSegmentShared.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/LibraryReadQueueSegmentShared.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/LibraryReadQueueSegmentShared.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/LibraryReadQueueSegmentShared.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Library/LibraryView.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/LibraryView.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/LibraryView.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/LibraryView.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Library/PushDiagnosticsView.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/PushDiagnosticsView.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/PushDiagnosticsView.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/PushDiagnosticsView.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Library/QueueBookDragCover.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/QueueBookDragCover.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/QueueBookDragCover.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/QueueBookDragCover.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Library/QueueLibraryView.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/QueueLibraryView.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/QueueLibraryView.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/QueueLibraryView.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Library/RatingLibraryView.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/RatingLibraryView.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/RatingLibraryView.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/RatingLibraryView.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Library/TierBadge.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/TierBadge.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/TierBadge.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/TierBadge.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Library/TierListView.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/TierListView.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/TierListView.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/TierListView.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Library/TimelineLibraryView.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/TimelineLibraryView.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/TimelineLibraryView.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/TimelineLibraryView.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Library/UserLibraryDetailView.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/UserLibraryDetailView.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/UserLibraryDetailView.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/UserLibraryDetailView.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/MainTabView.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/MainTabView.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/MainTabView.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/MainTabView.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Onboarding/OnboardingFlowView.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/OnboardingFlowView.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/OnboardingFlowView.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/OnboardingFlowView.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Onboarding/ProfileCompletionView.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/ProfileCompletionView.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/ProfileCompletionView.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/ProfileCompletionView.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Onboarding/PushNotificationNudgeModal.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/PushNotificationNudgeModal.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/PushNotificationNudgeModal.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/PushNotificationNudgeModal.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Onboarding/PushNotificationPromptView.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/PushNotificationPromptView.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/PushNotificationPromptView.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/PushNotificationPromptView.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Onboarding/ReviewerLoginView.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/ReviewerLoginView.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/ReviewerLoginView.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/ReviewerLoginView.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Onboarding/WelcomeSpinesGoodreadsModal.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/WelcomeSpinesGoodreadsModal.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/WelcomeSpinesGoodreadsModal.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/WelcomeSpinesGoodreadsModal.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/Views/Profile/ProfileView.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/ProfileView.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/ProfileView.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/ProfileView.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/WellRead/WellReadApp.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/WellReadApp.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/WellReadApp.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/WellReadApp.o"
+  },
+  "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/DerivedSources/GeneratedAssetSymbols.swift" : {
+    "index-unit-output-path" : "/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/GeneratedAssetSymbols.o",
+    "llvm-bc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/GeneratedAssetSymbols.bc",
+    "object" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellRead.build/Objects-normal/arm64/GeneratedAssetSymbols.o"
+  }
+}

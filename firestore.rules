@@ -77,6 +77,20 @@ service cloud.firestore {
       allow delete: if request.auth != null && resource.data.fromUserId == request.auth.uid;
     }
 
+    // Book Blends: one doc per pair (`{uidLow}_{uidHigh}`); only the two participants
+    // may read or write. Either side can create (request), respond, or regenerate.
+    match /bookBlends/{blendId} {
+      allow read: if request.auth != null && request.auth.uid in resource.data.userIds;
+      allow create: if request.auth != null
+        && request.resource.data.userIds.size() == 2
+        && request.auth.uid in request.resource.data.userIds
+        && blendId == request.resource.data.userIds[0] + '_' + request.resource.data.userIds[1];
+      allow update: if request.auth != null
+        && request.auth.uid in resource.data.userIds
+        && request.resource.data.userIds == resource.data.userIds;
+      allow delete: if request.auth != null && request.auth.uid in resource.data.userIds;
+    }
+
     // Dismissed suggestions (Pass): user can only read/write their own passed book IDs
     match /dismissedSuggestions/{docId} {
       allow read, delete: if request.auth != null && resource.data.userId == request.auth.uid;

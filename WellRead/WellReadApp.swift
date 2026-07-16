@@ -160,6 +160,7 @@ struct WellReadApp: App {
                             try? await Task.sleep(nanoseconds: 300_000_000) // 0.3s so UI is ready
                             handleGoodreadsImportFromShare()
                         }
+                        WidgetDataService.shared.scheduleRefresh(appState: appState, delay: 3.0)
                     }
                 }
         }

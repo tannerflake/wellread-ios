@@ -54,6 +54,8 @@ struct BookProfileView: View {
     @State private var profileTags: [String] = []
     @State private var tagsLoading = false
     @State private var userBookToEdit: UserBook? = nil
+    @State private var showRefresher = false
+    @State private var matchScore: Int? = nil
 
     // Recommend-to-a-friend section
     private struct RecommendReader: Identifiable {
@@ -61,6 +63,15 @@ struct BookProfileView: View {
         let uid: String
         let user: User
     }
+    // "Read by" section — followed readers who've finished this book.
+    private struct ReadByReader: Identifiable {
+        var id: String { uid }
+        let uid: String
+        let user: User
+        let entry: UserBook
+    }
+    @State private var readByReaders: [ReadByReader] = []
+
     @State private var recommendReaders: [RecommendReader] = []
     @State private var recommendLoading = false
     @State private var recommendSendingTo: Set<String> = []
@@ -74,6 +85,14 @@ struct BookProfileView: View {
 
     private var showShelfAction: Bool {
         shelfActionTitle != nil && onAddToShelf != nil && !isInQueue
+    }
+
+    /// Refresher is only offered for books the user has finished — that's the
+    /// whole premise (full-spoiler recap), and it keeps the AI cost gated.
+    private var hasReadBook: Bool {
+        if isOnReadList { return true }
+        if readEntryForReview?.status == .read { return true }
+        return appState.userBooks.contains { $0.bookId == book.id && $0.status == .read }
     }
 
     /// Show review card when this read row has review text and/or a tier.
@@ -104,6 +123,16 @@ struct BookProfileView: View {
                         reviewWindow(ub: ub)
                             .padding(.horizontal)
                         recommendSection
+                    }
+
+                    if !readByReaders.isEmpty {
+                        readByWindow
+                            .padding(.horizontal)
+                    }
+
+                    if hasReadBook {
+                        refresherWindow
+                            .padding(.horizontal)
                     }
 
                     summaryWindow
@@ -142,6 +171,9 @@ struct BookProfileView: View {
             EditReadReviewSheet(userBook: ub)
                 .environmentObject(appState)
         }
+        .sheet(isPresented: $showRefresher) {
+            BookRefresherView(book: book)
+        }
         .sheet(isPresented: $showInviteCompose) {
             MessageComposeView(recipients: [], body: AppLinks.inviteMessage(bookTitle: book.title))
                 .ignoresSafeArea()
@@ -155,6 +187,37 @@ struct BookProfileView: View {
         .task(id: book.id) {
             recommendSendingTo = []
             recommendSentTo = []
+            readByReaders = []
+            matchScore = nil
+            if let myUid = appState.authUserId {
+                let following = Set(appState.currentUser?.following ?? [])
+                if !following.isEmpty {
+                    let bookId = book.id
+                    Task {
+                        let entries = await UserBookRepository().fetchReadEntries(bookId: bookId)
+                        var seen = Set<String>()
+                        let followed = entries.filter {
+                            $0.userId != myUid && following.contains($0.userId) && seen.insert($0.userId).inserted
+                        }
+                        guard !followed.isEmpty else { return }
+                        let repo = UserRepository()
+                        var readers: [ReadByReader] = []
+                        for entry in followed {
+                            if let user = await repo.getUser(uid: entry.userId) {
+                                readers.append(ReadByReader(uid: entry.userId, user: user, entry: entry))
+                            }
+                        }
+                        let sorted = readers.sorted {
+                            ($0.entry.dateFinished ?? .distantPast) > ($1.entry.dateFinished ?? .distantPast)
+                        }
+                        await MainActor.run {
+                            guard bookId == book.id else { return }
+                            readByReaders = sorted
+                            refreshMatchScore()
+                        }
+                    }
+                }
+            }
             if showRecommend && appState.authUserId != nil && recommendReaders.isEmpty {
                 recommendLoading = true
                 Task {
@@ -176,6 +239,7 @@ struct BookProfileView: View {
             let (tags, sum, quote) = await (tagsTask, summaryTask, quoteTask)
             profileTags = tags
             tagsLoading = false
+            refreshMatchScore()
             summary = sum
             summaryLoading = false
             notableQuote = quote
@@ -228,6 +292,12 @@ struct BookProfileView: View {
                             .offset(x: 14, y: -10)
                     }
                 }
+                .overlay(alignment: .bottomLeading) {
+                    if !readByReaders.isEmpty {
+                        readByAvatarFan
+                            .offset(x: -14, y: 12)
+                    }
+                }
 
             VStack(spacing: 4) {
                 Text(book.title)
@@ -246,6 +316,12 @@ struct BookProfileView: View {
                         .font(.system(size: 12, weight: .regular))
                         .foregroundStyle(Theme.textTertiary)
                 }
+
+                if let match = matchScore {
+                    matchBadge(match)
+                        .padding(.top, 4)
+                        .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                }
             }
             .padding(.horizontal, 24)
 
@@ -253,6 +329,52 @@ struct BookProfileView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 12)
+    }
+
+    // MARK: - Match score
+
+    /// Netflix-green for strong matches; cooler theme colors as the fit drops off.
+    private func matchColor(_ score: Int) -> Color {
+        if score >= 80 { return Color(red: 0.18, green: 0.65, blue: 0.35) }
+        if score >= 60 { return Theme.accent }
+        return Theme.textTertiary
+    }
+
+    private func matchBadge(_ score: Int) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 10, weight: .bold))
+            Text("\(score)% MATCH")
+                .font(.system(size: 12, weight: .bold))
+                .tracking(0.8)
+        }
+        .foregroundStyle(matchColor(score))
+        .accessibilityLabel("\(score) percent match for you")
+    }
+
+    /// Recomputes the % match. Called once profile tags land and again when
+    /// followed readers' entries arrive, so the score refines as data loads.
+    private func refreshMatchScore() {
+        let bookId = book.id
+        let tags = profileTags
+        let friendEntries = readByReaders.map(\.entry)
+        let library = appState.userBooks
+        let user = appState.currentUser
+        Task {
+            let score = await MatchScoreService.shared.matchScore(
+                for: book,
+                profileTags: tags,
+                library: library,
+                user: user,
+                friendEntries: friendEntries
+            )
+            await MainActor.run {
+                guard bookId == book.id else { return }
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    matchScore = score
+                }
+            }
+        }
     }
 
     // MARK: - Review window
@@ -315,6 +437,52 @@ struct BookProfileView: View {
         f.dateFormat = "yyyy"
         return f
     }()
+
+    // MARK: - Refresher window
+
+    /// Read-books-only card: one tap opens the AI refresher sheet (recap + Q&A).
+    private var refresherWindow: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Read it a while ago? Get a recap of the plot, characters, and takeaways — then ask follow-up questions.")
+                .font(.system(size: 14, weight: .regular))
+                .foregroundStyle(Theme.textSecondary)
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button {
+                showRefresher = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text("REFRESH MY MEMORY")
+                        .font(.system(size: 13, weight: .bold))
+                        .tracking(1)
+                }
+                .foregroundStyle(Theme.background)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
+                        .fill(Theme.gloss(Theme.accent))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [Theme.phosphorWhite.opacity(0.45), Theme.phosphorWhite.opacity(0.04)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 1
+                        )
+                )
+                .shadow(color: Theme.accent.opacity(0.32), radius: 8, x: 0, y: 3)
+            }
+            .buttonStyle(.springPress)
+        }
+        .hingeSectionCard(title: "Refresher", accent: Theme.accent)
+    }
 
     // MARK: - Summary window
 
@@ -432,6 +600,76 @@ struct BookProfileView: View {
         .hingeSectionCard(title: "Notable Quote", accent: Theme.chromeNavy)
     }
 
+    // MARK: - Read by window
+
+    /// Fanned avatars hanging off the cover's bottom-left corner — the readers
+    /// the user follows who've finished this book. Mirrors ReadingNowFanStack.
+    private var readByAvatarFan: some View {
+        let shown = readByReaders.prefix(3)
+        let overflow = readByReaders.count - shown.count
+        return HStack(spacing: -12) {
+            ForEach(Array(shown.enumerated()), id: \.element.id) { index, reader in
+                readerAvatar(user: reader.user, size: 34)
+                    .overlay(Circle().stroke(Theme.background, lineWidth: 2))
+                    .shadow(color: Theme.shadowInk.opacity(0.25), radius: 3, x: 0, y: 2)
+                    .zIndex(Double(shown.count - index))
+            }
+            if overflow > 0 {
+                Text("+\(overflow)")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundStyle(Theme.phosphorWhite)
+                    .frame(width: 34, height: 34)
+                    .background(Circle().fill(Theme.chromeNavy))
+                    .overlay(Circle().stroke(Theme.background, lineWidth: 2))
+                    .shadow(color: Theme.shadowInk.opacity(0.25), radius: 3, x: 0, y: 2)
+            }
+        }
+    }
+
+    private var readByWindow: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            ForEach(Array(readByReaders.enumerated()), id: \.element.id) { index, reader in
+                readByRow(reader)
+                if index < readByReaders.count - 1 {
+                    Rectangle()
+                        .fill(Theme.chromeTeal.opacity(0.18))
+                        .frame(height: Theme.chromeHairline)
+                }
+            }
+        }
+        .hingeSectionCard(title: "Read by")
+    }
+
+    private func readByRow(_ reader: ReadByReader) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                readerAvatar(user: reader.user, size: 36)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(reader.user.displayName)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                        .lineLimit(1)
+                    if let finished = reader.entry.dateFinished {
+                        Text("read \(Self.readDateFormatter.string(from: finished))")
+                            .font(.system(size: 11, weight: .regular))
+                            .foregroundStyle(Theme.textTertiary)
+                    }
+                }
+                Spacer(minLength: 8)
+                if let t = reader.entry.tier {
+                    TierBadge(tier: t, size: .mini)
+                }
+            }
+            if let text = reader.entry.reviewText?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+                Text(text)
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundStyle(Theme.textSecondary)
+                    .lineSpacing(Theme.bodyLineSpacing)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
     // MARK: - Recommend window
 
     /// Windowed section (below My Review, or Summary when there's no review):
@@ -531,26 +769,26 @@ struct BookProfileView: View {
         .buttonStyle(.plain)
     }
 
-    private func readerAvatar(user: User) -> some View {
+    private func readerAvatar(user: User, size: CGFloat = 52) -> some View {
         ZStack {
             if let urlString = user.profileImageURL, let url = URL(string: urlString) {
                 CachedProfileImage(url: url, contentMode: .fill) {
-                    initialCircle(user.displayName)
+                    initialCircle(user.displayName, size: size)
                 }
             } else {
-                initialCircle(user.displayName)
+                initialCircle(user.displayName, size: size)
             }
         }
-        .frame(width: 52, height: 52)
+        .frame(width: size, height: size)
         .clipShape(Circle())
     }
 
-    private func initialCircle(_ name: String) -> some View {
+    private func initialCircle(_ name: String, size: CGFloat = 52) -> some View {
         Circle()
             .fill(Theme.chromeTeal)
             .overlay(
                 Text(String(name.prefix(1)).uppercased())
-                    .font(.system(size: 20, weight: .semibold, design: .rounded))
+                    .font(.system(size: size * 0.38, weight: .semibold, design: .rounded))
                     .foregroundStyle(Theme.phosphorWhite)
             )
     }

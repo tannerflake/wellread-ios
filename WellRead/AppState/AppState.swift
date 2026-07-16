@@ -76,6 +76,7 @@ final class AppState: ObservableObject {
             Task { @MainActor in
                 self.dropExcludedFromDiscoverQueue()
                 self.clearTierHighlightIfTiered()
+                WidgetDataService.shared.scheduleRefresh(appState: self)
             }
             if let uid = self.currentUserId {
                 let copy = list
@@ -168,6 +169,9 @@ final class AppState: ObservableObject {
         scrollToFeedPostId = nil
         pendingTierHighlightBookId = nil
         BookRepository.shared.clearCache()
+        Task { @MainActor in
+            WidgetDataService.shared.writeSignedOutSnapshot()
+        }
     }
 
     /// Clear the pending tier-list highlight once the user has actually tiered the book.

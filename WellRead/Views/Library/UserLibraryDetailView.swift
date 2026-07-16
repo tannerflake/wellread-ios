@@ -26,6 +26,13 @@ struct UserLibraryDetailView: View {
     @State private var iFollowThem: Bool = false
     @State private var followActionInFlight = false
 
+    // Book Blend: live pair-doc state drives the entry button; the landing
+    // screen handles invite / waiting / story routing.
+    @State private var blend: BookBlend?
+    @State private var blendListener: ListenerRegistration?
+    @State private var blendRequestInFlight = false
+    @State private var showBlendLanding = false
+
     private var readBooks: [UserBook] {
         books.filter { $0.status == .read }
     }
@@ -104,6 +111,16 @@ struct UserLibraryDetailView: View {
                 }
                 .padding(.vertical, 10)
 
+                if let me = authService.firebaseUser?.uid, me != userId {
+                    BookBlendEntryButton(
+                        state: blendEntryState(myUid: me),
+                        otherFirstName: profileUser?.firstName ?? "They",
+                        action: { handleBlendButtonTap(myUid: me) }
+                    )
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 8)
+                }
+
                 if let goal = activeReadingGoal {
                     LibraryReadingGoalProgressStrip(
                         calendarYear: calendarYear,
@@ -146,13 +163,64 @@ struct UserLibraryDetailView: View {
             booksListener = userBookRepo.listenUserBooks(userId: userId) { list in
                 books = list
             }
+            startBlendListener()
         }
         .onChange(of: authService.firebaseUser?.uid) { _, _ in
             Task { await refreshIFollowState() }
+            blendListener?.remove()
+            blendListener = nil
+            startBlendListener()
         }
         .onDisappear {
             booksListener?.remove()
             booksListener = nil
+            blendListener?.remove()
+            blendListener = nil
+        }
+        .fullScreenCover(isPresented: $showBlendLanding) {
+            if let me = authService.firebaseUser?.uid {
+                BookBlendLandingView(blendId: BookBlend.pairId(me, userId))
+                    .environmentObject(authService)
+            }
+        }
+    }
+
+    // MARK: - Book Blend
+
+    private func startBlendListener() {
+        guard let me = authService.firebaseUser?.uid, me != userId, blendListener == nil else { return }
+        blendListener = BookBlendService.shared.listenBlend(pairId: BookBlend.pairId(me, userId)) { updated in
+            blend = updated
+        }
+    }
+
+    private func blendEntryState(myUid: String) -> BookBlendEntryState {
+        guard let blend else { return .none }
+        switch blend.status {
+        case .ready: return .ready
+        case .declined: return .none
+        case .pending: return blend.requesterId == myUid ? .requestedByMe : .invitedMe
+        }
+    }
+
+    private func handleBlendButtonTap(myUid: String) {
+        switch blendEntryState(myUid: myUid) {
+        case .none:
+            guard !blendRequestInFlight else { return }
+            blendRequestInFlight = true
+            Task {
+                let me = appState.currentUser
+                if let requested = try? await BookBlendService.shared.requestBlend(
+                    myUid: myUid, me: me, otherUid: userId, other: profileUser
+                ) {
+                    await MainActor.run { blend = requested }
+                }
+                await MainActor.run { blendRequestInFlight = false }
+            }
+        case .requestedByMe:
+            break
+        case .invitedMe, .ready:
+            showBlendLanding = true
         }
     }
 
@@ -273,6 +341,7 @@ struct UserLibraryDetailView: View {
             try await userRepo.setFollowing(currentUid: me, targetUid: userId, follow: next)
             iFollowThem = next
             await authService.refreshAppUser()
+            WidgetDataService.shared.scheduleRefresh(appState: appState, delay: 1.0, forceFriendRefresh: true)
         } catch {
             await refreshIFollowState()
         }

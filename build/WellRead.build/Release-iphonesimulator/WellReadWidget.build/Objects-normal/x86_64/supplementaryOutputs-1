@@ -1,0 +1,12 @@
+{
+  "/Users/tannerflake/WellRead-xcode/WellReadWidget/SpineTimelineProvider.swift" : {
+    "abi-baseline-json" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellReadWidget.build/Objects-normal/x86_64/WellReadWidget.abi.json",
+    "const-values" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellReadWidget.build/Objects-normal/x86_64/WellReadWidget-primary.swiftconstvalues",
+    "dependencies" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellReadWidget.build/Objects-normal/x86_64/WellReadWidget-primary.d",
+    "diagnostics" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellReadWidget.build/Objects-normal/x86_64/WellReadWidget-primary.dia",
+    "objc-header" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellReadWidget.build/Objects-normal/x86_64/WellReadWidget-Swift.h",
+    "swiftdoc" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellReadWidget.build/Objects-normal/x86_64/WellReadWidget.swiftdoc",
+    "swiftmodule" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellReadWidget.build/Objects-normal/x86_64/WellReadWidget.swiftmodule",
+    "swiftsourceinfo" : "/Users/tannerflake/WellRead-xcode/build/WellRead.build/Release-iphonesimulator/WellReadWidget.build/Objects-normal/x86_64/WellReadWidget.swiftsourceinfo"
+  }
+}

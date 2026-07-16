@@ -1,0 +1,4 @@
+module opensslWrapper {
+umbrella "/Users/tannerflake/Library/Developer/Xcode/DerivedData/WellRead-blrhchxybpymqhgjfkqoaavleplh/SourcePackages/checkouts/grpc-binary/openssl-grpc-Wrapper/include"
+export *
+}
