@@ -47,9 +47,7 @@ struct OnboardingFlowView: View {
 
     private var welcomeStep: some View {
         VStack(spacing: 24) {
-            Image(systemName: "book.closed.fill")
-                .font(.system(size: 64))
-                .foregroundStyle(Theme.accent)
+            SpineLogoView(size: 110)
                 .onTapGesture(count: 5) {
                     Task {
                         await authService.signInWithConfiguredTestAccount()
@@ -159,8 +157,7 @@ struct OnboardingFlowView: View {
 
     private var doneStep: some View {
         VStack(spacing: 24) {
-            ProgressView()
-                .tint(Theme.accent)
+            SpineLogoLoadingView(size: 88)
             Text("Setting up your library…")
                 .font(Theme.body())
                 .foregroundStyle(Theme.textSecondary)

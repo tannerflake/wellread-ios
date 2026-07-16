@@ -114,10 +114,6 @@ struct RootView: View {
     }
 
     private var loadingView: some View {
-        ZStack {
-            Theme.background.ignoresSafeArea()
-            ProgressView()
-                .tint(Theme.accent)
-        }
+        SpineLoadingScreen()
     }
 }
