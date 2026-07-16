@@ -71,8 +71,12 @@ struct AddBookFlowView: View {
     /// `dismiss()` so the parent can drop the drawer from its view tree.
     var onDismiss: (() -> Void)? = nil
 
-    /// Closes the drawer regardless of how it was presented.
+    /// Closes the drawer regardless of how it was presented. Drops the keyboard
+    /// first — the outgoing view may not get another update pass, so flipping
+    /// `isSearchFocused` alone leaves the keyboard up until the drawer is gone.
     private func close() {
+        isSearchFocused = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         if let onDismiss {
             onDismiss()
         } else {
@@ -128,8 +132,10 @@ struct AddBookFlowView: View {
             }
         }
         // Pin the drawer: without this, keyboard avoidance shrinks the geometry and
-        // the drawer rides up under the keyboard.
-        .ignoresSafeArea(.keyboard, edges: .bottom)
+        // the drawer rides up under the keyboard. Also extend through the bottom
+        // safe area — the top-corner clipShape otherwise cuts the drawer off at the
+        // home-indicator inset, leaving a see-through strip to the screen behind.
+        .ignoresSafeArea(.all, edges: .bottom)
     }
 
     private var drawerContent: some View {
