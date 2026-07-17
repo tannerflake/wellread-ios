@@ -54,9 +54,11 @@ struct BookProfileView: View {
     @State private var profileTags: [String] = []
     @State private var tagsLoading = false
     @State private var userBookToEdit: UserBook? = nil
-    // Re-read flow: tapping READ on an already-read book offers to log another read.
+    // Re-read flow: tapping READ on an already-read book offers to log another read
+    // or to remove the book from the read shelf.
     @State private var showRereadPrompt = false
     @State private var showRereadEditPrompt = false
+    @State private var showRemoveFromReadConfirm = false
     @State private var showRefresher = false
     @State private var showSummaryMore = false
     @State private var matchScore: Int? = nil
@@ -198,11 +200,18 @@ struct BookProfileView: View {
             MessageComposeView(recipients: [], body: AppLinks.inviteMessage(bookTitle: book.title))
                 .ignoresSafeArea()
         }
-        .alert("Did you read this book again?", isPresented: $showRereadPrompt) {
-            Button("Yes") { logReread() }
-            Button("No", role: .cancel) {}
+        .confirmationDialog("You've read this book", isPresented: $showRereadPrompt, titleVisibility: .visible) {
+            Button("Log Another Read") { logReread() }
+            Button("Remove from Read", role: .destructive) { showRemoveFromReadConfirm = true }
+            Button("Cancel", role: .cancel) {}
         } message: {
             Text(rereadLogMessage)
+        }
+        .alert("Remove from your read shelf?", isPresented: $showRemoveFromReadConfirm) {
+            Button("Remove", role: .destructive) { removeFromRead() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the book from your read shelf and deletes your review and feed post if any.")
         }
         .alert("Added. Would you like to edit your review?", isPresented: $showRereadEditPrompt) {
             Button("Yes") {
@@ -528,6 +537,23 @@ struct BookProfileView: View {
         Task {
             await appState.mergeGoodreadsReReadDate(book: book, dateRead: Date())
             showRereadEditPrompt = true
+        }
+    }
+
+    /// Unmark this book as read — removes the read entry along with its review
+    /// and any finished-book feed post (same cascade as the edit sheet's delete).
+    private func removeFromRead() {
+        guard let ub = currentUserReadEntry else { return }
+        let title = book.title
+        Task {
+            let err = await appState.deleteReadReview(userBook: ub)
+            await MainActor.run {
+                if let err {
+                    ToastCenter.shared.show(Toast(style: .error, status: "Failed", message: err))
+                } else {
+                    ToastCenter.shared.show(Toast(style: .success, status: "Removed", message: "\u{201C}\(title)\u{201D} removed from your read shelf"))
+                }
+            }
         }
     }
 
