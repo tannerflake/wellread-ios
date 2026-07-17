@@ -88,6 +88,8 @@
 		B0010051 /* PushNotificationNudgeModal.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010051 /* PushNotificationNudgeModal.swift */; };
 		B0010052 /* BookRefresherService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010052 /* BookRefresherService.swift */; };
 		B0010053 /* BookRefresherView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010053 /* BookRefresherView.swift */; };
+		B0018D71 /* BookSummaryMoreService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0018D71 /* BookSummaryMoreService.swift */; };
+		B0018D72 /* BookSummaryMoreView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0018D72 /* BookSummaryMoreView.swift */; };
 		B0010054 /* MatchScoreService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010054 /* MatchScoreService.swift */; };
 		B00B1E01 /* BookBlend.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00B1E01 /* BookBlend.swift */; };
 		B00B1E02 /* BookBlendService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00B1E02 /* BookBlendService.swift */; };
@@ -239,6 +241,8 @@
 		F0010051 /* PushNotificationNudgeModal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationNudgeModal.swift; sourceTree = "<group>"; };
 		F0010052 /* BookRefresherService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookRefresherService.swift; sourceTree = "<group>"; };
 		F0010053 /* BookRefresherView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookRefresherView.swift; sourceTree = "<group>"; };
+		F0018D71 /* BookSummaryMoreService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookSummaryMoreService.swift; sourceTree = "<group>"; };
+		F0018D72 /* BookSummaryMoreView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookSummaryMoreView.swift; sourceTree = "<group>"; };
 		F0010054 /* MatchScoreService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatchScoreService.swift; sourceTree = "<group>"; };
 		F00B1E01 /* BookBlend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookBlend.swift; sourceTree = "<group>"; };
 		F00B1E02 /* BookBlendService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookBlendService.swift; sourceTree = "<group>"; };
@@ -433,6 +437,7 @@
 				F0010027 /* ApiKeys.swift */,
 				F0010028 /* ClaudeService.swift */,
 				F0010052 /* BookRefresherService.swift */,
+				F0018D71 /* BookSummaryMoreService.swift */,
 				F0010054 /* MatchScoreService.swift */,
 				F00B1E02 /* BookBlendService.swift */,
 				F0010020 /* AuthService.swift */,
@@ -583,6 +588,7 @@
 			children = (
 				F001002B /* BookProfileView.swift */,
 				F0010053 /* BookRefresherView.swift */,
+				F0018D72 /* BookSummaryMoreView.swift */,
 				F0010042 /* EditReadReviewSheet.swift */,
 				F0010046 /* MarkAsReadInlineOverlay.swift */,
 			);
@@ -897,12 +903,14 @@
 				B0010049 /* PushNotificationPromptView.swift in Sources */,
 				B0010051 /* PushNotificationNudgeModal.swift in Sources */,
 				B0010052 /* BookRefresherService.swift in Sources */,
+				B0018D71 /* BookSummaryMoreService.swift in Sources */,
 				B0010054 /* MatchScoreService.swift in Sources */,
 				B00B1E01 /* BookBlend.swift in Sources */,
 				B00B1E02 /* BookBlendService.swift in Sources */,
 				B00B1E03 /* BookBlendInviteView.swift in Sources */,
 				B00B1E04 /* BookBlendStoryView.swift in Sources */,
 				B0010053 /* BookRefresherView.swift in Sources */,
+				B0018D72 /* BookSummaryMoreView.swift in Sources */,
 				B0010044 /* FeedCommunityWelcomeModal.swift in Sources */,
 				B0010045 /* FlowLayout.swift in Sources */,
 				WG010012 /* WidgetSnapshot.swift in Sources */,

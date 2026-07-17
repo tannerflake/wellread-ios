@@ -319,7 +319,7 @@ struct FeedView: View {
     @ViewBuilder
     private var friendsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("FOLLOWING")
+            Text("PEOPLE")
                 .font(.system(size: 12, weight: .bold))
                 .tracking(1)
                 .foregroundStyle(Theme.chrome)

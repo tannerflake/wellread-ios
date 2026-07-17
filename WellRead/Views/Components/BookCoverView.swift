@@ -221,37 +221,72 @@ final class CoverImageCache {
         let flatContrast = stdLum < 0.13 && lumRange < 0.42
         let veryGrey = meanChroma < 0.048 && lowChromaFrac > 0.86
         if greyBand && flatContrast && veryGrey { return true }
-        // Same sample: light grey “null cover” with horizontal fake text lines (stripes) — fails the flat test above.
-        return isGreyStripedNullCoverFromSample(pixels: pixels, width: w, height: h, meanLum: meanLum, meanChroma: meanChroma)
+        // Tinted colorways of the same template (slate-blue, beige, …) carry too much
+        // chroma for the check above; catch them structurally instead. (This replaces an
+        // older row-stripe detector that also fired on real black-and-white text covers.)
+        return isSyntheticTemplateCoverFromSample(pixels: pixels, width: w, height: h)
     }
 
-    /// Light grey template with horizontal bands mimicking text lines (and often a tiny corner glyph). Treat as no cover.
-    private func isGreyStripedNullCoverFromSample(pixels: [UInt8], width w: Int, height h: Int, meanLum: Double, meanChroma: Double) -> Bool {
-        guard meanChroma < 0.10 else { return false }
-        guard (0.40...0.90).contains(meanLum) else { return false }
-        var rowMean = [Double](repeating: 0, count: h)
-        for y in 0..<h {
-            var sum = 0.0
-            let rowStart = y * w * 4
-            for x in 0..<w {
-                let i = rowStart + x * 4
+    /// Google's tinted "null cover" template: a flat low-chroma jacket with faint hatched
+    /// bars where the title would be, a thin rule, a small corner glyph, and (with
+    /// `edge=curl` URLs) a page-curl shadow along the bottom. Detected structurally so any
+    /// colorway matches: after cropping the curl/glyph margins, the image is one
+    /// near-uniform background with ≤3 quantized colors, almost no luminance spread, and —
+    /// unlike every real cover, which needs readable title text — no strong edges at all.
+    /// Thresholds measured against a captured slate sample (std 0.024, range 0.10,
+    /// edges 0, top-3 colors 99.9%) vs. a 30-cover real corpus (min std 0.078, min range
+    /// 0.21, min edges 0.015, max top-3 93.5%) — every gate has ≥1.6× margin both ways.
+    private func isSyntheticTemplateCoverFromSample(pixels: [UInt8], width w: Int, height h: Int) -> Bool {
+        let x0 = Int(Double(w) * 0.08), x1 = w - x0
+        let y0 = Int(Double(h) * 0.08)
+        let y1 = h - Int(Double(h) * 0.15)
+        guard x1 > x0 + 8, y1 > y0 + 8 else { return false }
+        var lums = [Double]()
+        lums.reserveCapacity((x1 - x0) * (y1 - y0))
+        var sumLum = 0.0
+        var sumLumSq = 0.0
+        var sumChroma = 0.0
+        var colorHistogram: [Int: Int] = [:]
+        var strongEdges = 0
+        var edgePairs = 0
+        for y in y0..<y1 {
+            var prevLum: Double? = nil
+            for x in x0..<x1 {
+                let i = (y * w + x) * 4
                 let r = Double(pixels[i])
                 let g = Double(pixels[i + 1])
                 let b = Double(pixels[i + 2])
-                sum += (0.299 * r + 0.587 * g + 0.114 * b) / 255.0
+                let lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0
+                let chroma = (max(r, max(g, b)) - min(r, min(g, b))) / 255.0
+                sumLum += lum
+                sumLumSq += lum * lum
+                sumChroma += chroma
+                lums.append(lum)
+                // 8 levels per channel — bar/background/rule collapse to a couple of bins.
+                let key = (Int(r) >> 5) << 10 | (Int(g) >> 5) << 5 | (Int(b) >> 5)
+                colorHistogram[key, default: 0] += 1
+                if let p = prevLum {
+                    edgePairs += 1
+                    if abs(lum - p) > 0.20 { strongEdges += 1 }
+                }
+                prevLum = lum
             }
-            rowMean[y] = sum / Double(w)
         }
-        var stripeLikeEdges = 0
-        for y in 0..<(h - 1) {
-            let d = abs(rowMean[y + 1] - rowMean[y])
-            // Fake “line” boundaries: subtle but consistent row-to-row steps
-            if d >= 0.010 && d <= 0.32 {
-                stripeLikeEdges += 1
-            }
-        }
-        let edgeFrac = Double(stripeLikeEdges) / Double(max(1, h - 1))
-        return edgeFrac >= 0.20
+        let n = Double(lums.count)
+        guard n > 0 else { return false }
+        let meanLum = sumLum / n
+        let stdLum = max(0, sumLumSq / n - meanLum * meanLum).squareRoot()
+        let meanChroma = sumChroma / n
+        lums.sort()
+        let lumRange = lums[Int(0.95 * Double(lums.count - 1))] - lums[Int(0.05 * Double(lums.count - 1))]
+        let top3ColorFrac = Double(colorHistogram.values.sorted(by: >).prefix(3).reduce(0, +)) / n
+        let strongEdgeFrac = Double(strongEdges) / Double(max(1, edgePairs))
+        return (0.30...0.95).contains(meanLum)
+            && meanChroma < 0.12
+            && stdLum < 0.06
+            && lumRange < 0.16
+            && strongEdgeFrac < 0.010
+            && top3ColorFrac > 0.95
     }
 
     private func loadFromDisk(url: URL) -> UIImage? {
@@ -381,6 +416,10 @@ struct BookCoverView: View {
     /// When set, tapping the cover calls this (e.g. to open book profile).
     var onTap: (() -> Void)? = nil
 
+    /// Scales with cover size so tiny covers (e.g. the reading-now fan) keep
+    /// crisp corners instead of going oval; capped at the standard 6pt.
+    private var cornerRadius: CGFloat { min(6, size * 0.12) }
+
     var body: some View {
         Group {
             if book.coverImageURLsToTry.isEmpty {
@@ -397,9 +436,9 @@ struct BookCoverView: View {
             }
         }
         .frame(width: size, height: size * 1.5)
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
         .overlay(
-            RoundedRectangle(cornerRadius: 6)
+            RoundedRectangle(cornerRadius: cornerRadius)
                 .strokeBorder(Theme.chrome.opacity(0.35), lineWidth: 0.75)
         )
         .shadow(color: Theme.shadowInk.opacity(0.12), radius: 3, x: 0, y: 2)

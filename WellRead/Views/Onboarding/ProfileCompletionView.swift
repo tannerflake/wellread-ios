@@ -185,7 +185,7 @@ struct ProfileCompletionView: View {
                             .submitLabel(.done)
                     }
                     VStack(alignment: .leading, spacing: 4) {
-                        labeledField(title: "Phone number (optional)") {
+                        labeledField(title: "Phone number") {
                             TextField("(555) 555-0199", text: $phoneText)
                                 .textContentType(.telephoneNumber)
                                 .keyboardType(.phonePad)
@@ -249,7 +249,7 @@ struct ProfileCompletionView: View {
                     Text("What do you love to read?")
                         .font(Theme.largeTitle())
                         .foregroundStyle(Theme.textPrimary)
-                    Text("Pick at least two topics—we use them to personalize your experience.")
+                    Text("Pick at least two topics—we use them to personalize your experience.\nYou'll be able to change these later in your settings.")
                         .font(Theme.body())
                         .foregroundStyle(Theme.textSecondary)
                 }

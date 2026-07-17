@@ -54,8 +54,15 @@ struct BookProfileView: View {
     @State private var profileTags: [String] = []
     @State private var tagsLoading = false
     @State private var userBookToEdit: UserBook? = nil
+    // Re-read flow: tapping READ on an already-read book offers to log another read.
+    @State private var showRereadPrompt = false
+    @State private var showRereadEditPrompt = false
     @State private var showRefresher = false
+    @State private var showSummaryMore = false
     @State private var matchScore: Int? = nil
+    // "Why you might like it" — only for books scoring above 50% match.
+    @State private var whyLikeText: String? = nil
+    @State private var whyLikeLoading = false
 
     // Recommend-to-a-friend section
     private struct RecommendReader: Identifiable {
@@ -147,6 +154,11 @@ struct BookProfileView: View {
                             .padding(.horizontal)
                     }
 
+                    if let match = matchScore, match > 50, whyLikeLoading || whyLikeText != nil {
+                        whyLikeWindow(match)
+                            .padding(.horizontal)
+                    }
+
                     if shouldShowQuoteCard {
                         quoteWindow
                             .padding(.horizontal)
@@ -179,9 +191,24 @@ struct BookProfileView: View {
         .sheet(isPresented: $showRefresher) {
             BookRefresherView(book: book)
         }
+        .sheet(isPresented: $showSummaryMore) {
+            BookSummaryMoreView(book: book)
+        }
         .sheet(isPresented: $showInviteCompose) {
             MessageComposeView(recipients: [], body: AppLinks.inviteMessage(bookTitle: book.title))
                 .ignoresSafeArea()
+        }
+        .alert("Did you read this book again?", isPresented: $showRereadPrompt) {
+            Button("Yes") { logReread() }
+            Button("No", role: .cancel) {}
+        } message: {
+            Text(rereadLogMessage)
+        }
+        .alert("Added. Would you like to edit your review?", isPresented: $showRereadEditPrompt) {
+            Button("Yes") {
+                if let ub = currentUserReadEntry { userBookToEdit = ub }
+            }
+            Button("No", role: .cancel) {}
         }
         .alert("Can't send texts", isPresented: $cantSendTextAlert) {
             Button("OK", role: .cancel) {}
@@ -194,6 +221,8 @@ struct BookProfileView: View {
             recommendSentTo = []
             readByReaders = []
             matchScore = nil
+            whyLikeText = nil
+            whyLikeLoading = false
             if let myUid = appState.authUserId {
                 let following = Set(appState.currentUser?.following ?? [])
                 if !following.isEmpty {
@@ -378,7 +407,49 @@ struct BookProfileView: View {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                     matchScore = score
                 }
+                if let score, score > 50 {
+                    loadWhyLike()
+                }
             }
+        }
+    }
+
+    // MARK: - Why you might like it
+
+    /// Generates the personalized blurb once the match clears 50%. Guarded so
+    /// the second match refresh (when friend entries land) doesn't double-fire.
+    private func loadWhyLike() {
+        guard whyLikeText == nil, !whyLikeLoading else { return }
+        whyLikeLoading = true
+        let bookId = book.id
+        let library = appState.userBooks
+        let user = appState.currentUser
+        Task {
+            let text = await BookProfileService.shared.whyYouMightLikeIt(for: book, library: library, user: user)
+            await MainActor.run {
+                guard bookId == book.id else { return }
+                whyLikeText = text
+                whyLikeLoading = false
+            }
+        }
+    }
+
+    /// Match-branded card: same sparkles + ink-ramp imagery as the hero badge,
+    /// with the % match echoed in the title row.
+    private func whyLikeWindow(_ score: Int) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if whyLikeLoading {
+                phosphorLoader(label: "reading your taste")
+            } else if let t = whyLikeText, !t.isEmpty {
+                Text(t)
+                    .font(Theme.body())
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineSpacing(Theme.bodyLineSpacing)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .hingeSectionCard(title: "Why You Might Like It", accent: matchColor(score)) {
+            matchBadge(score)
         }
     }
 
@@ -436,6 +507,29 @@ struct BookProfileView: View {
         f.dateFormat = "MMM d, yyyy"
         return f
     }()
+
+    // MARK: - Re-read flow
+
+    /// The current user's read row for this book (nil when it's not on their shelf).
+    private var currentUserReadEntry: UserBook? {
+        appState.userBooks.first { $0.bookId == book.id && $0.status == .read }
+    }
+
+    /// Existing read logs shown in the "Did you read this book again?" prompt.
+    private var rereadLogMessage: String {
+        let dates = (currentUserReadEntry?.allReadDates ?? []).sorted(by: >)
+        guard !dates.isEmpty else { return "It's already on your read shelf." }
+        let list = dates.map { Self.readDateFormatter.string(from: $0) }.joined(separator: "\n")
+        return "You've read it \(dates.count == 1 ? "once" : "\(dates.count) times"):\n\(list)"
+    }
+
+    /// Log today as another read of this book, then offer the review editor.
+    private func logReread() {
+        Task {
+            await appState.mergeGoodreadsReReadDate(bookId: book.id, dateRead: Date())
+            showRereadEditPrompt = true
+        }
+    }
 
     private static let publishedYearFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -518,7 +612,22 @@ struct BookProfileView: View {
                 .padding(.top, 4)
             }
         }
-        .hingeSectionCard(title: "Summary")
+        .hingeSectionCard(title: "Summary") {
+            Button {
+                showSummaryMore = true
+            } label: {
+                HStack(spacing: 3) {
+                    Text("MORE")
+                        .font(.system(size: 11, weight: .bold))
+                        .tracking(1.2)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .bold))
+                }
+                .foregroundStyle(Theme.chrome)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("More about this book")
+        }
     }
 
     private func tagChip(_ tag: String) -> some View {
@@ -557,7 +666,7 @@ struct BookProfileView: View {
                 }
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 14) {
+                    HStack(alignment: .top, spacing: 14) {
                         ForEach(similarBooks) { similar in
                             VStack(spacing: 6) {
                                 BookCoverView(book: similar, size: 52, onTap: onBookTap != nil ? { onBookTap?(similar) } : nil)
@@ -898,7 +1007,10 @@ struct BookProfileView: View {
             }
             if onConfirmRead != nil {
                 Button(action: {
-                    if isOnReadList { return }
+                    if isOnReadList {
+                        showRereadPrompt = true
+                        return
+                    }
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showMarkAsReadModal = true }
                 }) {
                     // When a shelf CTA is the primary action, READ steps down to an outline
@@ -915,7 +1027,6 @@ struct BookProfileView: View {
                     )
                 }
                 .buttonStyle(.springPress)
-                .disabled(isOnReadList)
             }
         }
     }

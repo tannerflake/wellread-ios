@@ -26,7 +26,7 @@ struct BookBlendEntryButton: View {
     let otherFirstName: String
     let action: () -> Void
 
-    @State private var shimmer = false
+    @State private var pulse = false
 
     private var label: String {
         switch state {
@@ -67,30 +67,19 @@ struct BookBlendEntryButton: View {
                         : AnyShapeStyle(Theme.gloss(Theme.chrome))
                 )
             )
-            .overlay(
-                // Slow diagonal sheen — alive without shouting.
-                Capsule()
-                    .fill(
-                        LinearGradient(
-                            colors: [.clear, Color.white.opacity(state == .requestedByMe ? 0 : 0.22), .clear],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .offset(x: shimmer ? 180 : -180)
-                    .allowsHitTesting(false)
-            )
             .clipShape(Capsule())
             .overlay(
                 Capsule().strokeBorder(Theme.onChrome.opacity(0.35), lineWidth: 1)
             )
             .shadow(color: Theme.accent.opacity(state == .requestedByMe ? 0 : 0.35), radius: 8, y: 3)
+            // Faint breathing pulse — alive without shouting.
+            .scaleEffect(state == .requestedByMe ? 1 : (pulse ? 1.015 : 1))
         }
         .buttonStyle(.springPress)
         .disabled(state == .requestedByMe)
         .onAppear {
-            withAnimation(.easeInOut(duration: 2.6).repeatForever(autoreverses: false)) {
-                shimmer = true
+            withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
+                pulse = true
             }
         }
     }

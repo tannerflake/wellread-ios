@@ -100,7 +100,7 @@ struct GoodreadsExportWebView: View {
                     .tracking(0.5)
                     .foregroundStyle(Theme.chrome)
                 Text(mode == .login
-                     ? "Sign in to Goodreads, then tap “I’m logged in” at the top. Already signed in? Tap it now."
+                     ? "Sign in to Goodreads, then tap “I’m logged in” at the top."
                      : "Tap “Export Library”, then tap the “Your export from…” link when it appears — SPINE takes it from there.")
                     .font(Theme.callout())
                     .fontWeight(.medium)

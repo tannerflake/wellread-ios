@@ -27,7 +27,8 @@ struct FeedCommunityWelcomeModal: View {
                     VStack(alignment: .leading, spacing: 12) {
                         paragraph("Thanks for being here early!")
                         paragraph("I'm adding new features and polishing the app on a weekly basis. Please send feedback my way via text/DM.")
-                        paragraph("Reading and learning exist at the core of my passion for life. I hope this app helps you share what inspires you. I'm glad you're here.")
+                        paragraph("Reading and learning are core to my passion for life.")
+                        paragraph("I hope this app helps you share what inspires you. I'm glad you're here.")
                         paragraph("-Tanner")
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -35,7 +36,7 @@ struct FeedCommunityWelcomeModal: View {
                 .frame(maxHeight: 380)
 
                 Button(action: onGotIt) {
-                    Text("I'm glad to be here!")
+                    Text("I'm glad to be here")
                         .font(.system(size: 13, weight: .bold))
                         .tracking(1)
                         .multilineTextAlignment(.center)

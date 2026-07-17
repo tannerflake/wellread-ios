@@ -12,6 +12,7 @@ final class BookProfileService {
     private var summaryCache: [String: String] = [:]
     private var quoteCache: [String: String] = [:]
     private var tagsCache: [String: [String]] = [:]
+    private var whyLikeCache: [String: String] = [:]
     private let queue = DispatchQueue(label: "com.wellread.bookprofile.cache")
 
     private init() {}
@@ -64,6 +65,61 @@ final class BookProfileService {
                 return nil
             }
             queue.sync { quoteCache[key] = trimmed }
+            return trimmed
+        } catch {
+            return nil
+        }
+    }
+
+    /// Personalized "why you might like this book" blurb (max three sentences),
+    /// grounded in the reader's taste: their best-loved reads and interest tags.
+    /// Spoiler-free. Cached by book.id (taste shifts slowly; session cache is fine).
+    func whyYouMightLikeIt(for book: Book, library: [UserBook], user: User?) async -> String? {
+        let key = book.id
+        if let cached = queue.sync(execute: { whyLikeCache[key] }) { return cached }
+
+        // Best-loved reads: high rating or top tier, most recent first.
+        let loved = library
+            .filter { $0.bookId != book.id && $0.status == .read }
+            .filter { entry in
+                if let r = entry.rating { return r >= 7.0 }
+                return ["S", "A"].contains(entry.tier ?? "")
+            }
+            .sorted { ($0.dateFinished ?? .distantPast) > ($1.dateFinished ?? .distantPast) }
+            .prefix(10)
+            .compactMap { $0.book.map { b in "\(b.title) by \(b.author)" } }
+
+        let interestTags = ((user?.readingInterestTags ?? []) + (user?.discoverCriteria.tags ?? []))
+
+        guard !loved.isEmpty || !interestTags.isEmpty else { return nil }
+
+        let system = """
+        You write one short personalized blurb for a reading app explaining why this specific reader might like a book, based on their taste. Rules:
+        - THREE SENTENCES MAXIMUM. Plain text only — no markdown, no headings, no lists.
+        - Speak to the reader as "you". Never mention AI, algorithms, data, or "match scores".
+        - Ground it in their actual taste: connect the book's themes, style, or feel to books they loved or interests they've named. Reference at most two of their books by title.
+        - NO SPOILERS for the recommended book — premise, themes, and feel only.
+        - If the connection is thin, keep it honest and general rather than inventing overlap.
+        """
+        var input = "Book to recommend: \(book.title) by \(book.author)."
+        if let d = book.description, !d.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            input += "\n\nPublisher description (context only):\n\(d)"
+        }
+        if !book.genres.isEmpty {
+            input += "\n\nCategories: \(book.genres.joined(separator: ", "))"
+        }
+        if !loved.isEmpty {
+            input += "\n\nBooks this reader loved:\n" + loved.map { "- \($0)" }.joined(separator: "\n")
+        }
+        if !interestTags.isEmpty {
+            input += "\n\nReading interests they've named: \(interestTags.joined(separator: ", "))"
+        }
+        input += "\n\nWrite the blurb (three sentences max)."
+        do {
+            let response = try await ClaudeService.shared.sendMessage(system: system, userMessage: input)
+            let trimmed = response.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return nil }
+            queue.sync { whyLikeCache[key] = trimmed }
             return trimmed
         } catch {
             return nil

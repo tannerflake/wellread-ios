@@ -56,6 +56,19 @@ final class GoodreadsWizardModel: ObservableObject {
     private var importedBookIds: Set<String> = []
     private var configured = false
 
+    /// One Skip/Add the user can take back. In-memory only — undo covers taps
+    /// made this session, not decisions from a resumed one.
+    private struct UndoRecord {
+        let rowId: String
+        let decision: GoodreadsRowDecision
+        /// The book that was imported (nil for skips).
+        let book: Book?
+        /// The import promoted an existing queue entry to Read; undo re-queues it.
+        let wasQueuedBefore: Bool
+    }
+    private var undoStack: [UndoRecord] = []
+    @Published private(set) var canUndo = false
+
     /// How many upcoming books to match ahead of the user so cards appear instantly.
     private let prefetchWindow = 4
 
@@ -284,6 +297,7 @@ final class GoodreadsWizardModel: ObservableObject {
     /// put the row back in play (and rewind the phase if it already advanced) so
     /// the book is never silently lost.
     private func revertFailedImport(rowId: String, book: Book) {
+        dropUndoRecord(rowId: rowId)
         importedBookIds.remove(book.id)
         guard var s = session else { return }
         s.decisions.removeValue(forKey: rowId)
@@ -300,7 +314,55 @@ final class GoodreadsWizardModel: ObservableObject {
     }
 
     func skipCurrent() {
+        if let row = session?.currentRow {
+            pushUndo(UndoRecord(rowId: row.id, decision: .skipped, book: nil, wasQueuedBefore: false))
+        }
         decideCurrent(.skipped)
+    }
+
+    // MARK: Undo
+
+    private func pushUndo(_ record: UndoRecord) {
+        undoStack.append(record)
+        canUndo = true
+    }
+
+    /// A failed import already reverted itself — its undo record is stale.
+    private func dropUndoRecord(rowId: String) {
+        undoStack.removeAll { $0.rowId == rowId }
+        canUndo = !undoStack.isEmpty
+    }
+
+    /// Take back the most recent Skip/Add: the row's decision is cleared so its
+    /// card comes back, and an added book is removed from the library again
+    /// (re-queued if the import had promoted it out of the queue).
+    func undoLastDecision() {
+        guard let record = undoStack.popLast(), var s = session else { return }
+        canUndo = !undoStack.isEmpty
+        importError = nil
+        s.decisions.removeValue(forKey: record.rowId)
+        // Rewind the phase if that decision had closed it out.
+        let isReadRow = s.readRows.contains { $0.id == record.rowId }
+        if isReadRow, s.phase != .readBooks {
+            s.phase = .readBooks
+        } else if !isReadRow, s.phase == .done {
+            s.phase = .queueBooks
+        }
+        session = s
+        persist()
+        if record.decision == .imported, let book = record.book, let appState {
+            importedBookIds.remove(book.id)
+            if isReadRow {
+                appState.removeFromReadList(book: book)
+                if record.wasQueuedBefore {
+                    Task { _ = await appState.importGoodreadsQueueBook(book: book) }
+                }
+            } else {
+                appState.removeFromQueue(book: book)
+            }
+        }
+        enterStep(for: s.phase)
+        prefetchMatches()
     }
 
     /// "Looks good" — import with the values currently on the card (all inline-editable).
@@ -317,6 +379,12 @@ final class GoodreadsWizardModel: ObservableObject {
 
     private func importRead(book: Book, rating: Double?, review: String?, dateFinished: Date?, tier: String?) {
         guard let appState, let rowId = session?.currentRow?.id else { return }
+        pushUndo(UndoRecord(
+            rowId: rowId,
+            decision: .imported,
+            book: book,
+            wasQueuedBefore: appState.isBookInQueue(bookId: book.id)
+        ))
         importedBookIds.insert(book.id)
         decideCurrent(.imported)
         Task { [weak self] in
@@ -386,6 +454,7 @@ final class GoodreadsWizardModel: ObservableObject {
 
     func acceptCurrentQueueBook() {
         guard let book = currentBook, let appState, let rowId = session?.currentRow?.id else { return }
+        pushUndo(UndoRecord(rowId: rowId, decision: .imported, book: book, wasQueuedBefore: false))
         importedBookIds.insert(book.id)
         decideCurrent(.imported)
         Task { [weak self] in
@@ -553,6 +622,9 @@ struct GoodreadsImportView: View {
     // Where the seeded date came from, so a missing Goodreads read date is
     // flagged instead of silently defaulting to today.
     @State private var cardDateNote: String? = nil
+    /// Review editor focus — cleared whenever the card advances so the keyboard
+    /// from one book never carries over to the next.
+    @FocusState private var reviewFocused: Bool
 
     init(initialRows: [GoodreadsRow]? = nil) {
         self.initialRows = initialRows
@@ -651,6 +723,7 @@ struct GoodreadsImportView: View {
     /// Rows without a "Date Read" fall back to the Goodreads "Date Added"
     /// (flagged), never silently to today.
     private func syncCardState() {
+        reviewFocused = false
         selectedTier = nil
         guard let row = model.currentRow else { return }
         cardReview = row.myReview ?? ""
@@ -892,7 +965,7 @@ struct GoodreadsImportView: View {
                 Button {
                     model.skipCurrent()
                 } label: {
-                    Text("Skip")
+                    Text("Don't add")
                         .font(Theme.headline())
                         .foregroundStyle(Theme.textSecondary)
                         .frame(maxWidth: .infinity)
@@ -975,6 +1048,7 @@ struct GoodreadsImportView: View {
                     .foregroundStyle(Theme.textPrimary)
                     .scrollContentBackground(.hidden)
                     .frame(minHeight: 90, maxHeight: 180)
+                    .focused($reviewFocused)
             }
             .padding(10)
             .background(Theme.surfaceElevated)
@@ -1010,6 +1084,29 @@ struct GoodreadsImportView: View {
                     .font(.system(size: 13, weight: .bold))
                     .tracking(1)
                     .foregroundStyle(Theme.textPrimary)
+                if model.canUndo {
+                    Button {
+                        model.undoLastDecision()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.uturn.backward")
+                                .font(.system(size: 11, weight: .semibold))
+                            Text("Undo")
+                                .font(Theme.caption())
+                                .fontWeight(.medium)
+                        }
+                        .foregroundStyle(Theme.textSecondary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Theme.surface)
+                        .clipShape(Capsule())
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(Theme.textTertiary.opacity(0.35), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
                 Spacer()
                 Button {
                     showImportAllConfirm = true
@@ -1150,7 +1247,7 @@ struct GoodreadsImportView: View {
                 Button {
                     model.skipCurrent()
                 } label: {
-                    Text("Skip")
+                    Text("Don't add")
                         .font(Theme.headline())
                         .foregroundStyle(Theme.textSecondary)
                         .frame(maxWidth: .infinity)
@@ -1191,6 +1288,11 @@ struct GoodreadsImportView: View {
                 .font(Theme.callout())
                 .foregroundStyle(Theme.textSecondary)
             Text("Keep the app open — this can take a bit for a large library.")
+                .font(Theme.caption())
+                .foregroundStyle(Theme.textTertiary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+            Text("Maybe leave your phone inside and touch grass.")
                 .font(Theme.caption())
                 .foregroundStyle(Theme.textTertiary)
                 .multilineTextAlignment(.center)

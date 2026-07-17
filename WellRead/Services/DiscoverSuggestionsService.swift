@@ -10,26 +10,49 @@
 import Foundation
 
 enum DiscoverSuggestionsService {
+    /// Titles Claude suggested earlier this session that turned out to be already read, queued,
+    /// or dismissed. Dismissed books are stored as IDs only, so Claude can't be told about them
+    /// up front — it keeps re-suggesting the same popular picks, they all get filtered out, and
+    /// the batch comes back empty. Feeding the filtered titles back into later prompts breaks
+    /// that loop.
+    private static var sessionFilteredTitles: [String] = []
+    private static let sessionFilteredLock = NSLock()
+
+    private static func rememberFilteredTitles(_ titles: [String]) {
+        sessionFilteredLock.lock()
+        defer { sessionFilteredLock.unlock() }
+        for t in titles where !sessionFilteredTitles.contains(t) {
+            sessionFilteredTitles.append(t)
+        }
+        if sessionFilteredTitles.count > 60 {
+            sessionFilteredTitles.removeFirst(sessionFilteredTitles.count - 60)
+        }
+    }
+
+    private static func filteredTitlesSnapshot() -> [String] {
+        sessionFilteredLock.lock()
+        defer { sessionFilteredLock.unlock() }
+        return sessionFilteredTitles
+    }
+
     /// Fetches up to 5 suggested books, excluding read, queue, and dismissed. Call from background; updates go to caller via callback/state.
     /// `readingInterestTags` are onboarding picks from `Tags.csv` (same universe as book tags); used only when `criteria.isDefault`.
-    static func fetchBatch(readBooks: [UserBook], queueBookIds: Set<String>, dismissedBookIds: Set<String>, readingInterestTags: [String], criteria: DiscoverCriteria) async -> [Book] {
+    /// `queuedTitles` are want-to-read titles, included in the prompt's avoid list so Claude doesn't waste picks on them.
+    static func fetchBatch(readBooks: [UserBook], queueBookIds: Set<String>, dismissedBookIds: Set<String>, queuedTitles: [String] = [], readingInterestTags: [String], criteria: DiscoverCriteria) async -> [Book] {
         let readBookIds = Set(readBooks.map(\.bookId))
         let excludedIds = readBookIds.union(queueBookIds).union(dismissedBookIds)
         let excludedTitles = readBooks.compactMap { $0.book?.title }
         if ApiKeys.claude != nil {
-            return await fetchBatchViaClaude(readBooks: readBooks, excludedTitles: Array(excludedTitles), excludedIds: excludedIds, readingInterestTags: readingInterestTags, criteria: criteria)
+            return await fetchBatchViaClaude(readBooks: readBooks, excludedTitles: Array(excludedTitles), queuedTitles: queuedTitles, excludedIds: excludedIds, readingInterestTags: readingInterestTags, criteria: criteria)
         } else {
             return await fetchBatchViaGoogleOnly(readBooks: readBooks, excludedIds: excludedIds, readTitles: excludedTitles, readingInterestTags: readingInterestTags, criteria: criteria)
         }
     }
 
-    private static func fetchBatchViaClaude(readBooks: [UserBook], excludedTitles: [String], excludedIds: Set<String>, readingInterestTags: [String], criteria: DiscoverCriteria) async -> [Book] {
-        let historyLine: String
-        if excludedTitles.isEmpty {
-            historyLine = "They have not finished logging any books in this app yet."
-        } else {
-            historyLine = "Books they have already read here—do not suggest these titles: \(excludedTitles.prefix(15).joined(separator: ", "))."
-        }
+    private static func fetchBatchViaClaude(readBooks: [UserBook], excludedTitles: [String], queuedTitles: [String], excludedIds: Set<String>, readingInterestTags: [String], criteria: DiscoverCriteria) async -> [Book] {
+        var avoidTitles = Array(excludedTitles.prefix(40))
+        avoidTitles += queuedTitles.prefix(20)
+        avoidTitles += filteredTitlesSnapshot()
 
         let criteriaLine: String
         if criteria.isDefault {
@@ -46,25 +69,44 @@ enum DiscoverSuggestionsService {
         let system = """
         You are a book recommendation assistant. Reply with exactly 5 book recommendations. Each line must be only the book title (and optionally ' by Author'). No numbering, no bullets, no extra text. One book per line. Do not suggest any book from the user's excluded list. When the user has stated criteria or reading interests, most or all of your picks should clearly fit them.
         """
-        let userMessage = "\(criteriaLine)\(historyLine) Suggest 5 books they might enjoy next. Reply with exactly 5 lines, each line one book title (optionally 'Title by Author')."
-        do {
-            let response = try await ClaudeService.shared.sendMessage(system: system, userMessage: userMessage)
-            let lines = parseClaudeBookLines(response)
-            var books: [Book] = []
-            for line in lines.prefix(5) {
-                let query = line.replacingOccurrences(of: " by ", with: " ")
-                if let first = try? await GoogleBooksService.shared.search(query: String(query)).first,
-                   !excludedIds.contains(first.id) {
-                    books.append(first)
-                }
+
+        // Two attempts: if every pick in the first round maps to a book the user has already
+        // read, queued, or dismissed, tell Claude which titles were rejected and ask again.
+        for _ in 1...2 {
+            let historyLine: String
+            if avoidTitles.isEmpty {
+                historyLine = "They have not finished logging any books in this app yet."
+            } else {
+                historyLine = "Do not suggest any of these titles (the user has already read, queued, or passed on them): \(avoidTitles.suffix(80).joined(separator: ", "))."
             }
-            return books
-        } catch {
-            let q = googleFallbackQuery(readBooks: readBooks, readTitles: excludedTitles, readingInterestTags: readingInterestTags, criteria: criteria)
-            let fallback = (try? await GoogleBooksService.shared.search(query: q))?
-                .filter { !excludedIds.contains($0.id) } ?? []
-            return Array(fallback.prefix(5))
+            let userMessage = "\(criteriaLine)\(historyLine) Suggest 5 books they might enjoy next. Reply with exactly 5 lines, each line one book title (optionally 'Title by Author')."
+            do {
+                let response = try await ClaudeService.shared.sendMessage(system: system, userMessage: userMessage)
+                let lines = parseClaudeBookLines(response)
+                var books: [Book] = []
+                var filteredThisRound: [String] = []
+                for line in lines.prefix(5) {
+                    let query = line.replacingOccurrences(of: " by ", with: " ")
+                    guard let first = try? await GoogleBooksService.shared.search(query: String(query)).first else { continue }
+                    if excludedIds.contains(first.id) {
+                        filteredThisRound.append(line)
+                    } else {
+                        books.append(first)
+                    }
+                }
+                if !filteredThisRound.isEmpty {
+                    rememberFilteredTitles(filteredThisRound)
+                    avoidTitles += filteredThisRound
+                }
+                if !books.isEmpty { return books }
+            } catch {
+                break
+            }
         }
+        let q = googleFallbackQuery(readBooks: readBooks, readTitles: excludedTitles, readingInterestTags: readingInterestTags, criteria: criteria)
+        let fallback = (try? await GoogleBooksService.shared.search(query: q))?
+            .filter { !excludedIds.contains($0.id) } ?? []
+        return Array(fallback.prefix(5))
     }
 
     /// Prompt fragments for each active criterion; empty criteria sections are skipped.

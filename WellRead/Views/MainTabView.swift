@@ -316,7 +316,7 @@ struct MainTabView: View {
         // Negative bottom padding sinks the bar into the home-indicator safe
         // area (Blackbird-style) — it sits low and hands the freed height back
         // to the content above.
-        .padding(.bottom, -18)
+        .padding(.bottom, -15)
         .sensoryFeedback(.selection, trigger: selectedTab)
     }
 

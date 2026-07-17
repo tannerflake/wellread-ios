@@ -20,6 +20,12 @@ struct RootView: View {
         ProcessInfo.processInfo.arguments.contains("-uiPreview")
     }
 
+    /// Launch with `-uiPreviewWelcome` to render the signed-out welcome screen
+    /// regardless of any existing simulator session.
+    private var isWelcomePreviewRun: Bool {
+        ProcessInfo.processInfo.arguments.contains("-uiPreviewWelcome")
+    }
+
     /// Local-only demo state for `-uiPreview` runs — never written to Firestore.
     private func seedUIPreviewData() {
         guard appState.currentUser == nil else { return }
@@ -58,7 +64,9 @@ struct RootView: View {
     var body: some View {
         Group {
             #if DEBUG
-            if isUIPreviewRun {
+            if isWelcomePreviewRun {
+                OnboardingFlowView()
+            } else if isUIPreviewRun {
                 MainTabView()
                     .onAppear { seedUIPreviewData() }
             } else {

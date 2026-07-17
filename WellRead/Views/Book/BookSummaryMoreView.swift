@@ -1,20 +1,21 @@
 //
-//  BookRefresherView.swift
+//  BookSummaryMoreView.swift
 //  Spine
 //
-//  AI refresher sheet for a book the user has already read: generates a recap
-//  (plot, key concepts, characters, takeaways, memorable moments) on open, then
-//  lets the reader ask follow-up questions in a chat thread underneath.
+//  "More" sheet off the Summary card: a longer (~three paragraph) spoiler-free
+//  summary generated on open, then a follow-up Q&A thread underneath. Same
+//  chassis as BookRefresherView, but for books the reader hasn't finished —
+//  everything stays spoiler-safe.
 //
 
 import SwiftUI
 
-struct BookRefresherView: View {
+struct BookSummaryMoreView: View {
     let book: Book
 
     @Environment(\.dismiss) private var dismiss
 
-    @State private var refresher: BookRefresher?
+    @State private var summary: String?
     @State private var isGenerating = false
     @State private var generationFailed = false
     @State private var chatTurns: [RefresherChatTurn] = []
@@ -23,7 +24,7 @@ struct BookRefresherView: View {
     @FocusState private var questionFocused: Bool
 
     private var canAsk: Bool {
-        refresher != nil && !isAnswering && !question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        summary != nil && !isAnswering && !question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
@@ -35,8 +36,8 @@ struct BookRefresherView: View {
                     VStack(alignment: .leading, spacing: 24) {
                         if isGenerating {
                             generatingState
-                        } else if let r = refresher {
-                            refresherSections(r)
+                        } else if let s = summary {
+                            summarySection(s)
                             chatSection
                         } else if generationFailed {
                             failedState
@@ -44,7 +45,7 @@ struct BookRefresherView: View {
 
                         Color.clear
                             .frame(height: 1)
-                            .id("refresher-bottom")
+                            .id("summary-more-bottom")
                     }
                     .padding(.horizontal)
                     .padding(.top, 20)
@@ -53,20 +54,20 @@ struct BookRefresherView: View {
                 .background(Theme.background)
                 .onChange(of: chatTurns.count) {
                     withAnimation(.easeOut(duration: 0.25)) {
-                        proxy.scrollTo("refresher-bottom", anchor: .bottom)
+                        proxy.scrollTo("summary-more-bottom", anchor: .bottom)
                     }
                 }
                 .onChange(of: questionFocused) {
                     guard questionFocused else { return }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                         withAnimation(.easeOut(duration: 0.25)) {
-                            proxy.scrollTo("refresher-bottom", anchor: .bottom)
+                            proxy.scrollTo("summary-more-bottom", anchor: .bottom)
                         }
                     }
                 }
             }
 
-            if refresher != nil {
+            if summary != nil {
                 questionInputRow
                     .background(
                         VStack(spacing: 0) {
@@ -80,7 +81,7 @@ struct BookRefresherView: View {
         }
         .background(Theme.background)
         .task(id: book.id) {
-            chatTurns = BookRefresherService.shared.cachedChat(for: book)
+            chatTurns = BookSummaryMoreService.shared.cachedChat(for: book)
             await generate()
         }
     }
@@ -90,7 +91,7 @@ struct BookRefresherView: View {
     private var header: some View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("AI REFRESHER")
+                Text("ABOUT THIS BOOK")
                     .font(.system(size: 11, weight: .bold))
                     .tracking(1.8)
                     .foregroundStyle(Theme.chrome)
@@ -108,7 +109,7 @@ struct BookRefresherView: View {
                     .foregroundStyle(Theme.textTertiary)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Close refresher")
+            .accessibilityLabel("Close summary")
         }
         .padding(.horizontal)
         .padding(.top, 18)
@@ -134,11 +135,11 @@ struct BookRefresherView: View {
                 ProgressView()
                     .controlSize(.small)
                     .tint(Theme.chrome)
-                Text("refreshing your memory…")
+                Text("writing the summary…")
                     .font(.system(size: 13, weight: .regular))
                     .foregroundStyle(Theme.textTertiary)
             }
-            Text("Recapping the key ideas, plot, characters, takeaways, etc.")
+            Text("A fuller picture of the book — premise, themes, and what it's like to read. No spoilers.")
                 .font(.system(size: 12, weight: .regular))
                 .foregroundStyle(Theme.textTertiary)
                 .multilineTextAlignment(.center)
@@ -150,7 +151,7 @@ struct BookRefresherView: View {
 
     private var failedState: some View {
         VStack(spacing: 14) {
-            Text("Couldn't generate a refresher right now.")
+            Text("Couldn't write the summary right now.")
                 .font(Theme.body())
                 .foregroundStyle(Theme.textSecondary)
                 .multilineTextAlignment(.center)
@@ -174,82 +175,26 @@ struct BookRefresherView: View {
         .padding(.top, 60)
     }
 
-    // MARK: - Refresher sections
+    // MARK: - Summary section
 
-    @ViewBuilder
-    private func refresherSections(_ r: BookRefresher) -> some View {
-        Text(r.plot)
-            .font(Theme.body())
-            .foregroundStyle(Theme.textPrimary)
-            .lineSpacing(Theme.bodyLineSpacing)
-            .fixedSize(horizontal: false, vertical: true)
-            .hingeSectionCard(title: "The Story")
-
-        if !r.keyConcepts.isEmpty {
-            bulletList(r.keyConcepts, bulletColor: Theme.chrome)
-                .hingeSectionCard(title: "Key Concepts")
-        }
-
-        if !r.characters.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                ForEach(r.characters) { character in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(character.name)
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(Theme.textPrimary)
-                        Text(character.detail)
-                            .font(.system(size: 14, weight: .regular))
-                            .foregroundStyle(Theme.textSecondary)
-                            .lineSpacing(2)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-            }
-            .hingeSectionCard(title: "Characters", accent: Theme.chromeStrong)
-        }
-
-        if !r.takeaways.isEmpty {
-            bulletList(r.takeaways, bulletColor: Theme.accent)
-                .hingeSectionCard(title: "Takeaways", accent: Theme.accent)
-        }
-
-        if !r.memorableMoments.isEmpty {
-            VStack(alignment: .leading, spacing: 14) {
-                ForEach(r.memorableMoments, id: \.self) { moment in
-                    HStack(alignment: .top, spacing: 10) {
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(Theme.punch.opacity(0.7))
-                            .frame(width: 3)
-                        Text(moment)
-                            .font(Theme.body())
-                            .italic()
-                            .foregroundStyle(Theme.textPrimary)
-                            .lineSpacing(Theme.bodyLineSpacing)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+    private func summarySection(_ s: String) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ForEach(paragraphs(of: s), id: \.self) { paragraph in
+                Text(paragraph)
+                    .font(Theme.body())
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineSpacing(Theme.bodyLineSpacing)
                     .fixedSize(horizontal: false, vertical: true)
-                }
             }
-            .hingeSectionCard(title: "Memorable Moments", accent: Theme.punch)
         }
+        .hingeSectionCard(title: "Summary")
     }
 
-    private func bulletList(_ items: [String], bulletColor: Color) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ForEach(items, id: \.self) { item in
-                HStack(alignment: .top, spacing: 10) {
-                    Circle()
-                        .fill(bulletColor)
-                        .frame(width: 5, height: 5)
-                        .padding(.top, 7)
-                    Text(item)
-                        .font(.system(size: 15, weight: .regular))
-                        .foregroundStyle(Theme.textPrimary)
-                        .lineSpacing(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
+    private func paragraphs(of text: String) -> [String] {
+        text
+            .components(separatedBy: "\n\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
     }
 
     // MARK: - Q&A chat
@@ -257,7 +202,7 @@ struct BookRefresherView: View {
     private var chatSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             if chatTurns.isEmpty {
-                Text("Fuzzy on a detail? Ask anything — why a character did something, how a thread resolved, what a concept meant.")
+                Text("Curious about something? Ask about the world, the themes, the author, or whether it's for you — answers stay spoiler-free.")
                     .font(.system(size: 13, weight: .regular))
                     .foregroundStyle(Theme.textTertiary)
                     .lineSpacing(2)
@@ -278,7 +223,7 @@ struct BookRefresherView: View {
                 }
             }
         }
-        .hingeSectionCard(title: "Ask a Follow-up")
+        .hingeSectionCard(title: "Ask a Question")
     }
 
     @ViewBuilder
@@ -350,15 +295,15 @@ struct BookRefresherView: View {
     // MARK: - Actions
 
     private func generate() async {
-        guard refresher == nil, !isGenerating else { return }
-        if let cached = BookRefresherService.shared.cachedRefresher(for: book) {
-            refresher = cached
+        guard summary == nil, !isGenerating else { return }
+        if let cached = BookSummaryMoreService.shared.cachedSummary(for: book) {
+            summary = cached
             return
         }
         isGenerating = true
         generationFailed = false
         do {
-            refresher = try await BookRefresherService.shared.refresher(for: book)
+            summary = try await BookSummaryMoreService.shared.longSummary(for: book)
         } catch {
             generationFailed = true
         }
@@ -366,7 +311,7 @@ struct BookRefresherView: View {
     }
 
     private func askQuestion() {
-        guard canAsk, let r = refresher else { return }
+        guard canAsk, let s = summary else { return }
         let asked = question.trimmingCharacters(in: .whitespacesAndNewlines)
         question = ""
         let priorTurns = chatTurns
@@ -374,15 +319,15 @@ struct BookRefresherView: View {
         isAnswering = true
         Task {
             do {
-                let reply = try await BookRefresherService.shared.answer(
+                let reply = try await BookSummaryMoreService.shared.answer(
                     question: asked,
                     for: book,
-                    refresher: r,
+                    summary: s,
                     history: priorTurns
                 )
                 await MainActor.run {
                     chatTurns.append(RefresherChatTurn(role: .assistant, text: reply))
-                    BookRefresherService.shared.saveChat(chatTurns, for: book)
+                    BookSummaryMoreService.shared.saveChat(chatTurns, for: book)
                     isAnswering = false
                 }
             } catch {

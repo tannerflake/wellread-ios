@@ -53,7 +53,7 @@ struct WelcomeSpinesGoodreadsModal: View {
                 .buttonStyle(.plain)
 
                 Button(action: onLater) {
-                    Text("Later")
+                    Text("I don't use Goodreads")
                         .font(Theme.headline())
                         .foregroundStyle(Theme.textPrimary)
                         .frame(maxWidth: .infinity)

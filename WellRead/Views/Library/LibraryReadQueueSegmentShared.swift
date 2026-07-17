@@ -64,7 +64,15 @@ struct LibraryReadingGoalProgressStrip: View {
         }
     }
 
+    /// Pace commentary (and its color) is only for your own goal — on someone
+    /// else's library we just report progress, never how far behind they are.
+    private var showsPace: Bool {
+        if case .own = copy { return true }
+        return false
+    }
+
     private var barFill: LinearGradient {
+        guard showsPace else { return Theme.accentGloss }
         switch pace {
         case .goalMet, .ahead: return Theme.accentGloss
         case .onTrack: return Theme.gloss(Theme.textSecondary)
@@ -73,19 +81,9 @@ struct LibraryReadingGoalProgressStrip: View {
     }
 
     private var caption: String {
-        let base: String
-        switch copy {
-        case .own:
-            base = "Read \(booksRead) of your \(goal) goal for \(calendarYear)"
-        case .other(let first):
-            let trimmed = first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            if !trimmed.isEmpty {
-                base = "Read \(booksRead) of \(trimmed)'s \(goal) goal for \(calendarYear)"
-            } else {
-                base = "Read \(booksRead) of their \(goal) goal for \(calendarYear)"
-            }
-        }
-        return "\(base) (\(paceText))"
+        showsPace
+            ? "Read \(booksRead)/\(goal) for \(calendarYear) (\(paceText))"
+            : "Read \(booksRead)/\(goal) for \(calendarYear)"
     }
 
     var body: some View {
@@ -107,10 +105,10 @@ struct LibraryReadingGoalProgressStrip: View {
                     }
                 }
             }
-            .frame(height: 6)
+            .frame(height: 10)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(calendarYear) reading goal")
-            .accessibilityValue("\(booksRead) of \(goal) books. \(paceText)")
+            .accessibilityValue(showsPace ? "\(booksRead) of \(goal) books. \(paceText)" : "\(booksRead) of \(goal) books.")
         }
         .padding(.top, 4)
         .padding(.bottom, 6)

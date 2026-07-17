@@ -109,9 +109,7 @@ struct DiscoverView: View {
 
     private var loadingView: some View {
         VStack(spacing: 20) {
-            ProgressView()
-                .scaleEffect(1.2)
-                .tint(Theme.accent)
+            SpinningSpineLogo()
             Text("Finding your next read…")
                 .font(Theme.title2())
                 .foregroundStyle(Theme.textSecondary)
@@ -120,13 +118,16 @@ struct DiscoverView: View {
     }
 
     private var emptyStateView: some View {
-        VStack(spacing: 24) {
+        let cameUpEmpty = appState.discoverLoadCameUpEmpty
+        return VStack(spacing: 24) {
             Spacer(minLength: 0)
             SparklingSpineLogo()
-            Text("Find my next read")
+            Text(cameUpEmpty ? "Nothing new that time" : "Find my next read")
                 .font(Theme.title())
                 .foregroundStyle(Theme.textPrimary)
-            Text("Every pick is tailored to the books in your library and your interests — steer it with tiers, tags, or books you loved.")
+            Text(cameUpEmpty
+                 ? "Every pick came back as a book you've already read, queued, or passed on. Try again, or steer with different tiers, tags, or books."
+                 : "Every pick is tailored to the books in your library and your interests — steer it with tiers, tags, or books you loved.")
                 .font(Theme.body())
                 .foregroundStyle(Theme.textSecondary)
                 .multilineTextAlignment(.center)
@@ -134,7 +135,7 @@ struct DiscoverView: View {
             Button {
                 appState.loadDiscoverSuggestionsIfNeeded()
             } label: {
-                Text("Start")
+                Text(cameUpEmpty ? "Try Again" : "Start")
                     .font(Theme.headline())
                     .foregroundStyle(Theme.onChrome)
                     .frame(maxWidth: .infinity)
@@ -205,6 +206,30 @@ struct DiscoverBookCard: View {
             .foregroundStyle(Theme.accent)
         }
         .frame(width: 100)
+    }
+}
+
+/// Loading indicator for Discover: the SPINE mark spinning with a 4-second
+/// cycle — it launches fast, bleeds off speed, and just as it's about to
+/// stop it whips back up to full speed. Each cycle covers whole turns so the
+/// repeat is seamless.
+private struct SpinningSpineLogo: View {
+    @State private var spinning = false
+
+    var body: some View {
+        Image("SpineLogo")
+            .resizable()
+            .renderingMode(.template)
+            .scaledToFit()
+            .frame(width: 72, height: 72)
+            .foregroundStyle(Theme.accent)
+            .rotationEffect(.degrees(spinning ? 1080 : 0))
+            .animation(
+                .timingCurve(0.1, 0.8, 0.2, 1.0, duration: 4).repeatForever(autoreverses: false),
+                value: spinning
+            )
+            .onAppear { spinning = true }
+            .accessibilityHidden(true)
     }
 }
 

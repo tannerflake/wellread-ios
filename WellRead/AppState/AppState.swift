@@ -18,6 +18,9 @@ final class AppState: ObservableObject {
     @Published var discoverCurrentSuggestion: Book?
     @Published var discoverSuggestionQueue: [Book] = []
     @Published var isLoadingDiscoverSuggestions = false
+    /// True when a user-visible discover fetch finished with nothing to show, so the
+    /// empty state can say "try again" instead of silently resetting to the intro.
+    @Published var discoverLoadCameUpEmpty = false
     @Published var likedPostIds: Set<String> = []
     /// Set when app is opened from Share Extension with a Goodreads CSV; LibraryView shows import sheet and clears this.
     @Published var pendingGoodreadsImportRows: [GoodreadsRow]? = nil
@@ -163,6 +166,7 @@ final class AppState: ObservableObject {
         dismissedBookIdsLoaded = false
         discoverCurrentSuggestion = nil
         discoverSuggestionQueue = []
+        discoverLoadCameUpEmpty = false
         discoverFetchGeneration += 1
         likedPostIds = []
         deepLinkFeedPostId = nil
@@ -841,6 +845,7 @@ final class AppState: ObservableObject {
         discoverCurrentSuggestion = nil
         discoverSuggestionQueue = []
         isLoadingDiscoverSuggestions = false
+        discoverLoadCameUpEmpty = false
         loadDiscoverSuggestionsIfNeeded()
     }
 
@@ -849,6 +854,7 @@ final class AppState: ObservableObject {
         guard dismissedBookIdsLoaded else { return }
         guard discoverCurrentSuggestion == nil, discoverSuggestionQueue.isEmpty, !isLoadingDiscoverSuggestions else { return }
         isLoadingDiscoverSuggestions = true
+        discoverLoadCameUpEmpty = false
         let generation = discoverFetchGeneration
         Task { [weak self] in
             guard let self = self else { return }
@@ -856,6 +862,7 @@ final class AppState: ObservableObject {
                 readBooks: self.readBooks,
                 queueBookIds: self.queueBookIds,
                 dismissedBookIds: self.dismissedBookIds,
+                queuedTitles: self.queuedBookTitles,
                 readingInterestTags: self.currentUser?.readingInterestTags ?? [],
                 criteria: self.discoverCriteria
             )
@@ -865,6 +872,7 @@ final class AppState: ObservableObject {
                 let filtered = batch.filter { !self.shouldExcludeFromDiscover(bookId: $0.id) }
                 self.discoverSuggestionQueue.append(contentsOf: filtered)
                 self.popNextDiscoverSuggestion()
+                self.discoverLoadCameUpEmpty = (self.discoverCurrentSuggestion == nil)
             }
         }
     }
@@ -883,6 +891,11 @@ final class AppState: ObservableObject {
     /// Book IDs in the user's queue (want to read).
     private var queueBookIds: Set<String> {
         Set(userBooks.filter { $0.status == .wantToRead }.map(\.bookId))
+    }
+
+    /// Titles in the user's queue, fed into the discover prompt's avoid list.
+    private var queuedBookTitles: [String] {
+        userBooks.filter { $0.status == .wantToRead }.compactMap { $0.book?.title }
     }
 
     /// True if this book should never be shown in Discover (read, queue, or passed).
@@ -923,6 +936,7 @@ final class AppState: ObservableObject {
                 readBooks: self.readBooks,
                 queueBookIds: self.queueBookIds,
                 dismissedBookIds: self.dismissedBookIds,
+                queuedTitles: self.queuedBookTitles,
                 readingInterestTags: self.currentUser?.readingInterestTags ?? [],
                 criteria: self.discoverCriteria
             )

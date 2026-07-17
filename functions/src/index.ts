@@ -77,7 +77,7 @@ async function sendToUser(
     return;
   }
   // iOS often drops or mishandles alerts with an empty body; keep a short fallback.
-  const bodyText = body.trim().length > 0 ? body.trim() : "Tap to open Spines";
+  const bodyText = body.trim().length > 0 ? body.trim() : "Tap to open SPINE";
   // Book covers ride along as a rich-notification image: `fcmOptions.imageUrl` puts the URL in
   // the APNs payload and `mutableContent` routes it through the app's Notification Service
   // Extension, which downloads and attaches the thumbnail. `coverImageURL` in data is the
@@ -227,7 +227,7 @@ export const onUserCreated = onDocumentCreated(
     }
     await sendToUser(
       FOUNDER_UID,
-      `${first} joined Spine`,
+      `${first} joined SPINE`,
       "They follow you — and you now follow them back.",
       { type: "new_follower" }
     );
@@ -265,7 +265,7 @@ export const onUserFollowingChanged = onDocumentUpdated(
       await sendToUser(
         target,
         `${first} started following you`,
-        "See what they're reading on Spine.",
+        "See what they're reading on SPINE.",
         { type: "new_follower" }
       );
     }
@@ -302,7 +302,7 @@ export const onFriendReviewPosted = onDocumentCreated(
     const titleLine = `${first} gave ${bookPart} a ${rating}`;
 
     const title = titleLine;
-    const body = teaser ? teaser : "Open Spines to read the full review.";
+    const body = teaser ? teaser : "Open SPINE to read the full review.";
 
     const recipients = await recipientUidsWhoFollow(authorId);
     const payload = {
@@ -402,7 +402,7 @@ export const onPostLiked = onDocumentCreated(
     await sendToUser(
       authorId,
       title,
-      "Tap to open Spines",
+      "Tap to open SPINE",
       { type: "review_liked", postId },
       coverURL
     );
