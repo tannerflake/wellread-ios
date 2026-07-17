@@ -103,7 +103,13 @@ final class GoodreadsImportService {
         if let lastName = GoodreadsTitleMatcher.authorLastName(primaryAuthor) {
             query += " inauthor:\"\(lastName)\""
         }
-        let results = try await googleBooks.search(query: query)
+        // Restrict to the device language (English fallback): translations often
+        // keep the identical title ("Dune", "Circe"), so they pass the title/author
+        // confidence gate below and a well-populated Spanish/French edition can win.
+        // A foreign-only result dropped by the filter becomes .noMatch — consistent
+        // with the confident-only rule that a wrong guess is worse than no match.
+        let language = Locale.current.language.languageCode?.identifier.lowercased() ?? "en"
+        let results = try await googleBooks.search(query: query, languageRestriction: language)
         let rowISBNs = [row.isbn13, row.isbn].compactMap { $0 }.map { $0.filter(\.isNumber) }
 
         var confident: [Book] = []

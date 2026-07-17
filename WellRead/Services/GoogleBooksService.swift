@@ -123,11 +123,15 @@ final class GoogleBooksService {
     /// and edition dedup for the "can't find it?" fallback. `libraryAuthors` are
     /// author names already in the user's library, used as a personalization boost.
     /// Strict `isbn:` queries bypass ranking entirely and keep Google's order.
-    func search(query: String, includeAllEditions: Bool = false, libraryAuthors: Set<String> = []) async throws -> [Book] {
+    /// `languageRestriction` (ISO 639-1, e.g. "en") hard-filters results to that
+    /// language via Google's `langRestrict` — used by the Goodreads import, where a
+    /// same-title foreign edition is worse than no match. Interactive search leaves
+    /// it nil (the ranker's soft device-language preference applies instead).
+    func search(query: String, includeAllEditions: Bool = false, libraryAuthors: Set<String> = [], languageRestriction: String? = nil) async throws -> [Book] {
         let normalized = query.trimmingCharacters(in: .whitespaces).lowercased()
         guard !normalized.isEmpty else { return [] }
         let isISBNQuery = normalized.hasPrefix("isbn:")
-        let cacheKey = (includeAllEditions ? "all|" : "") + normalized
+        let cacheKey = (languageRestriction.map { "lang=\($0)|" } ?? "") + (includeAllEditions ? "all|" : "") + normalized
         if let cached = cacheQueue.sync(execute: { searchCache[cacheKey] }) {
             return cached
         }
@@ -138,12 +142,15 @@ final class GoogleBooksService {
             storeInMemory(cacheKey: cacheKey, books: shared)
             return shared
         }
-        let queryItems: [URLQueryItem] = [
+        var queryItems: [URLQueryItem] = [
             URLQueryItem(name: "q", value: query),
             URLQueryItem(name: "maxResults", value: isISBNQuery ? "15" : "30"),
             URLQueryItem(name: "printType", value: "books"),
             URLQueryItem(name: "projection", value: "full")
         ]
+        if let lang = languageRestriction, !lang.isEmpty {
+            queryItems.append(URLQueryItem(name: "langRestrict", value: lang))
+        }
         let data: Data
         do {
             data = try await googleSearchData(queryItems: queryItems)
