@@ -70,6 +70,9 @@ struct ProfileCompletionView: View {
     let mode: ProfileEditorMode
     let title: String
     let subtitle: String?
+    /// Scroll to the yearly book-goal field and put the cursor in it when the view appears
+    /// (e.g. opened by tapping the goal progress strip in the Library).
+    let focusBookGoalOnAppear: Bool
     /// Called after successful save (e.g. to dismiss the sheet). Swipe-down still dismisses the sheet.
     var onDismiss: (() -> Void)?
 
@@ -111,15 +114,26 @@ struct ProfileCompletionView: View {
         mode: ProfileEditorMode = .onboarding,
         title: String,
         subtitle: String? = nil,
+        focusBookGoalOnAppear: Bool = false,
         onDismiss: (() -> Void)? = nil
     ) {
         self.mode = mode
         self.title = title
         self.subtitle = subtitle
+        self.focusBookGoalOnAppear = focusBookGoalOnAppear
         self.onDismiss = onDismiss
     }
 
+    /// Scroll anchor for the yearly book-goal field.
+    private static let bookGoalFieldID = "bookGoalField"
+
     private var profileBasicsScroll: some View {
+        ScrollViewReader { proxy in
+            profileBasicsScrollContent(proxy: proxy)
+        }
+    }
+
+    private func profileBasicsScrollContent(proxy: ScrollViewProxy) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -177,13 +191,21 @@ struct ProfileCompletionView: View {
 
                         handleHintRow
                     }
-                    labeledField(title: bookGoalFieldTitle) {
-                        TextField("e.g. 24", text: $readingGoalText)
-                            .keyboardType(.numberPad)
-                            .textFieldStyle(.plain)
-                            .focused($focusedField, equals: .goal)
-                            .submitLabel(.done)
+                    VStack(alignment: .leading, spacing: 4) {
+                        labeledField(title: bookGoalFieldTitle) {
+                            TextField("e.g. 24", text: $readingGoalText)
+                                .keyboardType(.numberPad)
+                                .textFieldStyle(.plain)
+                                .focused($focusedField, equals: .goal)
+                                .submitLabel(.done)
+                        }
+                        if mode == .edit {
+                            Text("Leave blank if you don’t want a yearly goal.")
+                                .font(Theme.caption())
+                                .foregroundStyle(Theme.textTertiary)
+                        }
                     }
+                    .id(Self.bookGoalFieldID)
                     VStack(alignment: .leading, spacing: 4) {
                         labeledField(title: "Phone number") {
                             TextField("(555) 555-0199", text: $phoneText)
@@ -231,6 +253,16 @@ struct ProfileCompletionView: View {
             .padding(.bottom, 40)
         }
         .scrollDismissesKeyboard(.immediately)
+        .onAppear {
+            guard focusBookGoalOnAppear else { return }
+            // Let the sheet finish presenting before scrolling/raising the keyboard.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                withAnimation(.easeOut(duration: 0.25)) {
+                    proxy.scrollTo(Self.bookGoalFieldID, anchor: .center)
+                }
+                focusedField = .goal
+            }
+        }
     }
 
     private var interestsStepContent: some View {
@@ -547,6 +579,14 @@ struct ProfileCompletionView: View {
         return n
     }
 
+    /// Onboarding requires a goal; editing allows a blank field, which removes the goal
+    /// (the Library progress bar hides when there's no goal).
+    private var goalEntryIsValid: Bool {
+        if parsedReadingGoal != nil { return true }
+        let t = readingGoalText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return mode == .edit && t.isEmpty
+    }
+
     private var canSubmitBasics: Bool {
         let f = firstName.trimmingCharacters(in: .whitespacesAndNewlines)
         let l = lastName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -554,7 +594,7 @@ struct ProfileCompletionView: View {
         guard ProfileHandleRules.isValidHandle(normalizedHandle) else { return false }
         guard !ProfileHandleRules.reservedHandles.contains(normalizedHandle) else { return false }
         guard handleAvailable == true else { return false }
-        guard parsedReadingGoal != nil else { return false }
+        guard goalEntryIsValid else { return false }
         if mode == .onboarding {
             let url = profileUserForAvatar?.profileImageURL?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             guard !url.isEmpty else { return false }
@@ -578,7 +618,9 @@ struct ProfileCompletionView: View {
     }
 
     private func submitEditProfile() {
-        guard canSubmitBasics, let goal = parsedReadingGoal else { return }
+        guard canSubmitBasics else { return }
+        // Blank field = no goal: saved as nil, which clears it in Firestore.
+        let goal = parsedReadingGoal
         errorMessage = nil
         isSubmitting = true
         Task {

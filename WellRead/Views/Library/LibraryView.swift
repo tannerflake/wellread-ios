@@ -26,6 +26,9 @@ struct ProfileLibraryView: View {
     @State private var readTabDropTargeted = false
     @State private var queueTabDropTargeted = false
     @State private var showEditProfile = false
+    /// Set when the edit-profile sheet was opened by tapping the goal strip —
+    /// the sheet scrolls to the book-goal field and focuses it.
+    @State private var editProfileFocusesBookGoal = false
     @State private var showFindFriends = false
     @AppStorage(AppearancePreference.storageKey) private var appearanceRaw = AppearancePreference.defaultValue.rawValue
     #if DEBUG
@@ -69,12 +72,19 @@ struct ProfileLibraryView: View {
                     if activeReadingGoal != nil || !availableYears.isEmpty {
                         HStack(alignment: .center, spacing: 12) {
                             if let goal = activeReadingGoal {
-                                LibraryReadingGoalProgressStrip(
-                                    calendarYear: calendarYear,
-                                    booksRead: booksFinishedThisCalendarYear,
-                                    goal: goal,
-                                    copy: .own
-                                )
+                                Button {
+                                    editProfileFocusesBookGoal = true
+                                    showEditProfile = true
+                                } label: {
+                                    LibraryReadingGoalProgressStrip(
+                                        calendarYear: calendarYear,
+                                        booksRead: booksFinishedThisCalendarYear,
+                                        goal: goal,
+                                        copy: .own
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityHint("Edit your yearly book goal.")
                             } else {
                                 Spacer(minLength: 0)
                             }
@@ -112,11 +122,14 @@ struct ProfileLibraryView: View {
                     canEditReadReview: true
                 )
             }
-            .sheet(isPresented: $showEditProfile) {
+            .sheet(isPresented: $showEditProfile, onDismiss: {
+                editProfileFocusesBookGoal = false
+            }) {
                 ProfileCompletionView(
                     mode: .edit,
                     title: "Edit profile",
                     subtitle: "Update your name, handle, yearly reading goal, and reading tastes.",
+                    focusBookGoalOnAppear: editProfileFocusesBookGoal,
                     onDismiss: {
                         showEditProfile = false
                     }
