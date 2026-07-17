@@ -108,11 +108,18 @@ struct DiscoverView: View {
     }
 
     private var loadingView: some View {
-        VStack(spacing: 20) {
-            SpinningSpineLogo()
-            Text("Finding your next read…")
-                .font(Theme.title2())
-                .foregroundStyle(Theme.textSecondary)
+        // One flexible spacer above, two below: biases the group upward so it
+        // reads as screen-centered despite the header eating the top ~180pt.
+        VStack(spacing: 0) {
+            Spacer()
+            VStack(spacing: 20) {
+                SpinningSpineLogo()
+                Text("Finding your next read…")
+                    .font(Theme.title2())
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            Spacer()
+            Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -212,24 +219,53 @@ struct DiscoverBookCard: View {
 /// Loading indicator for Discover: the SPINE mark spinning with a 4-second
 /// cycle — it launches fast, bleeds off speed, and just as it's about to
 /// stop it whips back up to full speed. Each cycle covers whole turns so the
-/// repeat is seamless.
+/// repeat is seamless. Rotation is derived from the clock rather than an
+/// animated state change so surrounding layout shifts can never be swept
+/// into the animation (which made the logo fly in from offscreen).
+///
+/// Motion blur is faked with ghost copies trailing the mark along its arc;
+/// the trail length follows the spin curve's angular velocity, so the blur
+/// is heavy during the whip and melts away as the spin coasts.
 private struct SpinningSpineLogo: View {
-    @State private var spinning = false
+    private static let curve = UnitCurve.bezier(
+        startControlPoint: UnitPoint(x: 0.1, y: 0.8),
+        endControlPoint: UnitPoint(x: 0.2, y: 1.0)
+    )
+    private static let ghostCount = 6
 
     var body: some View {
+        TimelineView(.animation) { context in
+            let elapsed = context.date.timeIntervalSinceReferenceDate
+            let progress = elapsed.truncatingRemainder(dividingBy: 4) / 4
+            let angle = Self.curve.value(at: progress) * 1080
+            // Degrees swept over the last few frames — the trail length.
+            let sweep = min(Self.curve.velocity(at: progress) * 1080 / 4 * 0.05, 80)
+            // Fade the whole trail out as the spin slows so the resting mark
+            // stays crisp.
+            let trailStrength = min(sweep / 10, 1)
+            ZStack {
+                ForEach(1...Self.ghostCount, id: \.self) { i in
+                    let depth = Double(i) / Double(Self.ghostCount)
+                    logo
+                        .rotationEffect(.degrees(angle - sweep * depth))
+                        .opacity(0.55 * (1 - depth * 0.85) * trailStrength)
+                        .blur(radius: 2 + 5 * depth)
+                }
+                logo
+                    .rotationEffect(.degrees(angle))
+                    .blur(radius: 1.5 * trailStrength)
+            }
+        }
+        .accessibilityHidden(true)
+    }
+
+    private var logo: some View {
         Image("SpineLogo")
             .resizable()
             .renderingMode(.template)
             .scaledToFit()
-            .frame(width: 72, height: 72)
+            .frame(width: 144, height: 144)
             .foregroundStyle(Theme.accent)
-            .rotationEffect(.degrees(spinning ? 1080 : 0))
-            .animation(
-                .timingCurve(0.1, 0.8, 0.2, 1.0, duration: 4).repeatForever(autoreverses: false),
-                value: spinning
-            )
-            .onAppear { spinning = true }
-            .accessibilityHidden(true)
     }
 }
 

@@ -95,6 +95,8 @@
 		B00B1E02 /* BookBlendService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00B1E02 /* BookBlendService.swift */; };
 		B00B1E03 /* BookBlendInviteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00B1E03 /* BookBlendInviteView.swift */; };
 		B00B1E04 /* BookBlendStoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00B1E04 /* BookBlendStoryView.swift */; };
+		B00B1E05 /* OpenLibraryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00B1E05 /* OpenLibraryService.swift */; };
+		B00B1E06 /* BookSearchCacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00B1E06 /* BookSearchCacheService.swift */; };
 		B00100F0 /* TierBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100F0 /* TierBadge.swift */; };
 		B00100FA /* Toast.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100FA /* Toast.swift */; };
 		B0010100 /* NoSuggestionsTextField.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010100 /* NoSuggestionsTextField.swift */; };
@@ -248,6 +250,8 @@
 		F00B1E02 /* BookBlendService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookBlendService.swift; sourceTree = "<group>"; };
 		F00B1E03 /* BookBlendInviteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookBlendInviteView.swift; sourceTree = "<group>"; };
 		F00B1E04 /* BookBlendStoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookBlendStoryView.swift; sourceTree = "<group>"; };
+		F00B1E05 /* OpenLibraryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenLibraryService.swift; sourceTree = "<group>"; };
+		F00B1E06 /* BookSearchCacheService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookSearchCacheService.swift; sourceTree = "<group>"; };
 		F00100F0 /* TierBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TierBadge.swift; sourceTree = "<group>"; };
 		F00100FA /* Toast.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Toast.swift; sourceTree = "<group>"; };
 		F0010100 /* NoSuggestionsTextField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoSuggestionsTextField.swift; sourceTree = "<group>"; };
@@ -440,6 +444,8 @@
 				F0018D71 /* BookSummaryMoreService.swift */,
 				F0010054 /* MatchScoreService.swift */,
 				F00B1E02 /* BookBlendService.swift */,
+				F00B1E05 /* OpenLibraryService.swift */,
+				F00B1E06 /* BookSearchCacheService.swift */,
 				F0010020 /* AuthService.swift */,
 				F0010021 /* UserRepository.swift */,
 				F0010023 /* BookRepository.swift */,
@@ -909,6 +915,8 @@
 				B00B1E02 /* BookBlendService.swift in Sources */,
 				B00B1E03 /* BookBlendInviteView.swift in Sources */,
 				B00B1E04 /* BookBlendStoryView.swift in Sources */,
+				B00B1E05 /* OpenLibraryService.swift in Sources */,
+				B00B1E06 /* BookSearchCacheService.swift in Sources */,
 				B0010053 /* BookRefresherView.swift in Sources */,
 				B0018D72 /* BookSummaryMoreView.swift in Sources */,
 				B0010044 /* FeedCommunityWelcomeModal.swift in Sources */,

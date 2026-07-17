@@ -24,6 +24,7 @@ final class PostRepository {
                 Task {
                     var list: [Post] = []
                     for doc in snapshot.documents {
+                        if let uid = doc.data()["userId"] as? String, HiddenAccounts.isHiddenFromCurrentViewer(uid: uid) { continue }
                         guard let post = await self.post(from: doc.data(), docId: doc.documentID) else { continue }
                         list.append(post)
                     }
@@ -37,6 +38,7 @@ final class PostRepository {
         do {
             let snapshot = try await db.collection(posts).document(postId).getDocument()
             guard snapshot.exists, let data = snapshot.data() else { return nil }
+            if let uid = data["userId"] as? String, HiddenAccounts.isHiddenFromCurrentViewer(uid: uid) { return nil }
             return await post(from: data, docId: snapshot.documentID)
         } catch {
             return nil
@@ -52,6 +54,7 @@ final class PostRepository {
                 .getDocuments()
             var list: [Post] = []
             for doc in snapshot.documents {
+                if let uid = doc.data()["userId"] as? String, HiddenAccounts.isHiddenFromCurrentViewer(uid: uid) { continue }
                 guard let post = await post(from: doc.data(), docId: doc.documentID) else { continue }
                 list.append(post)
             }

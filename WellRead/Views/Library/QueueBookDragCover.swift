@@ -14,14 +14,16 @@ import UniformTypeIdentifiers
 
 /// Drives `UIScrollView.contentOffset` while a `UIDragSession` is active.
 ///
-/// **Downward** auto-scroll is intentionally **disabled**. `UIDragSession` + nested SwiftUI scroll views repeatedly
-/// reported the drag in the “bottom edge” while scrolling (worse when already scrolled far down the list), which
-/// caused runaway `contentOffset` changes. **Upward** scroll at the top edge is reliable and keeps long lists usable
-/// when dragging near the top. To scroll down while dragging, scroll with another finger or move the drag away from
-/// the bottom and use the list normally.
+/// All finger positions are computed in **viewport** space (visible bounds of the scroll view), not content space.
+/// `UIDragSession.location(in:)` on a scroll view returns *content* coordinates (its bounds origin is the
+/// `contentOffset`), so the raw value grows as you scroll down — comparing it against a top-edge band made the band
+/// unreachable once scrolled, and made the bottom band “always hit” (the old runaway downward scroll). Subtracting
+/// `contentOffset` fixes both, so both directions are enabled.
 ///
-/// **Separate** from that: holding the drag over the inline “Your Library” nav title (or status bar above it) uses a
-/// much higher speed so the list jumps to the top quickly. Does not change thresholds or speed for the normal top-edge band.
+/// Speed ramps smoothly with how deep the finger is in the edge band (smoothstep, 0 at the rim → max at the edge),
+/// and keeps ramping up to a fast “jump to top” speed as the finger moves above the visible list over the header /
+/// nav chrome — relative to the scroll view itself, so callouts like “Finish importing” shifting the list down
+/// don’t open a dead gap.
 private final class DragAutoScrollDriver: NSObject {
     weak var scrollView: UIScrollView?
     weak var session: UIDragSession?
@@ -31,28 +33,19 @@ private final class DragAutoScrollDriver: NSObject {
     private var sessionStartTimestamp: CFTimeInterval?
     private var framesSinceStart: Int = 0
 
-    /// Fixed scroll speed (points / second) while the finger is in an edge band — moderate, not “max at rim”.
-    private let scrollSpeed: CGFloat = 420
-    /// Only while the drag is over the **navigation** “Your Library” chrome (window coords). Does not replace `scrollSpeed` elsewhere.
-    private let libraryNavigationTitleBoostSpeed: CGFloat = 2400
+    /// Max scroll speed (points / second) at the very edge of the band.
+    private let maxEdgeSpeed: CGFloat = 620
+    /// Speed once the finger is well above the visible list (header / nav chrome) — jumps to the top quickly.
+    private let chromeBoostSpeed: CGFloat = 2400
+    /// Distance above the viewport top over which speed ramps from `maxEdgeSpeed` to `chromeBoostSpeed`.
+    private let chromeRampDistance: CGFloat = 120
     /// Edge inset from top/bottom of the scroll view used for auto-scroll (capped so bands never overlap).
-    private let edgeFraction: CGFloat = 0.10
-    private let edgeMinPoints: CGFloat = 44
-    private let edgeMaxPoints: CGFloat = 72
+    private let edgeFraction: CGFloat = 0.12
+    private let edgeMinPoints: CGFloat = 60
+    private let edgeMaxPoints: CGFloat = 100
     /// Brief delay after lift so the first noisy location frames don’t scroll.
     private let armDelaySeconds: CFTimeInterval = 0.12
     private let warmupFrames: Int = 1
-
-    /// Drag over the inline toolbar title / status bar (above the scroll view’s visible top), not the list’s top-edge band.
-    private func isDragOverLibraryNavigationChrome(session: UIDragSession, scrollView sv: UIScrollView) -> Bool {
-        guard let win = sv.window else {
-            return session.location(in: sv).y < 0
-        }
-        let windowY = session.location(in: win).y
-        // Inline nav + status bar; keep tight so the normal top-edge band (below the bar) is unchanged.
-        let threshold = win.safeAreaInsets.top + 56
-        return windowY < threshold
-    }
 
     func start() {
         guard displayLink == nil else { return }
@@ -96,32 +89,44 @@ private final class DragAutoScrollDriver: NSObject {
         sv.layoutIfNeeded()
 
         let h = max(1, sv.bounds.height)
-        /// Scroll-view space keeps **negative** y when the drag is above the visible list (under nav / safe area).
-        let fingerY = session.location(in: sv).y
+        /// `location(in:)` is in content coordinates for a scroll view; subtract the offset for viewport space
+        /// (0 = visible top edge, negative = above the list over header / nav chrome).
+        let fingerY = session.location(in: sv).y - sv.contentOffset.y
 
-        var rawZone = min(edgeMaxPoints, max(edgeMinPoints, h * edgeFraction))
-        rawZone = min(rawZone, max(24, (h - 40) / 2))
+        var zone = min(edgeMaxPoints, max(edgeMinPoints, h * edgeFraction))
+        zone = min(zone, max(24, (h - 40) / 2))
 
         let inset = sv.adjustedContentInset
         let minY = -inset.top
         let maxY = max(minY, sv.contentSize.height - h + inset.bottom)
         let y0 = sv.contentOffset.y
 
-        let inTop = fingerY < rawZone
-
-        var delta: CGFloat = 0
-        if isDragOverLibraryNavigationChrome(session: session, scrollView: sv), y0 > minY + 0.5 {
-            delta = -libraryNavigationTitleBoostSpeed * dt
-        } else if inTop, y0 > minY + 0.5 {
-            delta = -scrollSpeed * dt
+        var velocity: CGFloat = 0
+        if fingerY < zone, y0 > minY + 0.5 {
+            if fingerY < 0 {
+                // Above the visible list: keep ramping past max band speed toward the chrome boost.
+                let over = min(1, -fingerY / chromeRampDistance)
+                velocity = -(maxEdgeSpeed + (chromeBoostSpeed - maxEdgeSpeed) * over)
+            } else {
+                velocity = -maxEdgeSpeed * Self.smoothstep((zone - fingerY) / zone)
+            }
+        } else if fingerY > h - zone, y0 < maxY - 0.5 {
+            velocity = maxEdgeSpeed * Self.smoothstep((fingerY - (h - zone)) / zone)
         }
 
-        guard abs(delta) > 0.2 else { return }
+        let delta = velocity * dt
+        guard abs(delta) > 0.05 else { return }
 
         var offset = sv.contentOffset
         offset.y += delta
         offset.y = min(maxY, max(minY, offset.y))
         sv.contentOffset = offset
+    }
+
+    /// 0→1 with zero slope at both ends, so speed eases in at the band rim instead of kicking on abruptly.
+    private static func smoothstep(_ x: CGFloat) -> CGFloat {
+        let t = min(1, max(0, x))
+        return t * t * (3 - 2 * t)
     }
 }
 

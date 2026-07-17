@@ -487,6 +487,18 @@ final class AppState: ObservableObject {
         userBooks.contains { $0.bookId == bookId && $0.status == .wantToRead }
     }
 
+    /// Existing library entry for the same *work* as `book` — matched by volume
+    /// id, ISBN equivalence, or normalized title + author, so a different
+    /// edition of a book already on the shelf still counts as that book.
+    func userBook(sameWorkAs book: Book, status: ReadingStatus? = nil) -> UserBook? {
+        userBooks.first { ub in
+            if let status, ub.status != status { return false }
+            if ub.bookId == book.id { return true }
+            guard let existing = ub.book else { return false }
+            return LibraryDedup.isSameWork(existing, book)
+        }
+    }
+
     /// Mark a book as "not interested" so we never suggest it again.
     func addDismissedBookId(_ bookId: String) {
         dismissedBookIds.insert(bookId)
@@ -706,12 +718,13 @@ final class AppState: ObservableObject {
     /// Import one Goodreads read book (wizard "Add" / import-all). Sets tier when the user picked one.
     func importGoodreadsReadBook(book: Book, rating: Double?, review: String?, dateFinished: Date?, tier: String?) async -> GoodreadsImportOutcome {
         guard let uid = currentUserId else { return .failed }
-        guard !isBookOnReadList(bookId: book.id) else { return .duplicate }
+        guard userBook(sameWorkAs: book, status: .read) == nil else { return .duplicate }
         let storedRating = rating.map { Theme.normalizeRatingOutOfTen($0) }
         let trimmedReview = (review?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
         let validTier = tier.flatMap { spineTierLabels.contains($0) ? $0 : nil }
-        // Already queued (e.g. added manually before importing): promote that row instead of duplicating.
-        if let queued = userBooks.first(where: { $0.bookId == book.id && $0.status == .wantToRead }) {
+        // Already queued (e.g. added manually before importing, possibly as a
+        // different edition): promote that row instead of duplicating.
+        if let queued = userBook(sameWorkAs: book, status: .wantToRead) {
             var updated = queued
             updated.status = .read
             updated.dateFinished = dateFinished
@@ -743,9 +756,9 @@ final class AppState: ObservableObject {
     /// A Goodreads row matched a book already on the read shelf: keep the single
     /// library/tier entry, but record the row's read date as a re-read when it's a
     /// day we don't have yet. `dateFinished` stays the most recent read.
-    func mergeGoodreadsReReadDate(bookId: String, dateRead: Date?) async {
+    func mergeGoodreadsReReadDate(book: Book, dateRead: Date?) async {
         guard let dateRead else { return }
-        guard var existing = userBooks.first(where: { $0.bookId == bookId && $0.status == .read }) else { return }
+        guard var existing = userBook(sameWorkAs: book, status: .read) else { return }
         let cal = Calendar.current
         var unique: [Date] = []
         for d in (existing.allReadDates + [dateRead]).sorted(by: >) where !unique.contains(where: { cal.isDate($0, inSameDayAs: d) }) {
@@ -762,7 +775,7 @@ final class AppState: ObservableObject {
     /// Import one Goodreads not-yet-read book into the queue.
     func importGoodreadsQueueBook(book: Book) async -> GoodreadsImportOutcome {
         guard let uid = currentUserId else { return .failed }
-        guard !isBookInQueue(bookId: book.id), !isBookOnReadList(bookId: book.id) else { return .duplicate }
+        guard userBook(sameWorkAs: book) == nil else { return .duplicate }
         do {
             _ = try await userBookRepo.addUserBook(userId: uid, book: book, status: .wantToRead, rating: nil, reviewText: nil, dateStarted: nil, dateFinished: nil)
             return .imported

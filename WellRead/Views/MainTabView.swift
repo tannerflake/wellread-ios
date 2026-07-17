@@ -181,6 +181,10 @@ struct MainTabView: View {
             if let raw = UserDefaults.standard.string(forKey: "uiPreviewTab") {
                 if raw == "search" {
                     showAddBook = true
+                } else if raw == "discoverLoading" {
+                    // Discover pinned to its loading state (spinner verification).
+                    selectedTab = .discover
+                    appState.isLoadingDiscoverSuggestions = true
                 } else if let t = Tab(rawValue: raw) {
                     selectedTab = t
                 }
@@ -300,8 +304,8 @@ struct MainTabView: View {
         HStack(spacing: 0) {
             tabButton(.feed, icon: "person.2.fill", label: "Social")
             tabButton(.discover, icon: "sparkles", label: "Discover")
-            tabButton(.profile, icon: "books.vertical.fill", label: "Profile")
             searchButton
+            tabButton(.profile, icon: "books.vertical.fill", label: "Profile")
         }
         .padding(5)
         .background {

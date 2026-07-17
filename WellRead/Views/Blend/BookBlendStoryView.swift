@@ -15,6 +15,8 @@ struct BookBlendStoryView: View {
     let myUid: String
     let onDismiss: () -> Void
 
+    @EnvironmentObject var appState: AppState
+
     private enum Page {
         case intro
         case score
@@ -34,6 +36,16 @@ struct BookBlendStoryView: View {
     /// Score page count-up.
     @State private var displayedScore = 0
     @State private var scoreRevealToken = 0
+    /// Recs queued from this story (by rec key) — instant button flip, and the only
+    /// signal for AI recs with no bookId to match against the queue.
+    @State private var queuedRecKeys: Set<String> = []
+    /// Shared-shelf page scrolling: the story timer holds while the user browses,
+    /// and the "scroll for more" affordance shows only while books are actually
+    /// cut off below the fold.
+    @State private var shelfLastScroll: Date?
+    @State private var shelfContentMaxY: CGFloat?
+    @State private var shelfNeedsScroll = false
+    @State private var shelfAtBottom = false
 
     private let tick = Timer.publish(every: 1.0 / 30.0, on: .main, in: .common).autoconnect()
 
@@ -111,10 +123,15 @@ struct BookBlendStoryView: View {
         .sensoryFeedback(.impact(weight: .light), trigger: pageIndex)
         .onReceive(tick) { _ in
             guard !paused else { return }
+            if let t = shelfLastScroll, Date().timeIntervalSince(t) < 0.8 { return }
             pageProgress += (1.0 / 30.0) / pageDuration
             if pageProgress >= 1 { advance() }
         }
         .onChange(of: pageIndex) { _, _ in
+            shelfLastScroll = nil
+            shelfContentMaxY = nil
+            shelfNeedsScroll = false
+            shelfAtBottom = false
             if case .score = pages[pageIndex] { startScoreReveal() }
         }
     }
@@ -332,35 +349,80 @@ struct BookBlendStoryView: View {
 
     private var sharedShelfPage: some View {
         let shared = result?.sharedBooks ?? []
+        let showMoreHint = shelfNeedsScroll && !shelfAtBottom
         return VStack(alignment: .leading, spacing: 18) {
             Spacer(minLength: 70)
             pageHeader("You've both read", big: "\(shared.count) of the same \(shared.count == 1 ? "book" : "books")")
-            VStack(spacing: 12) {
-                ForEach(Array(shared.prefix(4).enumerated()), id: \.offset) { _, book in
-                    HStack(spacing: 12) {
-                        BookCoverView(book: bookFor(shared: book), size: 44)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(book.title)
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(Theme.paperFixed)
-                                .lineLimit(1)
-                            HStack(spacing: 8) {
-                                verdictChip(name: myName, uid: myUid, book: book)
-                                verdictChip(name: otherName, uid: otherUid, book: book)
+            GeometryReader { viewport in
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 12) {
+                        ForEach(Array(shared.enumerated()), id: \.offset) { _, book in
+                            HStack(spacing: 12) {
+                                BookCoverView(book: bookFor(shared: book), size: 44)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(book.title)
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundStyle(Theme.paperFixed)
+                                        .lineLimit(1)
+                                    HStack(spacing: 8) {
+                                        verdictChip(name: myName, uid: myUid, book: book)
+                                        verdictChip(name: otherName, uid: otherUid, book: book)
+                                    }
+                                }
+                                Spacer()
+                            }
+                            .padding(10)
+                            .background(RoundedRectangle(cornerRadius: 14).fill(.white.opacity(0.09)))
+                        }
+                    }
+                    .onGeometryChange(for: CGRect.self) { proxy in
+                        proxy.frame(in: .global)
+                    } action: { frame in
+                        let viewportBottom = viewport.frame(in: .global).maxY
+                        let viewportHeight = viewport.size.height
+                        if let prev = shelfContentMaxY, abs(prev - frame.maxY) > 0.5 {
+                            shelfLastScroll = Date()
+                        }
+                        shelfContentMaxY = frame.maxY
+                        let needsScroll = frame.height > viewportHeight + 2
+                        let atBottom = frame.maxY <= viewportBottom + 12
+                        if needsScroll != shelfNeedsScroll || atBottom != shelfAtBottom {
+                            withAnimation(.easeOut(duration: 0.25)) {
+                                shelfNeedsScroll = needsScroll
+                                shelfAtBottom = atBottom
                             }
                         }
-                        Spacer()
                     }
-                    .padding(10)
-                    .background(RoundedRectangle(cornerRadius: 14).fill(.white.opacity(0.09)))
+                    .padding(.bottom, shelfNeedsScroll ? 44 : 0)
+                }
+                .scrollDisabled(!shelfNeedsScroll)
+                .mask(
+                    VStack(spacing: 0) {
+                        Rectangle()
+                        LinearGradient(
+                            colors: [.black, showMoreHint ? .clear : .black],
+                            startPoint: .top, endPoint: .bottom
+                        )
+                        .frame(height: 48)
+                    }
+                )
+                .overlay(alignment: .bottom) {
+                    if showMoreHint {
+                        HStack(spacing: 6) {
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 11, weight: .bold))
+                            Text("Scroll for more")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        .foregroundStyle(Theme.paperFixed.opacity(0.9))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Capsule().fill(.white.opacity(0.16)))
+                        .transition(.opacity)
+                    }
                 }
             }
-            if shared.count > 4 {
-                Text("+ \(shared.count - 4) more in common")
-                    .font(Theme.caption())
-                    .foregroundStyle(Theme.paperFixed.opacity(0.6))
-            }
-            Spacer()
+            Spacer(minLength: 24)
         }
         .padding(.horizontal, 24)
     }
@@ -466,25 +528,30 @@ struct BookBlendStoryView: View {
             )
             VStack(spacing: 12) {
                 ForEach(Array(recs.prefix(3).enumerated()), id: \.offset) { _, rec in
-                    HStack(alignment: .top, spacing: 12) {
-                        BookCoverView(book: bookFor(rec: rec), size: 48)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(rec.title)
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundStyle(Theme.paperFixed)
-                                .lineLimit(2)
-                            Text(rec.author)
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(Theme.paperFixed.opacity(0.6))
-                                .lineLimit(1)
-                            if !rec.reason.isEmpty {
-                                Text(rec.reason)
-                                    .font(.system(size: 13, weight: .regular).italic())
-                                    .foregroundStyle(Theme.paperFixed.opacity(0.85))
-                                    .lineLimit(3)
+                    VStack(spacing: 10) {
+                        HStack(alignment: .top, spacing: 12) {
+                            BookCoverView(book: bookFor(rec: rec), size: 48)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(rec.title)
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundStyle(Theme.paperFixed)
+                                    .lineLimit(2)
+                                Text(rec.author)
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(Theme.paperFixed.opacity(0.6))
+                                    .lineLimit(1)
+                                if !rec.reason.isEmpty {
+                                    Text(rec.reason)
+                                        .font(.system(size: 13, weight: .regular).italic())
+                                        .foregroundStyle(Theme.paperFixed.opacity(0.85))
+                                        .lineLimit(3)
+                                }
                             }
+                            Spacer(minLength: 0)
                         }
-                        Spacer(minLength: 0)
+                        if isMine {
+                            addToQueueButton(for: rec)
+                        }
                     }
                     .padding(12)
                     .background(RoundedRectangle(cornerRadius: 16).fill(.white.opacity(0.09)))
@@ -493,6 +560,57 @@ struct BookBlendStoryView: View {
             Spacer()
         }
         .padding(.horizontal, 24)
+        .sensoryFeedback(.success, trigger: queuedRecKeys)
+    }
+
+    // MARK: Steal-page queueing
+
+    private func addToQueueButton(for rec: BookBlend.Rec) -> some View {
+        let queued = isRecQueued(rec)
+        return Button {
+            addRecToQueue(rec)
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: queued ? "checkmark" : "plus")
+                    .font(.system(size: 12, weight: .heavy))
+                Text(queued ? "In Queue" : "Add to Queue")
+                    .font(.system(size: 14, weight: .bold))
+            }
+            .foregroundStyle(queued ? Theme.paperFixed.opacity(0.75) : Theme.inkFixed)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(Capsule().fill(queued ? AnyShapeStyle(.white.opacity(0.14)) : AnyShapeStyle(Theme.paperFixed)))
+        }
+        .buttonStyle(.springPress)
+        .disabled(queued)
+    }
+
+    private func recKey(_ rec: BookBlend.Rec) -> String {
+        rec.bookId ?? "\(rec.title)|\(rec.author)"
+    }
+
+    private func isRecQueued(_ rec: BookBlend.Rec) -> Bool {
+        if queuedRecKeys.contains(recKey(rec)) { return true }
+        if let bookId = rec.bookId { return appState.isBookInQueue(bookId: bookId) }
+        return false
+    }
+
+    private func addRecToQueue(_ rec: BookBlend.Rec) {
+        guard !isRecQueued(rec) else { return }
+        withAnimation(.spring(duration: 0.3)) {
+            _ = queuedRecKeys.insert(recKey(rec))
+        }
+        if rec.bookId != nil {
+            appState.addToWantToRead(book: bookFor(rec: rec))
+        } else {
+            // AI recs the blend couldn't hydrate: resolve on Google Books so the queue
+            // entry carries a real book id + cover; unmatched falls back to title-only.
+            Task {
+                let match = (try? await GoogleBooksService.shared.search(query: "\(rec.title) \(rec.author)"))?.first
+                let book = match ?? bookFor(rec: rec)
+                await MainActor.run { appState.addToWantToRead(book: book) }
+            }
+        }
     }
 
     private var freshPicksPage: some View {
@@ -608,6 +726,9 @@ extension BookBlend {
                     SharedBook(bookId: "3", title: "The Martian", author: "Andy Weir", coverURL: "", ratings: [me: 8.8, them: 7.9], tiers: [:]),
                     SharedBook(bookId: "4", title: "Atomic Habits", author: "James Clear", coverURL: "", ratings: [me: 7.2], tiers: [them: "B"]),
                     SharedBook(bookId: "5", title: "Dune", author: "Frank Herbert", coverURL: "", ratings: [me: 9.9, them: 9.5], tiers: [:]),
+                    SharedBook(bookId: "6", title: "The Midnight Library", author: "Matt Haig", coverURL: "", ratings: [them: 8.1], tiers: [me: "B"]),
+                    SharedBook(bookId: "7", title: "Sapiens", author: "Yuval Noah Harari", coverURL: "", ratings: [me: 8.4, them: 9.1], tiers: [:]),
+                    SharedBook(bookId: "8", title: "The Name of the Wind", author: "Patrick Rothfuss", coverURL: "", ratings: [me: 9.2], tiers: [them: "S"]),
                 ],
                 sharedGenres: ["Science Fiction", "Memoir", "Psychology"],
                 distinctGenres: [me: ["History", "Economics"], them: ["Literary Fiction", "Horror"]],

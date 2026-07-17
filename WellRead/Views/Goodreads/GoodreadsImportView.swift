@@ -54,6 +54,9 @@ final class GoodreadsWizardModel: ObservableObject {
     private var deferredRowIds: Set<String> = []
     /// Imported this session — the Firestore listener lags the write, so `appState.userBooks` alone can't catch same-session duplicates.
     private var importedBookIds: Set<String> = []
+    /// Work keys (title+author) imported this session — catches the same book
+    /// arriving again as a different edition with a different volume id.
+    private var importedWorkKeys: Set<String> = []
     private var configured = false
 
     /// One Skip/Add the user can take back. In-memory only — undo covers taps
@@ -135,6 +138,7 @@ final class GoodreadsWizardModel: ObservableObject {
         session = s
         matchStates = s.matchedBooks.mapValues { .matched($0) }
         importedBookIds = []
+        importedWorkKeys = []
         persist()
         enterStep(for: s.phase)
         advancePastUndecidable()
@@ -152,6 +156,7 @@ final class GoodreadsWizardModel: ObservableObject {
         session = nil
         matchStates = [:]
         importedBookIds = []
+        importedWorkKeys = []
         parseError = nil
         importError = nil
         step = .explainer
@@ -254,7 +259,7 @@ final class GoodreadsWizardModel: ObservableObject {
                     // existing entry (single tier entry, extra year for goals).
                     if s.phase == .readBooks, let appState {
                         let dateRead = row.dateRead
-                        Task { await appState.mergeGoodreadsReReadDate(bookId: book.id, dateRead: dateRead) }
+                        Task { await appState.mergeGoodreadsReReadDate(book: book, dateRead: dateRead) }
                     }
                     s.decisions[row.id] = .duplicate
                     changed = true
@@ -274,12 +279,23 @@ final class GoodreadsWizardModel: ObservableObject {
     private func isDuplicate(_ book: Book) -> Bool {
         guard let appState else { return false }
         if importedBookIds.contains(book.id) { return true }
+        if let key = LibraryDedup.workKey(for: book), importedWorkKeys.contains(key) { return true }
         switch session?.phase {
         case .queuePrompt, .queueBooks:
-            return appState.isBookInQueue(bookId: book.id) || appState.isBookOnReadList(bookId: book.id)
+            return appState.userBook(sameWorkAs: book) != nil
         default:
-            return appState.isBookOnReadList(bookId: book.id)
+            return appState.userBook(sameWorkAs: book, status: .read) != nil
         }
+    }
+
+    private func recordImported(_ book: Book) {
+        importedBookIds.insert(book.id)
+        if let key = LibraryDedup.workKey(for: book) { importedWorkKeys.insert(key) }
+    }
+
+    private func unrecordImported(_ book: Book) {
+        importedBookIds.remove(book.id)
+        if let key = LibraryDedup.workKey(for: book) { importedWorkKeys.remove(key) }
     }
 
     // MARK: Decisions
@@ -298,7 +314,7 @@ final class GoodreadsWizardModel: ObservableObject {
     /// the book is never silently lost.
     private func revertFailedImport(rowId: String, book: Book) {
         dropUndoRecord(rowId: rowId)
-        importedBookIds.remove(book.id)
+        unrecordImported(book)
         guard var s = session else { return }
         s.decisions.removeValue(forKey: rowId)
         let isReadRow = s.readRows.contains { $0.id == rowId }
@@ -351,7 +367,7 @@ final class GoodreadsWizardModel: ObservableObject {
         session = s
         persist()
         if record.decision == .imported, let book = record.book, let appState {
-            importedBookIds.remove(book.id)
+            unrecordImported(book)
             if isReadRow {
                 appState.removeFromReadList(book: book)
                 if record.wasQueuedBefore {
@@ -383,9 +399,9 @@ final class GoodreadsWizardModel: ObservableObject {
             rowId: rowId,
             decision: .imported,
             book: book,
-            wasQueuedBefore: appState.isBookInQueue(bookId: book.id)
+            wasQueuedBefore: appState.userBook(sameWorkAs: book, status: .wantToRead) != nil
         ))
-        importedBookIds.insert(book.id)
+        recordImported(book)
         decideCurrent(.imported)
         Task { [weak self] in
             let outcome = await appState.importGoodreadsReadBook(book: book, rating: rating, review: review, dateFinished: dateFinished, tier: tier)
@@ -455,7 +471,7 @@ final class GoodreadsWizardModel: ObservableObject {
     func acceptCurrentQueueBook() {
         guard let book = currentBook, let appState, let rowId = session?.currentRow?.id else { return }
         pushUndo(UndoRecord(rowId: rowId, decision: .imported, book: book, wasQueuedBefore: false))
-        importedBookIds.insert(book.id)
+        recordImported(book)
         decideCurrent(.imported)
         Task { [weak self] in
             let outcome = await appState.importGoodreadsQueueBook(book: book)
@@ -521,7 +537,7 @@ final class GoodreadsWizardModel: ObservableObject {
                     self.session?.matchedBooks[row.id] = book
                     if self.isDuplicate(book) {
                         if phase == .readBooks {
-                            await appState.mergeGoodreadsReReadDate(bookId: book.id, dateRead: row.dateRead)
+                            await appState.mergeGoodreadsReReadDate(book: book, dateRead: row.dateRead)
                         }
                         self.session?.decisions[row.id] = .duplicate
                     } else {
@@ -539,7 +555,7 @@ final class GoodreadsWizardModel: ObservableObject {
                         }
                         switch importOutcome {
                         case .imported:
-                            self.importedBookIds.insert(book.id)
+                            self.recordImported(book)
                             self.session?.decisions[row.id] = .imported
                         case .duplicate:
                             self.session?.decisions[row.id] = .duplicate

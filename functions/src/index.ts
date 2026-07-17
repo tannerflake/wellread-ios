@@ -205,6 +205,20 @@ export const sendTestPushNotification = onCall(
  * this side follows them back, since Firestore rules only let clients write their own doc. */
 const FOUNDER_UID = "jCaSGxcYgHZd6OzXfxmGNn1GZBj2";
 
+/** Accounts hidden app-wide except from specific viewers (mirrors `HiddenAccounts` in the iOS app).
+ * Their activity must not generate pushes to anyone outside the allowlist. */
+const HIDDEN_ACCOUNT_VIEWERS: Record<string, string[]> = {
+  // tanner@tinyhealth.com test account (@tantest) — visible only to Tanner (tannerflake@gmail.com).
+  lWfYPy4fOxdQYFUYEXAGnpvNscw2: [FOUNDER_UID],
+};
+
+/** False when `actorUid` is a hidden account and `recipientUid` isn't allowed to see it. */
+function hiddenAccountCanNotify(actorUid: string, recipientUid: string): boolean {
+  const allowed = HIDDEN_ACCOUNT_VIEWERS[actorUid];
+  if (!allowed) return true;
+  return recipientUid === actorUid || allowed.includes(recipientUid);
+}
+
 /**
  * New account created: the founder auto-follows the new member, and gets a push that
  * someone joined (the new doc is already seeded following him).
@@ -261,7 +275,7 @@ export const onUserFollowingChanged = onDocumentUpdated(
     }
     const follower = (await db.collection("users").doc(followerUid).get()).data();
     const first = firstNameFromUser(follower);
-    for (const target of added) {
+    for (const target of added.filter((t) => hiddenAccountCanNotify(followerUid, t))) {
       await sendToUser(
         target,
         `${first} started following you`,
@@ -304,7 +318,8 @@ export const onFriendReviewPosted = onDocumentCreated(
     const title = titleLine;
     const body = teaser ? teaser : "Open SPINE to read the full review.";
 
-    const recipients = await recipientUidsWhoFollow(authorId);
+    const recipients = (await recipientUidsWhoFollow(authorId))
+      .filter((uid) => hiddenAccountCanNotify(authorId, uid));
     const payload = {
       type: "friend_review_posted",
       postId,
@@ -348,6 +363,7 @@ export const onBookBlendWritten = onDocumentWritten(
     };
 
     if (afterStatus === "pending" && (beforeStatus === null || beforeStatus === "declined")) {
+      if (!hiddenAccountCanNotify(requesterId, recipientId)) return;
       const requesterName = await nameOf(requesterId);
       await sendToUser(
         recipientId,
@@ -359,6 +375,7 @@ export const onBookBlendWritten = onDocumentWritten(
     }
 
     if (afterStatus === "ready" && beforeStatus === "pending") {
+      if (!hiddenAccountCanNotify(recipientId, requesterId)) return;
       const recipientName = await nameOf(recipientId);
       const score = (after.result as { score?: number } | undefined)?.score;
       await sendToUser(
@@ -391,6 +408,7 @@ export const onPostLiked = onDocumentCreated(
     if (!postData) return;
     const authorId = postData.userId as string;
     if (!authorId || likerId === authorId) return;
+    if (!hiddenAccountCanNotify(likerId, authorId)) return;
 
     const liker = (await db.collection("users").doc(likerId).get()).data();
     const first = firstNameFromUser(liker);
@@ -439,7 +457,7 @@ export const onCommentCreated = onDocumentCreated(
     if (parentCommentId) {
       const parent = await db.collection("comments").doc(parentCommentId).get();
       const parentUid = parent.data()?.userId as string | undefined;
-      if (parentUid && parentUid !== commenterId) {
+      if (parentUid && parentUid !== commenterId && hiddenAccountCanNotify(commenterId, parentUid)) {
         replyTargetUid = parentUid;
         const replyTitle = book
           ? `${first} replied to your comment on ${book}`
@@ -456,7 +474,7 @@ export const onCommentCreated = onDocumentCreated(
     }
 
     // Author: review_commented (not if self-comment; skip if they already got comment_replied)
-    if (commenterId !== authorId && authorId !== replyTargetUid) {
+    if (commenterId !== authorId && authorId !== replyTargetUid && hiddenAccountCanNotify(commenterId, authorId)) {
       const title = book
         ? `${first} commented on your review of ${book}`
         : `${first} replied to your review`;

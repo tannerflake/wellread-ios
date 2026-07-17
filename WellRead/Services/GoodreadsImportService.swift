@@ -6,7 +6,8 @@
 //
 //  Matching order (confident-only — a row that can't be matched confidently is
 //  reported unmatched, never guessed):
-//    1. ISBN-13, then ISBN-10, via Google Books `isbn:` query, verified against
+//    1. ISBN-13, then ISBN-10 — Open Library first (per-IP rate limit, spares the
+//       shared Google quota), then Google Books `isbn:` query verified against
 //       the returned volume's own identifiers.
 //    2. Title + author search, accepted only when the normalized main title and
 //       the author's last name both agree with the export row. This recovers the
@@ -62,10 +63,23 @@ final class GoodreadsImportService {
         return .matched(merged)
     }
 
-    /// Query Google with `isbn:…` and only accept a volume whose catalog ISBN matches (or a single unambiguous hit).
+    /// Resolve an ISBN, Open Library first: the lookup is deterministic (relevance
+    /// ranking doesn't matter for an exact identifier), Open Library rate-limits
+    /// per-IP instead of against the shared 1,000/day Google project quota, and an
+    /// import fires this once or twice per book — the app's biggest quota burner.
+    /// Google remains the fallback for ISBNs Open Library hasn't indexed.
     private func lookupByISBN(_ isbn: String) async throws -> Book? {
         let digits = isbn.filter(\.isNumber)
         guard digits.count == 10 || digits.count == 13 else { return nil }
+        do {
+            if let book = try await OpenLibraryService.shared.lookupISBN(digits) {
+                return book
+            }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            // Open Library unreachable — fall through to Google.
+        }
         let results = try await googleBooks.search(query: "isbn:\(digits)")
         for book in results {
             if let bid = book.isbn, ISBNMatcher.equivalent(digits, bid) {
@@ -170,6 +184,36 @@ enum GoodreadsTitleMatcher {
         guard titlesAgree else { return false }
         guard let lastName = authorLastName(primaryAuthor(rowAuthor)) else { return false }
         return normalize(candidate.author).components(separatedBy: " ").contains(lastName)
+    }
+}
+
+// MARK: - Work-level duplicate detection
+
+/// Duplicate detection that treats different *editions* of a book as the same
+/// work. Volume-id equality alone misses most import duplicates: a Goodreads
+/// export lists each shelved edition as its own row (its own Book Id), and each
+/// row can resolve to a different Google Books volume — so the same book arrives
+/// twice with two different `Book.id`s.
+enum LibraryDedup {
+    /// Stable content key: normalized main title + primary author's last name.
+    /// `nil` when the title normalizes to nothing — never treat those as equal.
+    static func workKey(title: String, author: String) -> String? {
+        let t = GoodreadsTitleMatcher.normalize(GoodreadsTitleMatcher.mainTitle(title))
+        guard !t.isEmpty else { return nil }
+        let a = GoodreadsTitleMatcher.authorLastName(GoodreadsTitleMatcher.primaryAuthor(author)) ?? ""
+        return t + "|" + a
+    }
+
+    static func workKey(for book: Book) -> String? {
+        workKey(title: book.title, author: book.author)
+    }
+
+    /// Same volume id, equivalent ISBNs, or same work key.
+    static func isSameWork(_ a: Book, _ b: Book) -> Bool {
+        if a.id == b.id { return true }
+        if let ia = a.isbn, let ib = b.isbn, ISBNMatcher.equivalent(ia, ib) { return true }
+        guard let ka = workKey(for: a), let kb = workKey(for: b) else { return false }
+        return ka == kb
     }
 }
 

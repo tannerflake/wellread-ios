@@ -29,7 +29,6 @@ struct ProfileLibraryView: View {
     @State private var showFindFriends = false
     @AppStorage(AppearancePreference.storageKey) private var appearanceRaw = AppearancePreference.defaultValue.rawValue
     #if DEBUG
-    @State private var showPushDiagnostics = false
     #endif
 
     private var readBooksFilteredByYear: [UserBook] {
@@ -154,14 +153,6 @@ struct ProfileLibraryView: View {
                     .environmentObject(appState)
                     .onDisappear { goodreadsImportInitialRows = nil }
             }
-            #if DEBUG
-            .sheet(isPresented: $showPushDiagnostics) {
-                NavigationStack {
-                    PushDiagnosticsView()
-                }
-                .presentationDetents([.medium, .large])
-            }
-            #endif
             .overlay {
                 if appState.isFetchingGoodreadsFromURL {
                     Theme.background.ignoresSafeArea()
@@ -512,13 +503,6 @@ struct ProfileLibraryView: View {
                     Label("Import from Goodreads", systemImage: "square.and.arrow.down")
                 }
                 appearanceMenu
-                #if DEBUG
-                Button {
-                    showPushDiagnostics = true
-                } label: {
-                    Label("Push diagnostics", systemImage: "bell.badge")
-                }
-                #endif
                 Divider()
                 Button("Sign out", role: .destructive) {
                     authService.signOut()
@@ -550,13 +534,6 @@ struct ProfileLibraryView: View {
                     Label("Edit profile", systemImage: "person.crop.circle")
                 }
                 appearanceMenu
-                #if DEBUG
-                Button {
-                    showPushDiagnostics = true
-                } label: {
-                    Label("Push diagnostics", systemImage: "bell.badge")
-                }
-                #endif
                 Divider()
                 Button("Sign out", role: .destructive) {
                     authService.signOut()

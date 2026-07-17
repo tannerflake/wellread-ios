@@ -125,7 +125,7 @@ struct GoodreadsWizardSession: Codable {
     static func fromRows(_ rows: [GoodreadsRow]) -> GoodreadsWizardSession {
         var read: [GoodreadsRow] = []
         var queue: [GoodreadsRow] = []
-        for row in rows {
+        for row in dedupedByWork(rows) {
             switch GoodreadsImportService.status(for: row.exclusiveShelf) {
             case .read: read.append(row)
             case .wantToRead, .currentlyReading: queue.append(row)
@@ -137,6 +137,41 @@ struct GoodreadsWizardSession: Codable {
 
     private static func sortDate(_ row: GoodreadsRow) -> Date {
         row.dateRead ?? row.dateAdded ?? .distantPast
+    }
+
+    /// Goodreads lists each shelved *edition* as its own row, so one export can
+    /// contain the same book several times. Collapse rows for the same work
+    /// before the wizard ever sees them, keeping the most informative row.
+    static func dedupedByWork(_ rows: [GoodreadsRow]) -> [GoodreadsRow] {
+        var kept: [GoodreadsRow] = []
+        var indexByKey: [String: Int] = [:]
+        for row in rows {
+            guard let key = LibraryDedup.workKey(title: row.title, author: row.author) else {
+                kept.append(row)
+                continue
+            }
+            if let i = indexByKey[key] {
+                kept[i] = preferredRow(kept[i], row)
+            } else {
+                indexByKey[key] = kept.count
+                kept.append(row)
+            }
+        }
+        return kept
+    }
+
+    /// Read shelf beats unread, then rated, reviewed, has-ISBN, most recent.
+    private static func preferredRow(_ a: GoodreadsRow, _ b: GoodreadsRow) -> GoodreadsRow {
+        func score(_ r: GoodreadsRow) -> Int {
+            var s = 0
+            if GoodreadsImportService.status(for: r.exclusiveShelf) == .read { s += 8 }
+            if (r.myRating ?? 0) > 0 { s += 4 }
+            if !(r.myReview ?? "").isEmpty { s += 2 }
+            if r.isbn13 != nil || r.isbn != nil { s += 1 }
+            return s
+        }
+        if score(a) != score(b) { return score(a) > score(b) ? a : b }
+        return sortDate(a) >= sortDate(b) ? a : b
     }
 }
 

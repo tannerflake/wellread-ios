@@ -73,7 +73,30 @@ final class GoogleBooksService {
     private var searchCache: [String: [Book]] = [:]
     private let cacheQueue = DispatchQueue(label: "com.wellread.googlebooks.cache")
 
-    /// API key: GoogleService-Info.plist "API_KEY", or Info.plist "GOOGLE_BOOKS_API_KEY". Enable Books API for this key in Google Cloud Console.
+    /// Set when Google's shared anonymous (keyless) pool reports its *daily* quota
+    /// exhausted — that won't recover for hours, so skip straight to keyed requests
+    /// for a while instead of paying a doomed round trip on every search.
+    private var keylessQuotaExhaustedUntil: Date?
+
+    private var shouldSkipKeyless: Bool {
+        cacheQueue.sync {
+            guard let until = keylessQuotaExhaustedUntil else { return false }
+            return until > Date()
+        }
+    }
+
+    private func markKeylessQuotaExhausted() {
+        cacheQueue.sync {
+            keylessQuotaExhaustedUntil = Date().addingTimeInterval(30 * 60)
+        }
+    }
+
+    /// Primary API key (project quota, 1,000/day shared across all users). Keyless
+    /// requests draw from Google's single *global* anonymous pool, which has been
+    /// permanently exhausted since ~2025 (429 on first request), so keyless is only
+    /// attempted as a long-shot fallback when the keyed quota is also dry.
+    /// Sources: Secrets.plist / Info.plist "GOOGLE_BOOKS_API_KEY", or
+    /// GoogleService-Info.plist "API_KEY".
     private var apiKey: String? {
         if let key = keyFromPlist(named: "Secrets", key: "GOOGLE_BOOKS_API_KEY"), !key.isEmpty { return key }
         if let key = keyFromPlist(named: "Info", key: "GOOGLE_BOOKS_API_KEY"), !key.isEmpty { return key }
@@ -108,72 +131,36 @@ final class GoogleBooksService {
         if let cached = cacheQueue.sync(execute: { searchCache[cacheKey] }) {
             return cached
         }
-        var queryItems: [URLQueryItem] = [
+        // Shared cross-user Firestore cache: a query any user has run before resolves
+        // without touching either API. (Entries keep the ranking of whoever populated
+        // them — the libraryAuthors personalization boost isn't re-applied.)
+        if let shared = await BookSearchCacheService.shared.lookup(cacheKey: cacheKey) {
+            storeInMemory(cacheKey: cacheKey, books: shared)
+            return shared
+        }
+        let queryItems: [URLQueryItem] = [
             URLQueryItem(name: "q", value: query),
             URLQueryItem(name: "maxResults", value: isISBNQuery ? "15" : "30"),
             URLQueryItem(name: "printType", value: "books"),
             URLQueryItem(name: "projection", value: "full")
         ]
-        if let key = apiKey {
-            queryItems.append(URLQueryItem(name: "key", value: key))
-        }
-        var comp = URLComponents(string: baseURL)!
-        comp.queryItems = queryItems
-        guard let url = comp.url else {
-            throw NSError(domain: "GoogleBooks", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid search query."])
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-
-        // Searching-as-you-type fires a request every time the debounce window elapses,
-        // so several can reach Google in quick succession and trip its rate limiter
-        // (HTTP 429/503 "Service temporarily unavailable"). Retry those transient throttles
-        // with a short backoff so they resolve themselves instead of forcing the user to
-        // tap "Try Again". Cancellation during the backoff propagates to the caller.
-        let transientStatuses: Set<Int> = [429, 500, 502, 503, 504]
-        let maxAttempts = 3
         let data: Data
-        var attempt = 0
-        while true {
-            let payload: Data
-            let response: URLResponse
+        do {
+            data = try await googleSearchData(queryItems: queryItems)
+        } catch let googleError as NSError where Self.isRetryableWithFallback(googleError) {
+            // Both Google pools are dry — serve Open Library results instead of an error.
+            // Cached with a short TTL so a later search upgrades to Google ranking.
             do {
-                (payload, response) = try await session.data(for: request)
-            } catch let urlError as URLError {
-                let msg: String
-                switch urlError.code {
-                case .notConnectedToInternet, .networkConnectionLost:
-                    msg = "No internet connection. Check Wi‑Fi or cellular."
-                case .timedOut:
-                    msg = "Request timed out. Check your connection and try again."
-                case .cancelled:
-                    msg = "Search was cancelled."
-                default:
-                    msg = urlError.localizedDescription.isEmpty ? "Can't reach Google Books. Check your connection." : urlError.localizedDescription
-                }
-                throw NSError(domain: "GoogleBooks", code: urlError.errorCode, userInfo: [NSLocalizedDescriptionKey: msg])
+                let books = try await OpenLibraryService.shared.search(query: query)
+                guard !books.isEmpty else { throw googleError }
+                storeInMemory(cacheKey: cacheKey, books: books)
+                BookSearchCacheService.shared.store(cacheKey: cacheKey, books: books, source: .openLibrary)
+                return books
+            } catch is CancellationError {
+                throw CancellationError()
             } catch {
-                throw NSError(domain: "GoogleBooks", code: -2, userInfo: [NSLocalizedDescriptionKey: "Can't reach Google Books. Check your internet connection."])
+                throw googleError
             }
-            guard let http = response as? HTTPURLResponse else {
-                throw NSError(domain: "GoogleBooks", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response from server. Try again."])
-            }
-            if http.statusCode == 200 {
-                data = payload
-                break
-            }
-            attempt += 1
-            if transientStatuses.contains(http.statusCode), attempt < maxAttempts {
-                // Back off 300ms, then 600ms, before retrying.
-                try await Task.sleep(nanoseconds: 300_000_000 * UInt64(attempt))
-                continue
-            }
-            let message = (try? JSONDecoder().decode(GoogleBooksResponse.self, from: payload).error?.message)
-                ?? "Request failed (HTTP \(http.statusCode))."
-            let hint = http.statusCode == 403
-                ? " Enable the Books API in Google Cloud Console (APIs & Services → Library → Books API) and ensure your API key is allowed."
-                : ""
-            throw NSError(domain: "GoogleBooks", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: message + hint])
         }
         let decoded: GoogleBooksResponse
         do {
@@ -208,14 +195,119 @@ final class GoogleBooksService {
                 libraryAuthors: libraryAuthors
             )
         }
-        cacheQueue.async { [weak self] in
-            guard let self = self else { return }
-            if self.searchCache.count >= self.cacheMaxQueries {
-                if let first = self.searchCache.keys.first { self.searchCache.removeValue(forKey: first) }
-            }
-            self.searchCache[cacheKey] = books
-        }
+        storeInMemory(cacheKey: cacheKey, books: books)
+        BookSearchCacheService.shared.store(cacheKey: cacheKey, books: books, source: .google)
         return books
+    }
+
+    private func storeInMemory(cacheKey: String, books: [Book]) {
+        cacheQueue.sync {
+            if searchCache.count >= cacheMaxQueries {
+                if let first = searchCache.keys.first { searchCache.removeValue(forKey: first) }
+            }
+            searchCache[cacheKey] = books
+        }
+    }
+
+    /// Keyed first: the project quota is the only Google pool that reliably works
+    /// (the global anonymous pool 429s essentially always). If the keyed request is
+    /// throttled or refused even after backoff, try keyless once as a long shot —
+    /// unless keyless already reported its daily quota dry recently.
+    private func googleSearchData(queryItems: [URLQueryItem]) async throws -> Data {
+        guard apiKey != nil else {
+            return try await requestData(queryItems: queryItems, usingKey: false)
+        }
+        do {
+            return try await requestData(queryItems: queryItems, usingKey: true)
+        } catch let keyedError as NSError where Self.isRetryableWithFallback(keyedError) && !shouldSkipKeyless {
+            do {
+                return try await requestData(queryItems: queryItems, usingKey: false)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // Surface the keyed error — its message (project quota) is the actionable one.
+                throw keyedError
+            }
+        }
+    }
+
+    /// HTTP failures worth retrying on the other quota pool: throttles, server errors,
+    /// and refusals. Network errors (offline, timeout, cancelled) surface negative codes
+    /// and are excluded — a second request can't help there.
+    private static func isRetryableWithFallback(_ error: NSError) -> Bool {
+        error.domain == "GoogleBooks" && [403, 429, 500, 502, 503, 504].contains(error.code)
+    }
+
+    /// Performs a volumes search request, retrying transient throttles with backoff.
+    ///
+    /// Searching-as-you-type fires a request every time the debounce window elapses,
+    /// so several can reach Google in quick succession and trip its rate limiter
+    /// (HTTP 429/503 "Service temporarily unavailable"). Retry those transient throttles
+    /// with a short backoff so they resolve themselves instead of forcing the user to
+    /// tap "Try Again". Cancellation during the backoff propagates to the caller.
+    private func requestData(queryItems: [URLQueryItem], usingKey: Bool) async throws -> Data {
+        var items = queryItems
+        if usingKey, let key = apiKey {
+            items.append(URLQueryItem(name: "key", value: key))
+        }
+        var comp = URLComponents(string: baseURL)!
+        comp.queryItems = items
+        guard let url = comp.url else {
+            throw NSError(domain: "GoogleBooks", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid search query."])
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+
+        let transientStatuses: Set<Int> = [429, 500, 502, 503, 504]
+        let maxAttempts = 3
+        var attempt = 0
+        while true {
+            let payload: Data
+            let response: URLResponse
+            do {
+                (payload, response) = try await session.data(for: request)
+            } catch let urlError as URLError {
+                let msg: String
+                switch urlError.code {
+                case .notConnectedToInternet, .networkConnectionLost:
+                    msg = "No internet connection. Check Wi‑Fi or cellular."
+                case .timedOut:
+                    msg = "Request timed out. Check your connection and try again."
+                case .cancelled:
+                    msg = "Search was cancelled."
+                default:
+                    msg = urlError.localizedDescription.isEmpty ? "Can't reach Google Books. Check your connection." : urlError.localizedDescription
+                }
+                throw NSError(domain: "GoogleBooks", code: urlError.errorCode, userInfo: [NSLocalizedDescriptionKey: msg])
+            } catch {
+                throw NSError(domain: "GoogleBooks", code: -2, userInfo: [NSLocalizedDescriptionKey: "Can't reach Google Books. Check your internet connection."])
+            }
+            guard let http = response as? HTTPURLResponse else {
+                throw NSError(domain: "GoogleBooks", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response from server. Try again."])
+            }
+            if http.statusCode == 200 {
+                return payload
+            }
+            attempt += 1
+            let errorMessage = try? JSONDecoder().decode(GoogleBooksResponse.self, from: payload).error?.message
+            // A "Queries per day" 429 is a daily quota that won't recover for hours —
+            // backoff can't help, so fail fast (and remember, so later searches skip
+            // the keyless attempt entirely).
+            let isDailyQuota = http.statusCode == 429 && (errorMessage?.localizedCaseInsensitiveContains("per day") ?? false)
+            if isDailyQuota, !usingKey {
+                markKeylessQuotaExhausted()
+            }
+            if transientStatuses.contains(http.statusCode), !isDailyQuota, attempt < maxAttempts {
+                // Back off 300ms, then 600ms, before retrying.
+                try await Task.sleep(nanoseconds: 300_000_000 * UInt64(attempt))
+                continue
+            }
+            let message = errorMessage ?? "Request failed (HTTP \(http.statusCode))."
+            let hint = (usingKey && http.statusCode == 403)
+                ? " Enable the Books API in Google Cloud Console (APIs & Services → Library → Books API) and ensure your API key is allowed."
+                : ""
+            throw NSError(domain: "GoogleBooks", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: message + hint])
+        }
     }
 
     /// Fetches a single volume by Google Books volume ID (same `Book.id` from search). Used to fill categories when the stored book has no genres.
@@ -223,13 +315,34 @@ final class GoogleBooksService {
         let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         guard let encoded = trimmed.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) else { return nil }
-        var comp = URLComponents(string: "\(baseURL)/\(encoded)")!
-        var queryItems: [URLQueryItem] = []
-        if let key = apiKey {
-            queryItems.append(URLQueryItem(name: "key", value: key))
+        // Keyed first; one keyless long-shot retry if the project quota is dry.
+        var result = try await volumeData(encodedId: encoded, usingKey: apiKey != nil)
+        if case .retryable = result, apiKey != nil, !shouldSkipKeyless {
+            result = try await volumeData(encodedId: encoded, usingKey: false)
         }
-        comp.queryItems = queryItems.isEmpty ? nil : queryItems
-        guard let url = comp.url else { return nil }
+        guard case .success(let data) = result else { return nil }
+        let item: GoogleBooksItem
+        do {
+            item = try JSONDecoder().decode(GoogleBooksItem.self, from: data)
+        } catch {
+            return nil
+        }
+        return mapToBook(item: item)
+    }
+
+    private enum VolumeFetchResult {
+        case success(Data)
+        /// Throttle/refusal status where a keyed retry might succeed.
+        case retryable
+        case failed
+    }
+
+    private func volumeData(encodedId: String, usingKey: Bool) async throws -> VolumeFetchResult {
+        var comp = URLComponents(string: "\(baseURL)/\(encodedId)")!
+        if usingKey, let key = apiKey {
+            comp.queryItems = [URLQueryItem(name: "key", value: key)]
+        }
+        guard let url = comp.url else { return .failed }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         let (data, response): (Data, URLResponse)
@@ -238,15 +351,16 @@ final class GoogleBooksService {
         } catch {
             throw NSError(domain: "GoogleBooks", code: -2, userInfo: [NSLocalizedDescriptionKey: "Can't reach Google Books."])
         }
-        guard let http = response as? HTTPURLResponse else { return nil }
-        guard http.statusCode == 200 else { return nil }
-        let item: GoogleBooksItem
-        do {
-            item = try JSONDecoder().decode(GoogleBooksItem.self, from: data)
-        } catch {
-            return nil
+        guard let http = response as? HTTPURLResponse else { return .failed }
+        guard http.statusCode == 200 else {
+            if !usingKey, http.statusCode == 429,
+               let msg = try? JSONDecoder().decode(GoogleBooksResponse.self, from: data).error?.message,
+               msg.localizedCaseInsensitiveContains("per day") {
+                markKeylessQuotaExhausted()
+            }
+            return [403, 429, 500, 502, 503, 504].contains(http.statusCode) ? .retryable : .failed
         }
-        return mapToBook(item: item)
+        return .success(data)
     }
 
     /// Use imageLinks in documented size order (best available first). Books without covers still map (empty coverURL — UI uses title placeholder / Open Library). Excludes obvious summary/study-guide entries unless `filterJunkEditions` is false ("show all editions" fallback).

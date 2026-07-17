@@ -7,7 +7,29 @@
 
 import Foundation
 import CryptoKit
+import FirebaseAuth
 import FirebaseFirestore
+
+/// Accounts hidden app-wide (people lists, feed posts, comments) from everyone
+/// except the uids they're whitelisted for. The hidden account still sees itself.
+enum HiddenAccounts {
+    /// hidden uid → viewer uids allowed to see the account.
+    private static let visibleOnlyTo: [String: Set<String>] = [
+        // tanner@tinyhealth.com test account (@tantest) — visible only to Tanner (tannerflake@gmail.com).
+        "lWfYPy4fOxdQYFUYEXAGnpvNscw2": [SpineFounder.uid],
+    ]
+
+    static func isHidden(uid: String, viewerUid: String?) -> Bool {
+        guard let allowed = visibleOnlyTo[uid] else { return false }
+        guard let viewer = viewerUid else { return true }
+        return viewer != uid && !allowed.contains(viewer)
+    }
+
+    /// Convenience for call sites without a viewer uid in scope (feed/comment listeners).
+    static func isHiddenFromCurrentViewer(uid: String) -> Bool {
+        isHidden(uid: uid, viewerUid: Auth.auth().currentUser?.uid)
+    }
+}
 
 /// Accounts hidden from the Feed “Your friends” strip (Apple review / internal test users).
 private enum OtherReadersExclusion {
@@ -67,6 +89,7 @@ final class UserRepository {
             var rows: [(uid: String, user: User)] = []
             for doc in snapshot.documents {
                 if let ex = excludingUid, doc.documentID == ex { continue }
+                if HiddenAccounts.isHidden(uid: doc.documentID, viewerUid: excludingUid) { continue }
                 let data = doc.data()
                 guard let u = user(from: data, uid: doc.documentID) else { continue }
                 if OtherReadersExclusion.shouldExclude(firestoreData: data, user: u) { continue }

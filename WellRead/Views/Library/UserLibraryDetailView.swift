@@ -181,6 +181,7 @@ struct UserLibraryDetailView: View {
             if let me = authService.firebaseUser?.uid {
                 BookBlendLandingView(blendId: BookBlend.pairId(me, userId))
                     .environmentObject(authService)
+                    .environmentObject(appState)
             }
         }
     }

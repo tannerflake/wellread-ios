@@ -526,7 +526,7 @@ struct BookProfileView: View {
     /// Log today as another read of this book, then offer the review editor.
     private func logReread() {
         Task {
-            await appState.mergeGoodreadsReReadDate(bookId: book.id, dateRead: Date())
+            await appState.mergeGoodreadsReReadDate(book: book, dateRead: Date())
             showRereadEditPrompt = true
         }
     }

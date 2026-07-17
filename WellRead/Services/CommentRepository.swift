@@ -116,6 +116,7 @@ final class CommentRepository {
               let text = data["text"] as? String,
               let createdAt = (data["createdAt"] as? Timestamp)?.dateValue(),
               let id = UUID(uuidString: docId) else { return nil }
+        if HiddenAccounts.isHiddenFromCurrentViewer(uid: userId) { return nil }
         let displayName = data["displayName"] as? String
         let profileImageURL = data["profileImageURL"] as? String
         let parentCommentId = data["parentCommentId"] as? String

@@ -96,5 +96,17 @@ service cloud.firestore {
       allow read, delete: if request.auth != null && resource.data.userId == request.auth.uid;
       allow create, update: if request.auth != null && request.resource.data.userId == request.auth.uid;
     }
+
+    // Shared cross-user cache of book search results (public catalog metadata).
+    // Any signed-in user may fill it — accepted tradeoff: a malicious user could
+    // write junk entries; worst case is bad search results for one query for a TTL.
+    match /bookSearchCache/{queryHash} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null
+        && request.resource.data.books is list
+        && request.resource.data.books.size() <= 30
+        && request.resource.data.source in ['google', 'openlibrary'];
+      allow delete: if false;
+    }
   }
 }

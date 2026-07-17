@@ -91,6 +91,7 @@ struct BookBlendEntryButton: View {
 /// or cold start (stash consumed on appear). Applied once, on `MainTabView`.
 struct BookBlendPushPresenter: ViewModifier {
     @EnvironmentObject var authService: AuthService
+    @EnvironmentObject var appState: AppState
     @State private var presented: Presentation?
     #if DEBUG
     /// `-uiPreviewBlend` (with `-uiPreview`): opens the blend story on demo data
@@ -119,6 +120,7 @@ struct BookBlendPushPresenter: ViewModifier {
                 BookBlendStoryView(blend: .uiPreviewDemo, myUid: "ui-preview") {
                     showDemoStory = false
                 }
+                .environmentObject(appState)
             }
             #endif
             .onReceive(NotificationCenter.default.publisher(for: .spineOpenBookBlend)) { note in
@@ -131,6 +133,7 @@ struct BookBlendPushPresenter: ViewModifier {
             .fullScreenCover(item: $presented) { presentation in
                 BookBlendLandingView(blendId: presentation.id)
                     .environmentObject(authService)
+                    .environmentObject(appState)
             }
     }
 }
@@ -290,7 +293,7 @@ struct BookBlendLandingView: View {
                 .padding(.horizontal, 28)
                 .padding(.bottom, 14)
 
-            Text("One taste match score. Shared favorites, punchy insights, and picks stolen straight off each other's shelves.")
+            Text("Get a taste match score. See which books you both loved. Get fun insights and books to steal from one another.")
                 .font(Theme.callout())
                 .multilineTextAlignment(.center)
                 .foregroundStyle(Theme.paperFixed.opacity(0.75))
