@@ -69,18 +69,9 @@ struct DiscoverCriteriaEditorSheet: View {
                         .foregroundStyle(Theme.accent)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button {
-                        save()
-                    } label: {
-                        Text("Save")
-                            .font(Theme.headline())
-                            .foregroundStyle(Theme.onChrome)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 7)
-                            .background(Theme.accentGloss)
-                            .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
+                    Button("Save") { save() }
+                        .fontWeight(.semibold)
+                        .foregroundStyle(Theme.accent)
                 }
             }
         }

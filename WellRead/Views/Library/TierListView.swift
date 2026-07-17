@@ -307,13 +307,9 @@ struct TierListView: View {
     }
 
     private func sortedBooks(for tier: String?) -> [UserBook] {
-        let filtered: [UserBook]
-        if let tier {
-            filtered = userBooks.filter { $0.tier == tier }
-        } else {
-            filtered = userBooks.filter { $0.tier == nil || $0.tier?.isEmpty == true }
-        }
-        return filtered.sorted { ($0.tierOrder ?? 999) < ($1.tierOrder ?? 999) }
+        // Must stay in lockstep with AppState.setTierAndOrder — drop-slot indices are
+        // positions in this exact ordering.
+        spineTierSorted(userBooks.filter { $0.normalizedTier == tier })
     }
 }
 

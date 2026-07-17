@@ -636,6 +636,20 @@ struct ProfileLibraryView: View {
         .padding(.bottom, 8)
     }
 
+    /// Drop-slot indices are positions in the (possibly year-filtered) rows the user sees.
+    /// With a year filter active the full tier also contains hidden books, so translate
+    /// "insert at visible slot N" into "insert before that same book in the full tier".
+    private func fullTierInsertionIndex(tier: String?, visibleIndex: Int?) -> Int? {
+        guard let visibleIndex, selectedYear != nil else { return visibleIndex }
+        let t = tier.flatMap { $0.isEmpty ? nil : $0 }
+        let visible = spineTierSorted(readBooksFilteredByYear.filter { $0.normalizedTier == t })
+        // Dropped past the last visible book → append to the end of the full tier.
+        guard visibleIndex < visible.count else { return nil }
+        let insertBefore = visible[visibleIndex]
+        let full = spineTierSorted(appState.readBooks.filter { $0.normalizedTier == t })
+        return full.firstIndex(where: { $0.id == insertBefore.id })
+    }
+
     private var goodreadsResumeMessage: String {
         let n = appState.goodreadsWizardRemainingCount
         let noun = n == 1 ? "book" : "books"
@@ -646,7 +660,7 @@ struct ProfileLibraryView: View {
     private var libraryContent: some View {
         if segment == .read {
             TierListView(userBooks: readBooksFilteredByYear, onUpdateTierAndOrder: { id, tier, order in
-                appState.setTierAndOrder(for: id, tier: tier, order: order)
+                appState.setTierAndOrder(for: id, tier: tier, order: fullTierInsertionIndex(tier: tier, visibleIndex: order))
             }, onBookTap: { selectedBookForProfile = $0 }, highlightedBookId: appState.pendingTierHighlightBookId)
         } else {
             QueueLibraryView(

@@ -74,6 +74,12 @@ struct UserBook: Identifiable, Codable, Equatable {
         allReadDates.contains { calendar.component(.year, from: $0) == year }
     }
 
+    /// Tier with legacy empty strings collapsed to nil, so "" never acts as a distinct tier.
+    var normalizedTier: String? {
+        guard let t = tier, !t.isEmpty else { return nil }
+        return t
+    }
+
     static let demoList: [UserBook] = {
         let b1 = Book(id: "1", title: "Atomic Habits", author: "James Clear", coverURL: "https://books.google.com/books/content?id=wRqtDwAAQBAJ&printsec=frontcover&img=1", pageCount: 320, publishedDate: nil, description: nil, genres: ["Self-Help"])
         let b2 = Book(id: "2", title: "Deep Work", author: "Cal Newport", coverURL: "https://books.google.com/books/content?id=6h76CwAAQBAJ&printsec=frontcover&img=1", pageCount: 296, publishedDate: nil, description: nil, genres: ["Productivity"])
@@ -86,4 +92,18 @@ struct UserBook: Identifiable, Codable, Equatable {
             UserBook(id: UUID(), userId: demoUserId, bookId: b3.id, book: b3, status: .currentlyReading, rating: nil, reviewText: nil, dateStarted: now.addingTimeInterval(-86400*3), dateFinished: nil, createdAt: now, updatedAt: now, recommendedTo: [], tier: nil, tierOrder: nil, queueShelf: nil, queueOrder: nil)
         ]
     }()
+}
+
+/// The one ordering for books inside a tier row. `tierOrder` wins; books without one
+/// tie-break on createdAt/id instead of falling back to array position — `userBooks`
+/// arrives sorted by `updatedAt` desc, so position-based ties reshuffle on every
+/// Firestore echo and drop-slot indices stop matching what's on screen.
+func spineTierSorted(_ books: [UserBook]) -> [UserBook] {
+    books.sorted { a, b in
+        let ao = a.tierOrder ?? Int.max
+        let bo = b.tierOrder ?? Int.max
+        if ao != bo { return ao < bo }
+        if a.createdAt != b.createdAt { return a.createdAt < b.createdAt }
+        return a.id.uuidString < b.id.uuidString
+    }
 }

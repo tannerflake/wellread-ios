@@ -257,10 +257,13 @@ final class GoodreadsWizardModel: ObservableObject {
                 if isDuplicate(book) {
                     // Re-read of a book already on the shelf: log the date on the
                     // existing entry (single tier entry, extra year for goals).
+                    let savesReadDate = s.phase == .readBooks && row.dateRead != nil
                     if s.phase == .readBooks, let appState {
                         let dateRead = row.dateRead
                         Task { await appState.mergeGoodreadsReReadDate(book: book, dateRead: dateRead) }
                     }
+                    // The row vanishes from the queue with no review card — say why.
+                    ToastCenter.shared.show(.duplicateSkipped(bookTitle: book.title, readDateSaved: savesReadDate))
                     s.decisions[row.id] = .duplicate
                     changed = true
                 } else {
@@ -438,6 +441,14 @@ final class GoodreadsWizardModel: ObservableObject {
         guard let s = session else { return [] }
         return (s.readRows + s.queueRows)
             .filter { s.decisions[$0.id] == .skipped }
+            .map { ($0, s.matchedBooks[$0.id]) }
+    }
+
+    /// Books auto-skipped because they were already in the library.
+    var duplicateBooks: [(row: GoodreadsRow, book: Book?)] {
+        guard let s = session else { return [] }
+        return (s.readRows + s.queueRows)
+            .filter { s.decisions[$0.id] == .duplicate }
             .map { ($0, s.matchedBooks[$0.id]) }
     }
 
@@ -655,6 +666,9 @@ struct GoodreadsImportView: View {
             .navigationTitle("Import from Goodreads")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Theme.background, for: .navigationBar)
+            // This view lives in a sheet above MainTabView's toast host, so it
+            // needs its own for duplicate-skip toasts to be visible mid-import.
+            .toastHost()
             // Mid-import, a scroll attempt on the card easily reads as a sheet drag
             // and throws the drawer away. Kill swipe-to-dismiss there — Close (with
             // its progress-saved modal) is the exit. Explainer/summary stay swipeable.
@@ -1163,7 +1177,7 @@ struct GoodreadsImportView: View {
                 Text("Read books done!")
                     .font(Theme.title2())
                     .foregroundStyle(Theme.textPrimary)
-                Text("You have \(model.session?.pendingQueueCount ?? 0) books on your Goodreads to-read shelf. Add them to your SPINE queue?")
+                Text("You have \(model.session?.pendingQueueCount ?? 0) books on your Goodreads to-read shelf. Add them to the Backlog section in your queue?")
                     .font(Theme.callout())
                     .foregroundStyle(Theme.textSecondary)
                     .multilineTextAlignment(.center)
@@ -1329,13 +1343,10 @@ struct GoodreadsImportView: View {
                     .foregroundStyle(Theme.textPrimary)
 
                 if let s = model.session {
-                    VStack(spacing: 6) {
-                        doneStatLine("\(s.importedCount) imported")
-                        if s.duplicateCount > 0 {
-                            doneStatLine("\(s.duplicateCount) already in your library")
-                        }
-                    }
+                    doneStatLine("\(s.importedCount) imported")
                 }
+
+                duplicateBooksSection
 
                 skippedBooksSection
 
@@ -1368,30 +1379,59 @@ struct GoodreadsImportView: View {
             .foregroundStyle(Theme.textSecondary)
     }
 
+    /// Bulleted title-and-author list used by the summary sections.
+    private func summaryBookList(_ items: [(row: GoodreadsRow, book: Book?)]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(items, id: \.row.id) { item in
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("·")
+                        .font(Theme.caption())
+                        .foregroundStyle(Theme.textTertiary)
+                    Text(item.book?.title ?? item.row.title)
+                        .font(Theme.caption())
+                        .foregroundStyle(Theme.textPrimary)
+                        .lineLimit(1)
+                    Text(item.book?.author ?? item.row.author)
+                        .font(Theme.caption())
+                        .foregroundStyle(Theme.textTertiary)
+                        .lineLimit(1)
+                }
+            }
+        }
+    }
+
+    /// Books that were already in the library — auto-skipped, listed so the user
+    /// knows exactly where they went (nothing was lost or duplicated).
+    @ViewBuilder
+    private var duplicateBooksSection: some View {
+        let duplicates = model.duplicateBooks
+        if !duplicates.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                cardSectionLabel("Already in your library · \(duplicates.count)")
+                Text("These were skipped automatically so you don't end up with duplicates.")
+                    .font(Theme.caption())
+                    .foregroundStyle(Theme.textTertiary)
+                summaryBookList(duplicates)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.surfaceElevated)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
+                    .strokeBorder(Theme.chrome.opacity(0.3), lineWidth: Theme.chromeHairline)
+            )
+        }
+    }
+
     /// Books the user skipped, with a way to jump back into the wizard for them.
     @ViewBuilder
     private var skippedBooksSection: some View {
         let skipped = model.skippedBooks
         if !skipped.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
-                cardSectionLabel("Skipped · \(skipped.count)")
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(skipped, id: \.row.id) { item in
-                        HStack(alignment: .firstTextBaseline, spacing: 6) {
-                            Text("·")
-                                .font(Theme.caption())
-                                .foregroundStyle(Theme.textTertiary)
-                            Text(item.book?.title ?? item.row.title)
-                                .font(Theme.caption())
-                                .foregroundStyle(Theme.textPrimary)
-                                .lineLimit(1)
-                            Text(item.book?.author ?? item.row.author)
-                                .font(Theme.caption())
-                                .foregroundStyle(Theme.textTertiary)
-                                .lineLimit(1)
-                        }
-                    }
-                }
+                cardSectionLabel("Skipped by you · \(skipped.count)")
+                summaryBookList(skipped)
                 Button {
                     model.reopenSkippedBooks()
                 } label: {
@@ -1428,23 +1468,7 @@ struct GoodreadsImportView: View {
         if !unmatched.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 cardSectionLabel("Couldn't match · \(unmatched.count)")
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(unmatched) { row in
-                        HStack(alignment: .firstTextBaseline, spacing: 6) {
-                            Text("·")
-                                .font(Theme.caption())
-                                .foregroundStyle(Theme.textTertiary)
-                            Text(row.title)
-                                .font(Theme.caption())
-                                .foregroundStyle(Theme.textPrimary)
-                                .lineLimit(1)
-                            Text(row.author)
-                                .font(Theme.caption())
-                                .foregroundStyle(Theme.textTertiary)
-                                .lineLimit(1)
-                        }
-                    }
-                }
+                summaryBookList(unmatched.map { ($0, nil) })
                 Text("You can add these by hand with Search.")
                     .font(Theme.caption())
                     .foregroundStyle(Theme.textTertiary)
@@ -1587,9 +1611,14 @@ private struct GoodreadsManualMatchCard: View {
                                         .lineLimit(1)
                                 }
                                 Spacer()
-                                Image(systemName: "plus.circle.fill")
-                                    .font(.system(size: 20))
-                                    .foregroundStyle(Theme.accent)
+                                Text("Select")
+                                    .font(Theme.caption())
+                                    .fontWeight(.medium)
+                                    .foregroundStyle(Theme.onChrome)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(Theme.accent)
+                                    .clipShape(Capsule())
                             }
                             .padding(8)
                             .background(Theme.surface)

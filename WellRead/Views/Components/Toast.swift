@@ -113,6 +113,19 @@ extension Toast {
     static func recommendationSent(to name: String) -> Toast {
         Toast(style: .success, status: "Sent", message: "Recommendation sent to \(name)")
     }
+
+    /// A Goodreads row resolved to a book that's already in the library, so the
+    /// import flow skipped past it without showing a review card.
+    static func duplicateSkipped(bookTitle: String, readDateSaved: Bool) -> Toast {
+        Toast(
+            style: .info,
+            status: "Already in library",
+            message: readDateSaved
+                ? "“\(short(bookTitle))” is on your shelf — added its read date"
+                : "“\(short(bookTitle))” is already in your library — skipped",
+            duration: 3.2
+        )
+    }
 }
 
 // MARK: - Center

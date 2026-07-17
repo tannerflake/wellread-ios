@@ -207,41 +207,41 @@ final class AppState: ObservableObject {
     }
 
     /// Set a book's tier and its order within that tier. Order is 0-based; nil = append at end. Renumbers others in source and target tier.
-    func setTierAndOrder(for userBookId: UUID, tier: String?, order: Int?) {
+    func setTierAndOrder(for userBookId: UUID, tier rawTier: String?, order: Int?) {
         guard let moveIndex = userBooks.firstIndex(where: { $0.id == userBookId }) else { return }
+        // The tier list only shows read books; a queue book's UUID can still arrive here
+        // via a stray drop, and tiering it would corrupt queue ordering.
+        guard userBooks[moveIndex].status == .read else { return }
+        let tier = rawTier.flatMap { $0.isEmpty ? nil : $0 }
         let now = Date()
         let movedBookId = userBooks[moveIndex].bookId
-        let movedTierBefore = userBooks[moveIndex].tier
-        func sameTier(_ a: String?, _ b: String?) -> Bool {
-            switch (a, b) {
-            case (nil, nil): return true
-            case let (x?, y?): return x == y
-            default: return false
-            }
-        }
+        let movedTierBefore = userBooks[moveIndex].normalizedTier
 
         var moved = userBooks[moveIndex]
-        let sourceTier = moved.tier
+        let sourceTier = moved.normalizedTier
         moved.tier = tier
         moved.updatedAt = now
 
         var toPersist: [UserBook] = []
 
+        /// Read books in `t`, in the exact order TierListView displays them. Restricting to
+        /// `.read` matters for the Unranked row: queue books also have `tier == nil`, and
+        /// counting those invisible rows used to skew every insertion index.
+        func tierMembers(_ t: String?) -> [UserBook] {
+            spineTierSorted(userBooks.filter { $0.status == .read && $0.normalizedTier == t })
+        }
+
         // Target tier: current members (excluding moved), insert moved at order, then assign tierOrder 0,1,2,...
         // Drop zones pass `order` = "insert before this slot" in the **full** tier list (including the moved book).
         // `inTarget` excludes the moved book, so indices are off by one for slots after the moved book — fix below.
-        let fullTierBefore = userBooks.filter { sameTier($0.tier, tier) }
-            .sorted { ($0.tierOrder ?? 999) < ($1.tierOrder ?? 999) }
+        let fullTierBefore = tierMembers(tier)
         let movedIndexInFullTier = fullTierBefore.firstIndex(where: { $0.id == userBookId })
-
-        var inTarget = userBooks.filter { sameTier($0.tier, tier) && $0.id != userBookId }
-        inTarget.sort { ($0.tierOrder ?? 999) < ($1.tierOrder ?? 999) }
+        var inTarget = fullTierBefore.filter { $0.id != userBookId }
 
         let insertAt: Int
         if let raw = order {
-            let cap = fullTierBefore.count
-            let insertBeforeSlot = min(max(0, raw), cap)
-            if let m = movedIndexInFullTier, sameTier(sourceTier, tier) {
+            let insertBeforeSlot = min(max(0, raw), fullTierBefore.count)
+            if let m = movedIndexInFullTier {
                 let converted = insertBeforeSlot <= m ? insertBeforeSlot : insertBeforeSlot - 1
                 insertAt = min(max(0, converted), inTarget.count)
             } else {
@@ -252,9 +252,8 @@ final class AppState: ObservableObject {
         }
         inTarget.insert(moved, at: insertAt)
         var inSourceUpdates: [(Int, Int)] = []
-        if !sameTier(sourceTier, tier) {
-            var inSource = userBooks.filter { sameTier($0.tier, sourceTier) }
-            inSource.sort { ($0.tierOrder ?? 999) < ($1.tierOrder ?? 999) }
+        if sourceTier != tier {
+            let inSource = tierMembers(sourceTier).filter { $0.id != userBookId }
             for (i, ub) in inSource.enumerated() {
                 guard let idx = userBooks.firstIndex(where: { $0.id == ub.id }) else { continue }
                 if userBooks[idx].tierOrder != i {
@@ -266,8 +265,8 @@ final class AppState: ObservableObject {
         withAnimation(.easeInOut(duration: 0.3)) {
             for (i, ub) in inTarget.enumerated() {
                 guard let idx = userBooks.firstIndex(where: { $0.id == ub.id }) else { continue }
-                let changed = userBooks[idx].tier != ub.tier || userBooks[idx].tierOrder != i
-                userBooks[idx].tier = ub.tier
+                let changed = userBooks[idx].tier != tier || userBooks[idx].tierOrder != i
+                userBooks[idx].tier = tier
                 userBooks[idx].tierOrder = i
                 if ub.id == userBookId { userBooks[idx].updatedAt = now }
                 if changed { toPersist.append(userBooks[idx]) }
@@ -294,6 +293,14 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Append position for a book entering `tier`, so it never lands with `tierOrder == nil`
+    /// (nil orders tie and make drop-slot indices ambiguous). Safe even when existing
+    /// members still have nil orders.
+    private func nextTierOrder(for tier: String) -> Int {
+        let members = userBooks.filter { $0.status == .read && $0.normalizedTier == tier }
+        return max((members.compactMap(\.tierOrder).max() ?? -1) + 1, members.count)
+    }
+
     /// Updates the **existing** queue `userBook` document to Read with rating, optional thoughts as `reviewText`, and optional feed post. Does not create a duplicate row.
     func promoteQueueEntryToRead(
         userBook: UserBook,
@@ -314,6 +321,9 @@ final class AppState: ObservableObject {
         updated.rating = stored
         updated.reviewText = review
         updated.tier = validTier ?? updated.tier
+        // Concrete order on tier entry; queue books can carry stale tierOrders, so clear
+        // when landing in Unranked.
+        updated.tierOrder = updated.tier.flatMap { $0.isEmpty ? nil : $0 }.map { nextTierOrder(for: $0) }
         updated.queueShelf = nil
         updated.queueOrder = nil
         updated.updatedAt = Date()
@@ -586,6 +596,7 @@ final class AppState: ObservableObject {
         let stored: Double? = rating.map { Theme.normalizeRatingOutOfTen($0) }
         let thoughts = (caption?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
         let validTier = tier.flatMap { spineTierLabels.contains($0) ? $0 : nil }
+        let newTierOrder = validTier.map { nextTierOrder(for: $0) }
         if validTier == nil {
             startTierHighlight(forBookId: book.id)
         }
@@ -593,7 +604,7 @@ final class AppState: ObservableObject {
         Task {
             let ub = try? await userBookRepo.addUserBook(userId: uid, book: book, status: .read, rating: stored, reviewText: thoughts, dateStarted: nil, dateFinished: dateFinished)
             if let validTier, let ub {
-                try? await userBookRepo.setTier(userBookId: ub.id, tier: validTier)
+                try? await userBookRepo.setTier(userBookId: ub.id, tier: validTier, tierOrder: newTierOrder)
             }
             if postToFeed {
                 _ = try? await postRepo.createPost(userId: uid, type: .finishedBook, bookId: book.id, caption: thoughts, rating: stored, dateFinished: dateFinished, tier: validTier)
@@ -731,6 +742,7 @@ final class AppState: ObservableObject {
             updated.rating = storedRating
             updated.reviewText = trimmedReview
             updated.tier = validTier
+            updated.tierOrder = validTier.map { nextTierOrder(for: $0) }
             updated.queueShelf = nil
             updated.queueOrder = nil
             updated.updatedAt = Date()
@@ -745,7 +757,7 @@ final class AppState: ObservableObject {
         do {
             let ub = try await userBookRepo.addUserBook(userId: uid, book: book, status: .read, rating: storedRating, reviewText: trimmedReview, dateStarted: nil, dateFinished: dateFinished)
             if let validTier {
-                try? await userBookRepo.setTier(userBookId: ub.id, tier: validTier)
+                try? await userBookRepo.setTier(userBookId: ub.id, tier: validTier, tierOrder: nextTierOrder(for: validTier))
             }
             return .imported
         } catch {

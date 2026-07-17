@@ -298,10 +298,11 @@ final class UserBookRepository {
     }
 
     /// Updates tier for a userBook.
-    func setTier(userBookId: UUID, tier: String?) async throws {
+    func setTier(userBookId: UUID, tier: String?, tierOrder: Int? = nil) async throws {
         let ref = db.collection(userBooks).document(userBookId.uuidString)
         try await ref.updateData([
             "tier": tier as Any,
+            "tierOrder": tierOrder.map { $0 as Any } ?? NSNull(),
             "updatedAt": Timestamp(date: Date()),
         ])
     }
