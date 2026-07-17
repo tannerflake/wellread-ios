@@ -59,6 +59,7 @@ The notification should:
 
 **Title or leading line concept**
 - `Tanner gave Sapiens a 9.2`
+- If the book was marked read without a rating/tier, drop the score entirely: `Tanner read Sapiens` (never show a placeholder like `?`)
 
 **Body concept**
 - Start with a colon after the score, then show the review teaser
