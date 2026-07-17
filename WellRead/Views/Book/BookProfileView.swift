@@ -984,6 +984,23 @@ struct BookProfileView: View {
                 }
                 .buttonStyle(.springPress)
             }
+            if onConfirmRead != nil {
+                Button(action: {
+                    if isOnReadList {
+                        showRereadPrompt = true
+                        return
+                    }
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showMarkAsReadModal = true }
+                }) {
+                    actionLabel(
+                        isOnReadList ? "READ \u{2714}" : "READ",
+                        foreground: isOnReadList ? Theme.background : Theme.queueTintLabel,
+                        background: isOnReadList ? Theme.textTertiary : Theme.queueTint,
+                        border: .clear
+                    )
+                }
+                .buttonStyle(.springPress)
+            }
             if onWantToRead != nil || onRemoveFromQueue != nil {
                 Group {
                     if isInQueue && onRemoveFromQueue != nil {
@@ -999,34 +1016,18 @@ struct BookProfileView: View {
                         .disabled(true)
                     } else {
                         Button(action: { onWantToRead?() }) {
-                            actionLabel("QUEUE", foreground: Theme.queueTintLabel, background: Theme.queueTint, border: .clear)
+                            // When a shelf CTA is the primary action, QUEUE steps down to an
+                            // outline style so there's a single clear main button.
+                            actionLabel(
+                                "QUEUE",
+                                foreground: showShelfAction ? Theme.textSecondary : Theme.background,
+                                background: showShelfAction ? Theme.surface : Theme.accent,
+                                border: showShelfAction ? Theme.chrome.opacity(0.5) : .clear
+                            )
                         }
                         .buttonStyle(.springPress)
                     }
                 }
-            }
-            if onConfirmRead != nil {
-                Button(action: {
-                    if isOnReadList {
-                        showRereadPrompt = true
-                        return
-                    }
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showMarkAsReadModal = true }
-                }) {
-                    // When a shelf CTA is the primary action, READ steps down to an outline
-                    // style so there's a single clear main button.
-                    actionLabel(
-                        isOnReadList ? "READ \u{2714}" : "READ",
-                        foreground: isOnReadList
-                            ? Theme.background
-                            : (showShelfAction ? Theme.textSecondary : Theme.background),
-                        background: isOnReadList
-                            ? Theme.textTertiary
-                            : (showShelfAction ? Theme.surface : Theme.accent),
-                        border: showShelfAction && !isOnReadList ? Theme.chrome.opacity(0.5) : .clear
-                    )
-                }
-                .buttonStyle(.springPress)
             }
         }
     }

@@ -14,6 +14,10 @@ struct DiscoverView: View {
     @State private var selectedBookForProfile: Book?
     @State private var bookWeCameFrom: Book?
     @State private var showCriteriaEditor = false
+    /// Books the user has acted on in Discover (pass/queue/read). Each action
+    /// advances to a fresh suggestion, so every increment is a distinct book.
+    /// DiscoverCriteriaStrip reads this to hold its tune callout until 3.
+    @AppStorage("discoverActionedBookCount") private var actionedBookCount = 0
 
     var body: some View {
         NavigationStack {
@@ -179,16 +183,19 @@ struct DiscoverView: View {
 
     private func performNotInterested(_ book: Book) {
         appState.addDismissedBookId(book.id)
+        actionedBookCount += 1
         appState.advanceDiscoverSuggestion()
     }
 
     private func performWantToRead(_ book: Book) {
         appState.addToWantToRead(book: book)
+        actionedBookCount += 1
         appState.advanceDiscoverSuggestion()
     }
 
     private func performHaveRead(_ book: Book, dateFinished: Date, rating: Double?, postToFeed: Bool, caption: String?, tier: String?) {
         appState.addAsRead(book: book, dateFinished: dateFinished, rating: rating, postToFeed: postToFeed, caption: caption, tier: tier)
+        actionedBookCount += 1
         appState.advanceDiscoverSuggestion()
     }
 }
