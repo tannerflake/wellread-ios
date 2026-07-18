@@ -35,21 +35,29 @@ enum DiscoverSuggestionsService {
         return sessionFilteredTitles
     }
 
-    /// Fetches up to 5 suggested books, excluding read, queue, and dismissed. Call from background; updates go to caller via callback/state.
+    /// Fetches up to 5 suggested books, excluding the user's library and dismissed picks. Call from background; updates go to caller via callback/state.
     /// `readingInterestTags` are onboarding picks from `Tags.csv` (same universe as book tags); used only when `criteria.isDefault`.
-    /// `queuedTitles` are want-to-read titles, included in the prompt's avoid list so Claude doesn't waste picks on them.
-    static func fetchBatch(readBooks: [UserBook], queueBookIds: Set<String>, dismissedBookIds: Set<String>, queuedTitles: [String] = [], readingInterestTags: [String], criteria: DiscoverCriteria) async -> [Book] {
-        let readBookIds = Set(readBooks.map(\.bookId))
-        let excludedIds = readBookIds.union(queueBookIds).union(dismissedBookIds)
+    /// `unreadLibraryBooks` are queued + currently-reading entries, included in the prompt's avoid list so Claude doesn't waste picks on them.
+    static func fetchBatch(readBooks: [UserBook], unreadLibraryBooks: [UserBook], dismissedBookIds: Set<String>, readingInterestTags: [String], criteria: DiscoverCriteria) async -> [Book] {
+        let libraryEntries = readBooks + unreadLibraryBooks
+        let excludedIds = Set(libraryEntries.map(\.bookId)).union(dismissedBookIds)
+        // Google can resolve a suggested title to a different edition (different volume id)
+        // than the one on the user's shelf, so an id check alone lets already-read books
+        // through — also match at the work level (ISBN equivalence, normalized title+author).
+        let libraryBooks = libraryEntries.compactMap(\.book)
+        let isExcluded: (Book) -> Bool = { candidate in
+            excludedIds.contains(candidate.id) || libraryBooks.contains { LibraryDedup.isSameWork($0, candidate) }
+        }
         let excludedTitles = readBooks.compactMap { $0.book?.title }
+        let queuedTitles = unreadLibraryBooks.compactMap { $0.book?.title }
         if ApiKeys.claude != nil {
-            return await fetchBatchViaClaude(readBooks: readBooks, excludedTitles: Array(excludedTitles), queuedTitles: queuedTitles, excludedIds: excludedIds, readingInterestTags: readingInterestTags, criteria: criteria)
+            return await fetchBatchViaClaude(readBooks: readBooks, excludedTitles: excludedTitles, queuedTitles: queuedTitles, isExcluded: isExcluded, readingInterestTags: readingInterestTags, criteria: criteria)
         } else {
-            return await fetchBatchViaGoogleOnly(readBooks: readBooks, excludedIds: excludedIds, readTitles: excludedTitles, readingInterestTags: readingInterestTags, criteria: criteria)
+            return await fetchBatchViaGoogleOnly(readBooks: readBooks, isExcluded: isExcluded, readTitles: excludedTitles, readingInterestTags: readingInterestTags, criteria: criteria)
         }
     }
 
-    private static func fetchBatchViaClaude(readBooks: [UserBook], excludedTitles: [String], queuedTitles: [String], excludedIds: Set<String>, readingInterestTags: [String], criteria: DiscoverCriteria) async -> [Book] {
+    private static func fetchBatchViaClaude(readBooks: [UserBook], excludedTitles: [String], queuedTitles: [String], isExcluded: (Book) -> Bool, readingInterestTags: [String], criteria: DiscoverCriteria) async -> [Book] {
         var avoidTitles = Array(excludedTitles.prefix(40))
         avoidTitles += queuedTitles.prefix(20)
         avoidTitles += filteredTitlesSnapshot()
@@ -88,7 +96,7 @@ enum DiscoverSuggestionsService {
                 for line in lines.prefix(5) {
                     let query = line.replacingOccurrences(of: " by ", with: " ")
                     guard let first = try? await GoogleBooksService.shared.search(query: String(query)).first else { continue }
-                    if excludedIds.contains(first.id) {
+                    if isExcluded(first) {
                         filteredThisRound.append(line)
                     } else {
                         books.append(first)
@@ -105,7 +113,7 @@ enum DiscoverSuggestionsService {
         }
         let q = googleFallbackQuery(readBooks: readBooks, readTitles: excludedTitles, readingInterestTags: readingInterestTags, criteria: criteria)
         let fallback = (try? await GoogleBooksService.shared.search(query: q))?
-            .filter { !excludedIds.contains($0.id) } ?? []
+            .filter { !isExcluded($0) } ?? []
         return Array(fallback.prefix(5))
     }
 
@@ -148,11 +156,11 @@ enum DiscoverSuggestionsService {
         return sections
     }
 
-    private static func fetchBatchViaGoogleOnly(readBooks: [UserBook], excludedIds: Set<String>, readTitles: [String], readingInterestTags: [String], criteria: DiscoverCriteria) async -> [Book] {
+    private static func fetchBatchViaGoogleOnly(readBooks: [UserBook], isExcluded: (Book) -> Bool, readTitles: [String], readingInterestTags: [String], criteria: DiscoverCriteria) async -> [Book] {
         try? await Task.sleep(nanoseconds: 800_000_000)
         let query = googleFallbackQuery(readBooks: readBooks, readTitles: readTitles, readingInterestTags: readingInterestTags, criteria: criteria)
         let books = (try? await GoogleBooksService.shared.search(query: query))?
-            .filter { !excludedIds.contains($0.id) } ?? []
+            .filter { !isExcluded($0) } ?? []
         return Array(books.prefix(5))
     }
 

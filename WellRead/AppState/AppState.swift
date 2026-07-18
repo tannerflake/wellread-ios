@@ -885,16 +885,15 @@ final class AppState: ObservableObject {
             guard let self = self else { return }
             let batch = await DiscoverSuggestionsService.fetchBatch(
                 readBooks: self.readBooks,
-                queueBookIds: self.queueBookIds,
+                unreadLibraryBooks: self.unreadLibraryBooks,
                 dismissedBookIds: self.dismissedBookIds,
-                queuedTitles: self.queuedBookTitles,
                 readingInterestTags: self.currentUser?.readingInterestTags ?? [],
                 criteria: self.discoverCriteria
             )
             await MainActor.run {
                 guard generation == self.discoverFetchGeneration else { return }
                 self.isLoadingDiscoverSuggestions = false
-                let filtered = batch.filter { !self.shouldExcludeFromDiscover(bookId: $0.id) }
+                let filtered = batch.filter { !self.shouldExcludeFromDiscover($0) }
                 self.discoverSuggestionQueue.append(contentsOf: filtered)
                 self.popNextDiscoverSuggestion()
                 self.discoverLoadCameUpEmpty = (self.discoverCurrentSuggestion == nil)
@@ -913,32 +912,29 @@ final class AppState: ObservableObject {
         popNextDiscoverSuggestion()
     }
 
-    /// Book IDs in the user's queue (want to read).
-    private var queueBookIds: Set<String> {
-        Set(userBooks.filter { $0.status == .wantToRead }.map(\.bookId))
+    /// Library entries that aren't finished reads (queue + currently reading), fed into the discover prompt's avoid list.
+    private var unreadLibraryBooks: [UserBook] {
+        userBooks.filter { $0.status == .wantToRead || $0.status == .currentlyReading }
     }
 
-    /// Titles in the user's queue, fed into the discover prompt's avoid list.
-    private var queuedBookTitles: [String] {
-        userBooks.filter { $0.status == .wantToRead }.compactMap { $0.book?.title }
-    }
-
-    /// True if this book should never be shown in Discover (read, queue, or passed).
-    private func shouldExcludeFromDiscover(bookId: String) -> Bool {
-        isBookOnReadList(bookId: bookId) || isBookInQueue(bookId: bookId) || dismissedBookIds.contains(bookId)
+    /// True if this book should never be shown in Discover: any edition of it is already in the
+    /// user's library (work-level match, since suggestions can resolve to a different volume id
+    /// than the shelved edition), or the user passed on it.
+    private func shouldExcludeFromDiscover(_ book: Book) -> Bool {
+        userBook(sameWorkAs: book) != nil || dismissedBookIds.contains(book.id)
     }
 
     /// Remove any books from current suggestion and queue that are now read, queued, or dismissed.
     private func dropExcludedFromDiscoverQueue() {
-        if let current = discoverCurrentSuggestion, shouldExcludeFromDiscover(bookId: current.id) {
+        if let current = discoverCurrentSuggestion, shouldExcludeFromDiscover(current) {
             discoverCurrentSuggestion = nil
         }
-        discoverSuggestionQueue.removeAll { shouldExcludeFromDiscover(bookId: $0.id) }
+        discoverSuggestionQueue.removeAll { shouldExcludeFromDiscover($0) }
     }
 
     /// Set current suggestion to first in queue and remove it; trigger background fetch if queue empty.
     private func popNextDiscoverSuggestion() {
-        while let first = discoverSuggestionQueue.first, shouldExcludeFromDiscover(bookId: first.id) {
+        while let first = discoverSuggestionQueue.first, shouldExcludeFromDiscover(first) {
             discoverSuggestionQueue.removeFirst()
         }
         if discoverSuggestionQueue.isEmpty {
@@ -959,15 +955,14 @@ final class AppState: ObservableObject {
             guard let self = self else { return }
             let batch = await DiscoverSuggestionsService.fetchBatch(
                 readBooks: self.readBooks,
-                queueBookIds: self.queueBookIds,
+                unreadLibraryBooks: self.unreadLibraryBooks,
                 dismissedBookIds: self.dismissedBookIds,
-                queuedTitles: self.queuedBookTitles,
                 readingInterestTags: self.currentUser?.readingInterestTags ?? [],
                 criteria: self.discoverCriteria
             )
             await MainActor.run {
                 guard generation == self.discoverFetchGeneration else { return }
-                let filtered = batch.filter { !self.shouldExcludeFromDiscover(bookId: $0.id) }
+                let filtered = batch.filter { !self.shouldExcludeFromDiscover($0) }
                 self.discoverSuggestionQueue.append(contentsOf: filtered)
             }
         }
