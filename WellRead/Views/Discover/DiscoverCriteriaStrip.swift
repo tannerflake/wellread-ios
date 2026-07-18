@@ -23,6 +23,16 @@ struct DiscoverCriteriaStrip: View {
     /// One-time onboarding callout on the adjust button; sticks around until the
     /// user actually opens the criteria editor, then never shows again.
     @AppStorage("hasSeenDiscoverTuneCallout") private var hasSeenTuneCallout = false
+    /// How many Discover suggestions the user has acted on (pass/queue/read).
+    /// Incremented by DiscoverView; the callout waits until the user has acted
+    /// on a few books so it lands once they've actually used the feed.
+    @AppStorage("discoverActionedBookCount") private var actionedBookCount = 0
+
+    /// Callout appears only after the user has passed/queued/read three books,
+    /// and disappears for good once they've opened the editor.
+    private var showTuneCallout: Bool {
+        !hasSeenTuneCallout && actionedBookCount >= 3
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -94,7 +104,7 @@ struct DiscoverCriteriaStrip: View {
         .buttonStyle(.plain)
         .accessibilityLabel("Adjust suggestion criteria")
         .overlay(alignment: .topTrailing) {
-            if !hasSeenTuneCallout {
+            if showTuneCallout {
                 tuneCallout
                     .fixedSize()
                     .offset(y: 40)
