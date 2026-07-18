@@ -21,13 +21,14 @@ function firstNameFromUser(data: DocumentData | undefined): string {
   return dn.split(/\s+/)[0] ?? "Someone";
 }
 
-function formatRating(r: unknown): string {
+/** Null when the post has no usable rating (e.g. marked read without ranking). */
+function formatRating(r: unknown): string | null {
   if (typeof r === "number" && Number.isFinite(r)) return r.toFixed(1);
   if (typeof r === "string") {
     const n = parseFloat(r);
     if (Number.isFinite(n)) return n.toFixed(1);
   }
-  return "?";
+  return null;
 }
 
 /** First ~8 words; ellipsis if more remains in source. */
@@ -313,10 +314,16 @@ export const onFriendReviewPosted = onDocumentCreated(
     const rating = formatRating(data.rating);
     const caption = (data.caption as string | undefined)?.trim() ?? "";
     const teaser = teaser8Words(caption);
-    const titleLine = `${first} gave ${bookPart} a ${rating}`;
+    const titleLine = rating !== null
+      ? `${first} gave ${bookPart} a ${rating}`
+      : `${first} read ${bookPart}`;
 
     const title = titleLine;
-    const body = teaser ? teaser : "Open SPINE to read the full review.";
+    const body = teaser
+      ? teaser
+      : rating !== null
+        ? "Open SPINE to read the full review."
+        : "See what they're reading on SPINE.";
 
     const recipients = (await recipientUidsWhoFollow(authorId))
       .filter((uid) => hiddenAccountCanNotify(authorId, uid));
