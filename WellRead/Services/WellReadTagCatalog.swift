@@ -114,14 +114,14 @@ final class WellReadTagCatalog {
     static let onboardingCategoryPriority: [String] = [
         "Format",
         "Genre",
+        "Reading Experience",
+        "Pacing / Style",
         "Nonfiction Topics",
         "Story Type",
         "Tone / Vibe",
         "Setting / World",
         "Character / Dynamics",
-        "Pacing / Style",
         "Themes",
-        "Reading Experience",
     ]
 
     /// Sections for multi-select onboarding (same tags as book profiles, grouped for scanning).
