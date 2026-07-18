@@ -24,13 +24,32 @@ struct OpenLibraryDoc: Codable {
     let firstPublishYear: Int?
     let numberOfPagesMedian: Int?
     let subject: [String]?
+    let editions: OpenLibraryEditions?
 
     enum CodingKeys: String, CodingKey {
-        case key, title, subject
+        case key, title, subject, editions
         case authorName = "author_name"
         case coverI = "cover_i"
         case firstPublishYear = "first_publish_year"
         case numberOfPagesMedian = "number_of_pages_median"
+    }
+}
+
+/// The `editions` sub-search on a work doc: the editions of the work that matched
+/// the query itself (the exact edition for an `isbn:` query), best-first for the
+/// requested `lang`.
+struct OpenLibraryEditions: Codable {
+    let docs: [OpenLibraryEditionDoc]?
+}
+
+struct OpenLibraryEditionDoc: Codable {
+    let title: String?
+    let coverI: Int?
+    let language: [String]?        // ISO 639-2 codes, e.g. ["eng"]
+
+    enum CodingKeys: String, CodingKey {
+        case title, language
+        case coverI = "cover_i"
     }
 }
 
@@ -72,12 +91,20 @@ final class OpenLibraryService {
         return map(doc: doc, isbn: digits)
     }
 
+    /// ISO 639-1 code Open Library uses to decide which edition of a work
+    /// represents it in the `editions` sub-doc. English fallback — the
+    /// catalog's dominant language.
+    private var preferredLanguage: String {
+        Locale.current.language.languageCode?.identifier.lowercased() ?? "en"
+    }
+
     private func fetchDocs(q: String, limit: Int) async throws -> [OpenLibraryDoc] {
         var comp = URLComponents(string: "https://openlibrary.org/search.json")!
         comp.queryItems = [
             URLQueryItem(name: "q", value: q),
             URLQueryItem(name: "limit", value: "\(limit)"),
-            URLQueryItem(name: "fields", value: "key,title,author_name,cover_i,first_publish_year,number_of_pages_median,subject")
+            URLQueryItem(name: "lang", value: preferredLanguage),
+            URLQueryItem(name: "fields", value: "key,title,author_name,cover_i,first_publish_year,number_of_pages_median,subject,editions,editions.title,editions.cover_i,editions.language")
         ]
         guard let url = comp.url else { return [] }
         let (data, response): (Data, URLResponse)
@@ -98,11 +125,22 @@ final class OpenLibraryService {
     /// Map a work doc to the app model. `id` is the ISBN digits when the caller knows
     /// them (Book.id already sanctions ISBN ids), else the OL work key (e.g. "OL17075811W").
     private func map(doc: OpenLibraryDoc, isbn: String?) -> Book? {
-        guard let title = doc.title, !title.isEmpty else { return nil }
+        // The work-level title/cover reflect whichever edition the OL work record
+        // was created from — frequently a Spanish/French translation even when the
+        // queried ISBN is English. The `editions` sub-doc holds the edition that
+        // matched the query itself (the exact edition for `isbn:` lookups, the
+        // preferred-language edition for free-text search), so its title/cover
+        // describe the book the user actually has.
+        let edition = doc.editions?.docs?.first
+        var title = doc.title ?? ""
+        if let editionTitle = edition?.title, !editionTitle.isEmpty {
+            title = editionTitle
+        }
+        guard !title.isEmpty else { return nil }
         let workId = doc.key?.split(separator: "/").last.map(String.init)
         guard let id = isbn ?? workId else { return nil }
         var cover = ""
-        if let coverId = doc.coverI {
+        if let coverId = edition?.coverI ?? doc.coverI {
             cover = "https://covers.openlibrary.org/b/id/\(coverId)-L.jpg?default=false"
         }
         var published: Date?
