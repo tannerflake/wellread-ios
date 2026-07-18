@@ -98,7 +98,7 @@ struct DiscoverCriteriaEditorSheet: View {
 
     private var seedBooksSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Pick a favorite and we'll suggest books with the same vibe.")
+            Text("Select books from your library")
                 .font(Theme.callout())
                 .foregroundStyle(Theme.textSecondary)
             if appState.readBooks.isEmpty {
@@ -140,7 +140,7 @@ struct DiscoverCriteriaEditorSheet: View {
                 }
             }
         }
-        .hingeSectionCard(title: "Start from books you loved")
+        .hingeSectionCard(title: "Give me a book like...")
     }
 
     /// Cover-shaped dashed "add" tile shown after the chosen seeds.
