@@ -24,11 +24,16 @@ final class BookBlendService {
 
     // MARK: - Repo
 
-    func listenBlend(pairId: String, onUpdate: @escaping (BookBlend?) -> Void) -> ListenerRegistration {
-        db.collection(collectionName).document(pairId).addSnapshotListener { snapshot, _ in
+    /// `isFromCache` is true for snapshots served from local persistence — callers
+    /// that route UI off blend state should wait for (or correct to) server truth.
+    /// Metadata changes are included so the server-confirmed snapshot always
+    /// delivers, even when its data matches the cached one.
+    func listenBlend(pairId: String, onUpdate: @escaping (BookBlend?, _ isFromCache: Bool) -> Void) -> ListenerRegistration {
+        db.collection(collectionName).document(pairId).addSnapshotListener(includeMetadataChanges: true) { snapshot, _ in
             guard let snapshot else { return }
             let blend = snapshot.data().flatMap { BookBlend.from(data: $0, docId: snapshot.documentID) }
-            DispatchQueue.main.async { onUpdate(blend) }
+            let fromCache = snapshot.metadata.isFromCache
+            DispatchQueue.main.async { onUpdate(blend, fromCache) }
         }
     }
 
@@ -434,7 +439,9 @@ final class BookBlendService {
         \(nameB)'s shelf (best first):
         \(shelfSummary(libraryB))
         """
-        guard let text = try? await ClaudeService.shared.sendMessage(system: system, userMessage: user, maxTokens: 1600) else {
+        // Time-boxed: the accepter is staring at the "Blending" screen. Past 30s
+        // the deterministic fallback content ships instead.
+        guard let text = try? await ClaudeService.shared.sendMessage(system: system, userMessage: user, maxTokens: 1600, timeout: 30) else {
             return nil
         }
         return parseAIContent(text, uidA: uidA, uidB: uidB)

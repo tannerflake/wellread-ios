@@ -51,7 +51,7 @@ final class AppState: ObservableObject {
     private let userRepo = UserRepository()
     private let recommendationRepo = RecommendationRepository()
     private var userBooksListener: ListenerRegistration?
-    private var feedListener: ListenerRegistration?
+    private var feedListener: FeedListenerHandle?
     private var recommendationsListener: ListenerRegistration?
     private var currentUserId: String?
 
@@ -60,8 +60,11 @@ final class AppState: ObservableObject {
 
     init() {}
 
-    /// Call when user signs in (with their Firebase uid). Loads cached library first for instant UI, then starts Firestore listener.
-    func startFirestoreListeners(uid: String) {
+    /// Call when user signs in (with their Firebase uid and the uids they follow).
+    /// Loads cached library first for instant UI, then starts Firestore listener.
+    /// RootView re-calls this whenever `appUser` changes (including after follow/
+    /// unfollow via `refreshAppUser`), which restarts the feed with the new graph.
+    func startFirestoreListeners(uid: String, following: [String]) {
         stopFirestoreListeners()
         currentUserId = uid
         dismissedBookIdsLoaded = false
@@ -89,7 +92,7 @@ final class AppState: ObservableObject {
                 }
             }
         }
-        feedListener = postRepo.listenFeed { [weak self] list in
+        feedListener = postRepo.listenFeed(authorIds: following + [uid]) { [weak self] list in
             self?.feedPosts = list
         }
         recommendationsListener = recommendationRepo.listenIncoming(userId: uid) { [weak self] list in

@@ -96,6 +96,12 @@ struct BookProfileView: View {
         shelfActionTitle != nil && onAddToShelf != nil && !isInQueue
     }
 
+    /// True when the book is on the user's currently-reading shelf — the READ
+    /// button becomes "FINISHED!" since that's what tapping it means mid-read.
+    private var isCurrentlyReading: Bool {
+        appState.userBooks.contains { $0.bookId == book.id && $0.status == .currentlyReading }
+    }
+
     /// Refresher is only offered for books the user has finished — that's the
     /// whole premise (full-spoiler recap), and it keeps the AI cost gated.
     private var hasReadBook: Bool {
@@ -1019,7 +1025,7 @@ struct BookProfileView: View {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showMarkAsReadModal = true }
                 }) {
                     actionLabel(
-                        isOnReadList ? "READ \u{2714}" : "READ",
+                        isOnReadList ? "READ \u{2714}" : (isCurrentlyReading ? "FINISHED!" : "READ"),
                         foreground: isOnReadList ? Theme.background : Theme.queueTintLabel,
                         background: isOnReadList ? Theme.textTertiary : Theme.queueTint,
                         border: .clear

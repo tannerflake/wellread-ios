@@ -59,16 +59,19 @@ final class ClaudeService {
     }
 
     /// Sends a user message and returns the assistant's text reply. Requires ApiKeys.claude.
-    func sendMessage(system: String? = nil, userMessage: String, maxTokens: Int = 1024) async throws -> String {
+    /// `timeout` caps the wait for the (non-streaming) response — callers with a user
+    /// staring at a spinner should pass one and fall back when it trips.
+    func sendMessage(system: String? = nil, userMessage: String, maxTokens: Int = 1024, timeout: TimeInterval? = nil) async throws -> String {
         try await sendConversation(
             system: system,
             messages: [.init(role: "user", content: userMessage)],
-            maxTokens: maxTokens
+            maxTokens: maxTokens,
+            timeout: timeout
         )
     }
 
     /// Multi-turn variant: sends alternating user/assistant turns (e.g. refresher Q&A follow-ups).
-    func sendConversation(system: String? = nil, messages: [ClaudeMessageRequest.Message], maxTokens: Int = 1024) async throws -> String {
+    func sendConversation(system: String? = nil, messages: [ClaudeMessageRequest.Message], maxTokens: Int = 1024, timeout: TimeInterval? = nil) async throws -> String {
         guard let key = ApiKeys.claude, !key.isEmpty else {
             throw NSError(domain: "ClaudeService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Claude API key not configured. Add CLAUDE_API_KEY to Secrets.plist."])
         }
@@ -77,7 +80,7 @@ final class ClaudeService {
         var lastError: Error?
         for model in modelsToTry {
             do {
-                return try await send(model: model, key: key, system: system, messages: messages, maxTokens: maxTokens)
+                return try await send(model: model, key: key, system: system, messages: messages, maxTokens: maxTokens, timeout: timeout)
             } catch {
                 lastError = error
                 let ns = error as NSError
@@ -90,9 +93,12 @@ final class ClaudeService {
         throw lastError ?? NSError(domain: "ClaudeService", code: -2, userInfo: [NSLocalizedDescriptionKey: "No model available."])
     }
 
-    private func send(model: String, key: String, system: String?, messages: [ClaudeMessageRequest.Message], maxTokens: Int) async throws -> String {
+    private func send(model: String, key: String, system: String?, messages: [ClaudeMessageRequest.Message], maxTokens: Int, timeout: TimeInterval? = nil) async throws -> String {
         var request = URLRequest(url: messagesURL)
         request.httpMethod = "POST"
+        // The response arrives as one body after generation, so the idle timeout
+        // effectively bounds total wait.
+        if let timeout { request.timeoutInterval = timeout }
         request.setValue(key, forHTTPHeaderField: "x-api-key")
         request.setValue(apiVersion, forHTTPHeaderField: "anthropic-version")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")

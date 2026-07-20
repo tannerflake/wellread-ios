@@ -190,7 +190,7 @@ struct UserLibraryDetailView: View {
 
     private func startBlendListener() {
         guard let me = authService.firebaseUser?.uid, me != userId, blendListener == nil else { return }
-        blendListener = BookBlendService.shared.listenBlend(pairId: BookBlend.pairId(me, userId)) { updated in
+        blendListener = BookBlendService.shared.listenBlend(pairId: BookBlend.pairId(me, userId)) { updated, _ in
             blend = updated
         }
     }
@@ -262,20 +262,48 @@ struct UserLibraryDetailView: View {
     private var otherUserAvatar: some View {
         Group {
             if let u = profileUser {
-                ZStack {
-                    if let urlString = u.profileImageURL, let url = URL(string: urlString) {
-                        CachedProfileImage(url: url, contentMode: .fill) {
-                            avatarPlaceholder(initial: avatarInitial(for: u))
+                if let me = authService.firebaseUser?.uid, me != userId {
+                    Menu {
+                        Button {
+                            Task { await toggleFollow() }
+                        } label: {
+                            Label(
+                                iFollowThem ? "Unfollow \(avatarMenuName(for: u))" : "Follow \(avatarMenuName(for: u))",
+                                systemImage: iFollowThem ? "person.badge.minus" : "person.badge.plus"
+                            )
                         }
-                    } else {
-                        avatarPlaceholder(initial: avatarInitial(for: u))
+                        .disabled(followActionInFlight)
+                    } label: {
+                        avatarCircle(for: u)
                     }
+                    .buttonStyle(.plain)
+                } else {
+                    avatarCircle(for: u)
+                        .allowsHitTesting(false)
                 }
-                .frame(width: 36, height: 36)
-                .clipShape(Circle())
-                .allowsHitTesting(false)
             }
         }
+    }
+
+    private func avatarCircle(for u: User) -> some View {
+        ZStack {
+            if let urlString = u.profileImageURL, let url = URL(string: urlString) {
+                CachedProfileImage(url: url, contentMode: .fill) {
+                    avatarPlaceholder(initial: avatarInitial(for: u))
+                }
+            } else {
+                avatarPlaceholder(initial: avatarInitial(for: u))
+            }
+        }
+        .frame(width: 36, height: 36)
+        .clipShape(Circle())
+    }
+
+    private func avatarMenuName(for user: User) -> String {
+        if let fn = user.firstName?.trimmingCharacters(in: .whitespacesAndNewlines), !fn.isEmpty {
+            return fn
+        }
+        return user.displayName
     }
 
     private func avatarInitial(for user: User) -> String {

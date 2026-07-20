@@ -202,8 +202,10 @@ struct BookBlendLandingView: View {
                 goneScreen
             }
 
-            // Close chip — the story page has its own dismiss affordances.
-            if phase != .generating, !isStory {
+            // Close chip — the story page has its own dismiss affordances. Kept
+            // during generation as an escape hatch: the accept Task owns its own
+            // copies, so generation finishes and saves even if the cover closes.
+            if !isStory {
                 VStack {
                     HStack {
                         Spacer()
@@ -237,25 +239,34 @@ struct BookBlendLandingView: View {
 
     private func startListening() {
         guard listener == nil else { return }
-        listener = BookBlendService.shared.listenBlend(pairId: blendId) { updated in
+        listener = BookBlendService.shared.listenBlend(pairId: blendId) { updated, isFromCache in
             blend = updated
-            route(updated)
+            route(updated, isFromCache: isFromCache)
         }
     }
 
     /// Local phases the listener must not stomp: generation in flight, or a story
-    /// already playing (a doc refresh mid-story would restart it).
-    private func route(_ updated: BookBlend?) {
-        if phase == .generating || isStory { return }
+    /// already playing (a doc refresh mid-story would restart it). Cache snapshots
+    /// can be stale, so they never lock a phase the server can't correct: a story
+    /// entered from cache is re-routed if the server later disagrees, and a
+    /// cached "no doc" stays on the loading spinner until the server confirms.
+    private func route(_ updated: BookBlend?, isFromCache: Bool) {
+        if phase == .generating { return }
+        if isStory {
+            // Same ready doc refreshing mid-story: keep playing. Server
+            // contradiction (e.g. the story came from a stale cache): re-route.
+            if isFromCache || updated?.status == .ready { return }
+        }
         guard let updated else {
-            phase = .gone
+            // A cached miss isn't truth — wait for the server before "gone".
+            if !isFromCache { phase = .gone }
             return
         }
         switch updated.status {
         case .ready:
             if let _ = updated.result {
                 phase = .story(updated)
-            } else {
+            } else if !isFromCache {
                 phase = .gone
             }
         case .pending:

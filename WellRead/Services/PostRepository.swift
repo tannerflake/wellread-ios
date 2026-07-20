@@ -8,29 +8,89 @@
 import Foundation
 import FirebaseFirestore
 
+/// The feed listener behind one-or-more snapshot registrations: Firestore `in`
+/// filters cap at 30 values, so a following list larger than that becomes
+/// several queries merged client-side.
+final class FeedListenerHandle {
+    fileprivate var registrations: [ListenerRegistration] = []
+
+    func remove() {
+        registrations.forEach { $0.remove() }
+        registrations = []
+    }
+}
+
+/// Merges per-chunk feed query results into one newest-first list. Hydration
+/// (book + author fetches) is async, so a chunk's older snapshot can finish
+/// after a newer one — generations guard against the stale write.
+private actor FeedChunkMerger {
+    private var postsByChunk: [Int: [Post]] = [:]
+    private var appliedGeneration: [Int: Int] = [:]
+    private let limit: Int
+    private let onUpdate: ([Post]) -> Void
+
+    init(limit: Int, onUpdate: @escaping ([Post]) -> Void) {
+        self.limit = limit
+        self.onUpdate = onUpdate
+    }
+
+    func update(chunk: Int, generation: Int, posts: [Post]) async {
+        guard generation > appliedGeneration[chunk, default: 0] else { return }
+        appliedGeneration[chunk] = generation
+        postsByChunk[chunk] = posts
+        let merged = Array(
+            postsByChunk.values
+                .flatMap { $0 }
+                .sorted { $0.createdAt > $1.createdAt }
+                .prefix(limit)
+        )
+        await MainActor.run { onUpdate(merged) }
+    }
+}
+
 final class PostRepository {
     private let db = FirestoreDatabase.firestore
     private let posts = "posts"
     private let bookRepo = BookRepository.shared
     private let userRepo = UserRepository()
 
-    /// Listens to feed: all users see all posts (early-days behavior; switch to following-based feed later).
-    func listenFeed(onUpdate: @escaping ([Post]) -> Void) -> ListenerRegistration {
-        db.collection(posts)
-            .order(by: "createdAt", descending: true)
-            .limit(to: 50)
-            .addSnapshotListener { [weak self] snapshot, _ in
-                guard let self = self, let snapshot = snapshot else { return }
-                Task {
-                    var list: [Post] = []
-                    for doc in snapshot.documents {
-                        if let uid = doc.data()["userId"] as? String, HiddenAccounts.isHiddenFromCurrentViewer(uid: uid) { continue }
-                        guard let post = await self.post(from: doc.data(), docId: doc.documentID) else { continue }
-                        list.append(post)
+    /// Listens to feed: posts authored by `authorIds` (the viewer + everyone they
+    /// follow), newest first. Query-time rather than fan-out, so following someone
+    /// retroactively surfaces their whole post history.
+    func listenFeed(authorIds: [String], onUpdate: @escaping ([Post]) -> Void) -> FeedListenerHandle {
+        let handle = FeedListenerHandle()
+        let ids = Array(Set(authorIds))
+        guard !ids.isEmpty else {
+            DispatchQueue.main.async { onUpdate([]) }
+            return handle
+        }
+        let chunks = stride(from: 0, to: ids.count, by: 30).map { Array(ids[$0..<min($0 + 30, ids.count)]) }
+        let merger = FeedChunkMerger(limit: 50, onUpdate: onUpdate)
+        for (chunkIndex, chunk) in chunks.enumerated() {
+            // Snapshot handlers for one query run serially on the main queue, so
+            // this counter assigns generations in snapshot order.
+            var latestGeneration = 0
+            let registration = db.collection(posts)
+                .whereField("userId", in: chunk)
+                .order(by: "createdAt", descending: true)
+                .limit(to: 50)
+                .addSnapshotListener { [weak self] snapshot, _ in
+                    guard let self = self, let snapshot = snapshot else { return }
+                    latestGeneration += 1
+                    let generation = latestGeneration
+                    Task {
+                        var list: [Post] = []
+                        for doc in snapshot.documents {
+                            if let uid = doc.data()["userId"] as? String, HiddenAccounts.isHiddenFromCurrentViewer(uid: uid) { continue }
+                            guard let post = await self.post(from: doc.data(), docId: doc.documentID) else { continue }
+                            list.append(post)
+                        }
+                        await merger.update(chunk: chunkIndex, generation: generation, posts: list)
                     }
-                    await MainActor.run { onUpdate(list) }
                 }
-            }
+            handle.registrations.append(registration)
+        }
+        return handle
     }
 
     /// Loads a single post by Firestore document id (UUID string).
@@ -42,25 +102,6 @@ final class PostRepository {
             return await post(from: data, docId: snapshot.documentID)
         } catch {
             return nil
-        }
-    }
-
-    /// One-shot feed fetch (same as listenFeed: all users see all posts).
-    func fetchFeed() async -> [Post] {
-        do {
-            let snapshot = try await db.collection(posts)
-                .order(by: "createdAt", descending: true)
-                .limit(to: 50)
-                .getDocuments()
-            var list: [Post] = []
-            for doc in snapshot.documents {
-                if let uid = doc.data()["userId"] as? String, HiddenAccounts.isHiddenFromCurrentViewer(uid: uid) { continue }
-                guard let post = await post(from: doc.data(), docId: doc.documentID) else { continue }
-                list.append(post)
-            }
-            return list
-        } catch {
-            return []
         }
     }
 

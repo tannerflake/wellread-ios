@@ -95,7 +95,7 @@ struct RootView: View {
                 appState.currentUser = user
                 appState.isAuthenticated = true
                 if let uid = authService.firebaseUser?.uid {
-                    appState.startFirestoreListeners(uid: uid)
+                    appState.startFirestoreListeners(uid: uid, following: user.following)
                 }
             } else if authService.firebaseUser == nil {
                 appState.signOut()
