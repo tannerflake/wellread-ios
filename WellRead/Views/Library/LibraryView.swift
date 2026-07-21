@@ -26,6 +26,9 @@ struct ProfileLibraryView: View {
     @State private var readTabDropTargeted = false
     @State private var queueTabDropTargeted = false
     @State private var showEditProfile = false
+    @State private var showDeleteAccountConfirm = false
+    @State private var isDeletingAccount = false
+    @State private var deleteAccountError: String?
     /// Set when the edit-profile sheet was opened by tapping the goal strip —
     /// the sheet scrolls to the book-goal field and focuses it.
     @State private var editProfileFocusesBookGoal = false
@@ -207,6 +210,38 @@ struct ProfileLibraryView: View {
             } message: {
                 if let msg = appState.pendingGoodreadsImportError {
                     Text(msg)
+                }
+            }
+            .alert("Delete your account?", isPresented: $showDeleteAccountConfirm) {
+                Button("Cancel", role: .cancel) {}
+                Button("Delete account", role: .destructive) {
+                    Task { await performAccountDeletion() }
+                }
+            } message: {
+                Text("This permanently deletes your account and all of your data — library, reviews, comments, likes, and follows. This can't be undone.")
+            }
+            .alert("Couldn't delete account", isPresented: Binding(
+                get: { deleteAccountError != nil },
+                set: { if !$0 { deleteAccountError = nil } }
+            )) {
+                Button("OK", role: .cancel) { deleteAccountError = nil }
+            } message: {
+                Text(deleteAccountError ?? "")
+            }
+            .overlay {
+                if isDeletingAccount {
+                    ZStack {
+                        Color.black.opacity(0.45).ignoresSafeArea()
+                        VStack(spacing: 12) {
+                            ProgressView()
+                                .tint(.white)
+                            Text("Deleting account…")
+                                .font(Theme.callout())
+                                .foregroundStyle(.white)
+                        }
+                        .padding(24)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                    }
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .spineHighlightTierBook)) { _ in
@@ -520,6 +555,9 @@ struct ProfileLibraryView: View {
                 Button("Sign out", role: .destructive) {
                     authService.signOut()
                 }
+                Button("Delete account", role: .destructive) {
+                    showDeleteAccountConfirm = true
+                }
             } label: {
                 ZStack {
                     if let urlString = user.profileImageURL, let url = URL(string: urlString) {
@@ -551,10 +589,25 @@ struct ProfileLibraryView: View {
                 Button("Sign out", role: .destructive) {
                     authService.signOut()
                 }
+                Button("Delete account", role: .destructive) {
+                    showDeleteAccountConfirm = true
+                }
             } label: {
                 Image(systemName: "ellipsis.circle")
                     .foregroundStyle(Theme.textSecondary)
             }
+        }
+    }
+
+    /// Runs the full deletion (Firestore data + Auth user via the `deleteAccount`
+    /// callable); on success the auth listener returns the app to the welcome screen.
+    private func performAccountDeletion() async {
+        isDeletingAccount = true
+        defer { isDeletingAccount = false }
+        do {
+            try await authService.deleteAccount()
+        } catch {
+            deleteAccountError = error.localizedDescription
         }
     }
 

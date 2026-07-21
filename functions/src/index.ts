@@ -1,4 +1,5 @@
 import { initializeApp, getApps } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
 import { onDocumentCreated, onDocumentUpdated, onDocumentWritten } from "firebase-functions/v2/firestore";
@@ -199,6 +200,76 @@ export const sendTestPushNotification = onCall(
     }
 
     return { ok: true, sent: tokens.length, type };
+  }
+);
+
+// MARK: Account deletion (App Store guideline 5.1.1(v))
+
+/** Deletes every document matched by `query` in batches; returns count deleted. */
+async function deleteByQuery(
+  query: FirebaseFirestore.Query,
+  batchSize = 300
+): Promise<number> {
+  let total = 0;
+  for (;;) {
+    const snap = await query.limit(batchSize).get();
+    if (snap.empty) break;
+    const batch = db.batch();
+    snap.docs.forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+    total += snap.size;
+    if (snap.size < batchSize) break;
+  }
+  return total;
+}
+
+/**
+ * Permanently deletes the caller's account: all Firestore data they own,
+ * references to them in other users' following lists, and finally the
+ * Firebase Auth user. Client signs out locally after this resolves.
+ */
+export const deleteAccount = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    const uid = request.auth?.uid;
+    if (!uid) {
+      throw new HttpsError("unauthenticated", "Sign in required");
+    }
+    logger.info("deleteAccount start", { uid });
+
+    // Posts authored by the user, plus comments/likes attached to those posts.
+    const postsSnap = await db.collection("posts").where("userId", "==", uid).get();
+    for (const post of postsSnap.docs) {
+      await deleteByQuery(db.collection("comments").where("postId", "==", post.id));
+      await deleteByQuery(db.collection("postLikes").where("postId", "==", post.id));
+      await post.ref.delete();
+    }
+
+    // Content the user created on other people's posts / shared state.
+    await deleteByQuery(db.collection("comments").where("userId", "==", uid));
+    await deleteByQuery(db.collection("postLikes").where("userId", "==", uid));
+    await deleteByQuery(db.collection("userBooks").where("userId", "==", uid));
+    await deleteByQuery(db.collection("recommendations").where("fromUserId", "==", uid));
+    await deleteByQuery(db.collection("recommendations").where("toUserId", "==", uid));
+    await deleteByQuery(db.collection("bookBlends").where("userIds", "array-contains", uid));
+    await deleteByQuery(db.collection("dismissedSuggestions").where("userId", "==", uid));
+    await deleteByQuery(db.collection("handleClaims").where("uid", "==", uid));
+
+    // Remove the user from other members' following lists.
+    const followersSnap = await db
+      .collection("users")
+      .where("following", "array-contains", uid)
+      .get();
+    for (const follower of followersSnap.docs) {
+      await follower.ref.update({ following: FieldValue.arrayRemove(uid) });
+    }
+
+    // User doc + subcollections (fcmTokens etc.), then the Auth account itself.
+    await db.recursiveDelete(db.collection("users").doc(uid));
+    await getAuth(app).deleteUser(uid);
+
+    logger.info("deleteAccount done", { uid });
+    return { ok: true };
   }
 );
 

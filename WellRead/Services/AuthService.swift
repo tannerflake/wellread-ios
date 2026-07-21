@@ -9,6 +9,7 @@ import Foundation
 import SwiftUI
 import FirebaseCore
 import FirebaseAuth
+import FirebaseFunctions
 import FirebaseMessaging
 import AuthenticationServices
 import CryptoKit
@@ -212,6 +213,16 @@ final class AuthService: ObservableObject {
         }
     }
 
+    /// Creates a fresh email/password account (reviewer flow) and signs it in.
+    /// The new user then lands in the normal profile-completion onboarding.
+    func createAccountWithEmail(_ email: String, password: String) async throws {
+        authError = nil
+        _ = try await Auth.auth().createUser(withEmail: email.trimmingCharacters(in: .whitespacesAndNewlines), password: password)
+        if let u = Auth.auth().currentUser {
+            await loadOrCreateAppUser(firebaseUser: u)
+        }
+    }
+
     /// Hidden welcome-screen login: tap book icon 5×. Uses `TEST_ACCOUNT_EMAIL` / `TEST_ACCOUNT_PASSWORD` from Secrets.plist.
     func signInWithConfiguredTestAccount() async {
         authError = nil
@@ -224,6 +235,39 @@ final class AuthService: ObservableObject {
         } catch {
             authError = error.localizedDescription
         }
+    }
+
+    // MARK: - Account Deletion (App Store guideline 5.1.1(v))
+
+    /// Permanently deletes the signed-in account. Server-side (`deleteAccount`
+    /// callable) removes all Firestore data and the Auth user — the Admin SDK
+    /// path avoids Firebase's requires-recent-login error on `user.delete()`.
+    /// Throws so the UI can show the failure and let the user retry.
+    func deleteAccount() async throws {
+        guard let user = firebaseUser else {
+            throw NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Not signed in."])
+        }
+
+        // Sign in with Apple accounts: revoke the Apple token so SPINE stops
+        // appearing under the user's Apple ID sign-ins (required by Apple when
+        // deleting SIWA accounts). Needs a fresh Apple authorization; if the
+        // user cancels that sheet, deletion still proceeds.
+        if user.providerData.contains(where: { $0.providerID == "apple.com" }) {
+            if let code = await AppleReauthorizationController.requestAuthorizationCode() {
+                try? await Auth.auth().revokeToken(withAuthorizationCode: code)
+            }
+        }
+
+        _ = try await Functions.functions(region: "us-central1")
+            .httpsCallable("deleteAccount")
+            .call([:])
+
+        // The Auth user is gone server-side; clear the local session so the
+        // auth listener flips the app back to the welcome screen.
+        authError = nil
+        try? Auth.auth().signOut()
+        GIDSignIn.sharedInstance.signOut()
+        try? await Messaging.messaging().deleteToken()
     }
 
     // MARK: - Sign Out
@@ -277,5 +321,53 @@ final class AuthService: ObservableObject {
             return clientID
         }
         return nil
+    }
+}
+
+/// Runs a bare Sign in with Apple request during account deletion to obtain a
+/// fresh authorization code for `Auth.revokeToken(withAuthorizationCode:)`.
+/// Resolves to nil on cancel or error — callers treat revocation as best-effort.
+@MainActor
+private final class AppleReauthorizationController: NSObject, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
+    /// Keeps the delegate alive for the duration of the authorization flow.
+    private static var active: AppleReauthorizationController?
+    private var continuation: CheckedContinuation<String?, Never>?
+
+    static func requestAuthorizationCode() async -> String? {
+        await withCheckedContinuation { continuation in
+            let helper = AppleReauthorizationController()
+            helper.continuation = continuation
+            active = helper
+            let request = ASAuthorizationAppleIDProvider().createRequest()
+            request.requestedScopes = []
+            let controller = ASAuthorizationController(authorizationRequests: [request])
+            controller.delegate = helper
+            controller.presentationContextProvider = helper
+            controller.performRequests()
+        }
+    }
+
+    func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
+        let code = (authorization.credential as? ASAuthorizationAppleIDCredential)
+            .flatMap(\.authorizationCode)
+            .flatMap { String(data: $0, encoding: .utf8) }
+        finish(code)
+    }
+
+    func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
+        finish(nil)
+    }
+
+    func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .first { $0.isKeyWindow } ?? ASPresentationAnchor()
+    }
+
+    private func finish(_ code: String?) {
+        continuation?.resume(returning: code)
+        continuation = nil
+        Self.active = nil
     }
 }

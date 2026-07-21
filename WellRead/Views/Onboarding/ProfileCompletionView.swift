@@ -206,17 +206,22 @@ struct ProfileCompletionView: View {
                         }
                     }
                     .id(Self.bookGoalFieldID)
-                    VStack(alignment: .leading, spacing: 4) {
-                        labeledField(title: "Phone number") {
-                            TextField("(555) 555-0199", text: $phoneText)
-                                .textContentType(.telephoneNumber)
-                                .keyboardType(.phonePad)
-                                .textFieldStyle(.plain)
-                                .focused($focusedField, equals: .phone)
+                    // Onboarding must not ask for a phone number (App Store guideline
+                    // 5.1.1(v): personal info that isn't core functionality can't look
+                    // required). Offered only in Edit profile, clearly optional.
+                    if mode == .edit {
+                        VStack(alignment: .leading, spacing: 4) {
+                            labeledField(title: "Phone number (optional)") {
+                                TextField("(555) 555-0199", text: $phoneText)
+                                    .textContentType(.telephoneNumber)
+                                    .keyboardType(.phonePad)
+                                    .textFieldStyle(.plain)
+                                    .focused($focusedField, equals: .phone)
+                            }
+                            Text("Only used so friends who sync their contacts can find you on SPINE. You can leave this blank.")
+                                .font(Theme.caption())
+                                .foregroundStyle(Theme.textTertiary)
                         }
-                        Text("So friends who sync their contacts can find you on SPINE.")
-                            .font(Theme.caption())
-                            .foregroundStyle(Theme.textTertiary)
                     }
                 }
 
@@ -595,10 +600,7 @@ struct ProfileCompletionView: View {
         guard !ProfileHandleRules.reservedHandles.contains(normalizedHandle) else { return false }
         guard handleAvailable == true else { return false }
         guard goalEntryIsValid else { return false }
-        if mode == .onboarding {
-            let url = profileUserForAvatar?.profileImageURL?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            guard !url.isEmpty else { return false }
-        }
+        // Profile photo is encouraged but never required (guideline 5.1.1(v)).
         return true
     }
 
@@ -656,7 +658,7 @@ struct ProfileCompletionView: View {
         isSubmitting = true
         Task {
             do {
-                await savePhoneNumberIfNeeded()
+                // No phone here: onboarding doesn't collect it (guideline 5.1.1(v)).
                 try await authService.completeProfileSetup(
                     firstName: firstName.trimmingCharacters(in: .whitespacesAndNewlines),
                     lastName: lastName.trimmingCharacters(in: .whitespacesAndNewlines),
