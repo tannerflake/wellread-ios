@@ -809,7 +809,11 @@ struct GoodreadsImportView: View {
                         if goodreadsLoginDone {
                             GridRow {
                                 stepNumberBadge(2, done: false, active: false)
-                                stepBody("Tap “Get my Goodreads export”, then “Export Library”, then the “Your export from…” link — SPINE takes it from there.")
+                                stepBody(
+                                    Text("Tap “Get my Goodreads export”, then “Export Library”, then the ")
+                                        + GoodreadsExportLinkMock.text
+                                        + Text(" link — SPINE takes it from there.")
+                                )
                             }
                         }
                     }
@@ -887,7 +891,11 @@ struct GoodreadsImportView: View {
     }
 
     private func stepBody(_ text: String, dimmed: Bool = false) -> some View {
-        Text(text)
+        stepBody(Text(text), dimmed: dimmed)
+    }
+
+    private func stepBody(_ text: Text, dimmed: Bool = false) -> some View {
+        text
             .font(Theme.callout())
             .foregroundStyle(dimmed ? Theme.textTertiary : Theme.textSecondary)
             .multilineTextAlignment(.leading)

@@ -718,6 +718,24 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Deletes one of the current user's feed posts (with its likes and comments), independent of
+    /// library state — the post may be orphaned (its book was removed from the read shelf) and must
+    /// still be deletable. Leaves any `UserBook` untouched. Returns an error message on failure.
+    func deleteFeedPost(post: Post) async -> String? {
+        guard let uid = currentUserId, post.userId == uid else { return "You can only delete your own posts." }
+        do {
+            try await postRepo.deletePostCascade(postId: post.id.uuidString)
+            await MainActor.run {
+                likedPostIds.remove(post.id.uuidString)
+                feedPosts.removeAll { $0.id == post.id }
+                ToastCenter.shared.show(.postDeleted())
+            }
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
     // MARK: - Goodreads import
 
     /// Outcome of importing one Goodreads row. `failed` (write/network error) is

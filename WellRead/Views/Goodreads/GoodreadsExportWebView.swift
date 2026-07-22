@@ -20,6 +20,28 @@
 import SwiftUI
 import WebKit
 
+/// The "Your export from MM/DD/YYYY…" link on the Goodreads export page,
+/// mimicked inside our instructions — Goodreads' own link teal + underline,
+/// today's date — so users recognize the real link as tappable. (Users read
+/// the quoted instruction and still didn't realize the link was pushable.)
+enum GoodreadsExportLinkMock {
+    /// Goodreads' anchor color (#00635D) — intentionally off-palette so the
+    /// mock matches the real page, not SPINE chrome.
+    static let color = Color(red: 0 / 255, green: 99 / 255, blue: 93 / 255)
+
+    static var text: Text {
+        Text("Your export from \(dateStamp)…")
+            .foregroundColor(color)
+            .underline()
+    }
+
+    private static var dateStamp: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MM/dd/yyyy"
+        return formatter.string(from: Date())
+    }
+}
+
 struct GoodreadsExportWebView: View {
     /// Which step of the two-visit import flow this browser visit is for.
     enum Mode {
@@ -99,9 +121,7 @@ struct GoodreadsExportWebView: View {
                     .font(.system(size: 11, weight: .bold))
                     .tracking(0.5)
                     .foregroundStyle(Theme.chrome)
-                Text(mode == .login
-                     ? "Sign in to Goodreads, then tap “I’m logged in” at the top."
-                     : "Tap “Export Library”, then tap the “Your export from…” link when it appears — SPINE takes it from there.")
+                instructionText
                     .font(Theme.callout())
                     .fontWeight(.medium)
                     .foregroundStyle(Theme.textPrimary)
@@ -116,6 +136,16 @@ struct GoodreadsExportWebView: View {
             Rectangle()
                 .fill(Theme.chrome.opacity(0.35))
                 .frame(height: Theme.chromeHairline)
+        }
+    }
+
+    private var instructionText: Text {
+        if mode == .login {
+            Text("Sign in to Goodreads, then tap “I’m logged in” at the top.")
+        } else {
+            Text("Tap “Export Library”, then tap the ")
+                + GoodreadsExportLinkMock.text
+                + Text(" link when it appears — SPINE takes it from there.")
         }
     }
 }

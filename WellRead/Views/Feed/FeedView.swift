@@ -26,6 +26,8 @@ struct FeedView: View {
     @State private var showFounderWelcome = false
     /// Post briefly tinted after a push-tap scroll so the review the user tapped is unmistakable.
     @State private var highlightedPostId: String? = nil
+    /// Own post awaiting delete confirmation (from the post's ellipsis menu).
+    @State private var postPendingDelete: Post? = nil
 
     private let userRepo = UserRepository()
     private let userBookRepo = UserBookRepository()
@@ -57,6 +59,8 @@ struct FeedView: View {
                                                   let ub = appState.userReadBook(forBookId: bid) else { return }
                                             editReviewFromFeed = EditReadReviewSheetPayload(userBook: ub, feedCaption: post.caption)
                                         },
+                                        canEditReview: post.bookId.map { appState.userReadBook(forBookId: $0) != nil } ?? false,
+                                        onDeleteTap: { postPendingDelete = post },
                                         displayTier: effectiveTier(for: post),
                                         readingNowBooks: readingNowFanBooks(for: post)
                                     )
@@ -126,6 +130,23 @@ struct FeedView: View {
                 CommentsView(post: post)
                     .environmentObject(appState)
                     .environmentObject(authService)
+            }
+            .confirmationDialog(
+                "Delete this post?",
+                isPresented: Binding(
+                    get: { postPendingDelete != nil },
+                    set: { if !$0 { postPendingDelete = nil } }
+                ),
+                titleVisibility: .visible,
+                presenting: postPendingDelete
+            ) { post in
+                Button("Delete Post", role: .destructive) {
+                    postPendingDelete = nil
+                    Task { _ = await appState.deleteFeedPost(post: post) }
+                }
+                Button("Cancel", role: .cancel) { postPendingDelete = nil }
+            } message: { _ in
+                Text("Its likes and comments will be deleted too. Books on your shelf aren’t affected.")
             }
             .task {
                 await loadOtherReaders()
@@ -488,6 +509,10 @@ struct FeedPostRow: View {
     var onCommentTap: (() -> Void)? = nil
     var onLikeToggle: ((Bool) -> Void)? = nil
     var onEditReviewTap: (() -> Void)? = nil
+    /// Whether the author's read entry still exists — editing goes through the `UserBook`,
+    /// so an orphaned post (book removed from the read shelf) can only be deleted.
+    var canEditReview: Bool = false
+    var onDeleteTap: (() -> Void)? = nil
     /// Tier to display on the post. Lets the feed pass a fallback (e.g. the current user's UserBook tier) for legacy posts where `post.tier` hasn't been backfilled yet.
     var displayTier: String? = nil
     /// The author's reading-now covers, fanned beside their avatar (same treatment
@@ -670,11 +695,20 @@ struct FeedPostRow: View {
         .clipShape(Circle())
     }
 
-    private var showEditReviewButton: Bool {
+    private var isOwnPost: Bool {
         guard let uid = currentUserFirebaseUid else { return false }
-        guard post.userId == uid else { return false }
+        return post.userId == uid
+    }
+
+    private var showEditReviewButton: Bool {
+        guard isOwnPost, canEditReview else { return false }
         guard post.type == .finishedBook, post.bookId != nil else { return false }
         return onEditReviewTap != nil
+    }
+
+    /// Delete is offered on every own post so orphaned posts stay deletable.
+    private var showPostMenu: Bool {
+        showEditReviewButton || (isOwnPost && onDeleteTap != nil)
     }
 
     private var feedAuthorHeader: some View {
@@ -698,15 +732,31 @@ struct FeedPostRow: View {
             }
             .buttonStyle(.plain)
             Spacer(minLength: 8)
-            if showEditReviewButton {
-                Button {
-                    onEditReviewTap?()
+            if showPostMenu {
+                Menu {
+                    if showEditReviewButton {
+                        Button {
+                            onEditReviewTap?()
+                        } label: {
+                            Label("Edit review", systemImage: "pencil")
+                        }
+                    }
+                    if isOwnPost, onDeleteTap != nil {
+                        Button(role: .destructive) {
+                            onDeleteTap?()
+                        } label: {
+                            Label("Delete post", systemImage: "trash")
+                        }
+                    }
                 } label: {
-                    Image(systemName: "pencil")
+                    Image(systemName: "ellipsis")
                         .font(.body.weight(.semibold))
                         .foregroundStyle(Theme.textSecondary)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Post options")
             }
         }
     }
