@@ -20,6 +20,8 @@ struct MainTabView: View {
     @State private var showGoodreadsImportFromWelcome = false
     @State private var showPushNotificationPromptSheet = false
     @State private var showPushNudgeModal = false
+    @State private var showProfilePhotoNudgeModal = false
+    @State private var showCurrentlyReadingPrompt = false
     @State private var keyboardVisible = false
     @Namespace private var tabLensNamespace
 
@@ -150,6 +152,34 @@ struct MainTabView: View {
             .presentationDragIndicator(.visible)
             .interactiveDismissDisabled(true)
         }
+        .sheet(isPresented: $showProfilePhotoNudgeModal, onDismiss: {
+            // “Not now” and swipe-down both count toward the 4-dismissal cap; a
+            // successful upload sets the photo before closing, so it doesn’t.
+            if let uid = authService.firebaseUser?.uid,
+               (authService.appUser?.profileImageURL ?? "").isEmpty {
+                ProfilePhotoNudgeStorage.recordDismissal(uid: uid)
+            }
+        }) {
+            ProfilePhotoNudgeModal(
+                onPhotoAdded: { showProfilePhotoNudgeModal = false },
+                onNotNow: { showProfilePhotoNudgeModal = false }
+            )
+            .environmentObject(authService)
+            .environmentObject(appState)
+            .presentationDetents([.medium])
+            .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showCurrentlyReadingPrompt, onDismiss: {
+            if let uid = authService.firebaseUser?.uid {
+                OnboardingCurrentlyReadingPromptStorage.markShown(for: uid)
+            }
+            scheduleWelcomeGoodreadsModalIfNeeded()
+        }) {
+            OnboardingCurrentlyReadingView(onDone: { showCurrentlyReadingPrompt = false })
+                .environmentObject(appState)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
         .onReceive(NotificationCenter.default.publisher(for: .wellreadOpenFeed)) { _ in
             selectedTab = .feed
             appState.deepLinkFeedPostId = nil
@@ -189,6 +219,14 @@ struct MainTabView: View {
                     selectedTab = t
                 }
             }
+            // `-uiPreviewPhotoNudge` / `-uiPreviewCurrentlyReading` force the launch
+            // modals open for simulator UI verification.
+            if ProcessInfo.processInfo.arguments.contains("-uiPreviewPhotoNudge") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { showProfilePhotoNudgeModal = true }
+            }
+            if ProcessInfo.processInfo.arguments.contains("-uiPreviewCurrentlyReading") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { showCurrentlyReadingPrompt = true }
+            }
             #endif
             appState.loadDiscoverSuggestionsIfNeeded()
             PushNotificationService.registerForRemoteNotificationsOnly()
@@ -196,6 +234,9 @@ struct MainTabView: View {
                 selectedTab = .profile
             }
             syncCompleteProfileSheet()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                considerShowingProfilePhotoNudge()
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                 considerShowingPushNudgeModal()
             }
@@ -235,12 +276,13 @@ struct MainTabView: View {
         showCompleteProfileSheet = true
     }
 
-    /// After profile completion: optional push prompt (new accounts), then Goodreads welcome once per account.
+    /// After profile completion: optional push prompt (new accounts), then the
+    /// currently-reading question, then Goodreads welcome — each once per account.
     private func schedulePostProfileOnboardingFlow() {
         guard authService.appUser?.needsProfileCompletion == false,
               let user = authService.appUser,
               authService.firebaseUser?.uid != nil else {
-            scheduleWelcomeGoodreadsModalIfNeeded()
+            scheduleCurrentlyReadingPromptIfNeeded()
             return
         }
         if !user.hasSeenPushNotificationPrompt {
@@ -249,7 +291,22 @@ struct MainTabView: View {
             }
             return
         }
-        scheduleWelcomeGoodreadsModalIfNeeded()
+        scheduleCurrentlyReadingPromptIfNeeded()
+    }
+
+    /// Between profile completion and the Goodreads welcome: ask what the user is
+    /// reading right now (once per account). Its sheet dismissal chains into the
+    /// Goodreads modal.
+    private func scheduleCurrentlyReadingPromptIfNeeded() {
+        guard authService.appUser?.needsProfileCompletion == false,
+              let uid = authService.firebaseUser?.uid,
+              !OnboardingCurrentlyReadingPromptStorage.hasShown(for: uid) else {
+            scheduleWelcomeGoodreadsModalIfNeeded()
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+            showCurrentlyReadingPrompt = true
+        }
     }
 
     private func finishPushNotificationPrompt(userRequestedEnable: Bool) {
@@ -262,9 +319,16 @@ struct MainTabView: View {
             try? await authService.markPushNotificationPromptSeen()
             await MainActor.run {
                 showPushNotificationPromptSheet = false
-                scheduleWelcomeGoodreadsModalIfNeeded()
+                scheduleCurrentlyReadingPromptIfNeeded()
             }
         }
+    }
+
+    /// True while any launch/onboarding sheet is up — new modals must not stack on top.
+    private var isAnyLaunchModalUp: Bool {
+        showCompleteProfileSheet || showPushNotificationPromptSheet || showWelcomeGoodreadsModal
+            || showGoodreadsImportFromWelcome || showAddBook || showPushNudgeModal
+            || showProfilePhotoNudgeModal || showCurrentlyReadingPrompt
     }
 
     /// Recurring prompt when push permission is missing and snooze window has passed.
@@ -272,16 +336,26 @@ struct MainTabView: View {
         guard let uid = authService.firebaseUser?.uid else { return }
         guard authService.appUser?.needsProfileCompletion == false else { return }
         guard authService.appUser?.hasSeenPushNotificationPrompt == true else { return }
-        guard !showCompleteProfileSheet, !showPushNotificationPromptSheet, !showWelcomeGoodreadsModal,
-              !showGoodreadsImportFromWelcome, !showAddBook, !showPushNudgeModal else { return }
+        guard !isAnyLaunchModalUp else { return }
         guard PushNotificationNudgeStorage.isEligibleForNudge(uid: uid) else { return }
 
         PushNotificationService.needsPushPermissionNudge { needs in
             guard needs else { return }
-            guard !showCompleteProfileSheet, !showPushNotificationPromptSheet, !showWelcomeGoodreadsModal,
-                  !showGoodreadsImportFromWelcome, !showAddBook, !showPushNudgeModal else { return }
+            guard !isAnyLaunchModalUp else { return }
             showPushNudgeModal = true
         }
+    }
+
+    /// Launch reminder for users without a profile photo: shows each cold launch
+    /// until a photo is set or the user has dismissed it 4 times.
+    private func considerShowingProfilePhotoNudge() {
+        guard let uid = authService.firebaseUser?.uid,
+              let user = authService.appUser,
+              !user.needsProfileCompletion,
+              (user.profileImageURL ?? "").isEmpty,
+              ProfilePhotoNudgeStorage.isEligible(uid: uid) else { return }
+        guard !isAnyLaunchModalUp else { return }
+        showProfilePhotoNudgeModal = true
     }
 
     /// After profile completion sheet dismisses successfully, show the Goodreads welcome modal once per account.

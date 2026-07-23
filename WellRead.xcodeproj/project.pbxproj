@@ -86,6 +86,9 @@
 		B0010049 /* PushNotificationPromptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010049 /* PushNotificationPromptView.swift */; };
 		B0010050 /* PushNotificationNudgeStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010050 /* PushNotificationNudgeStorage.swift */; };
 		B0010051 /* PushNotificationNudgeModal.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010051 /* PushNotificationNudgeModal.swift */; };
+		B0010331 /* ProfilePhotoNudgeStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010331 /* ProfilePhotoNudgeStorage.swift */; };
+		B0010332 /* ProfilePhotoNudgeModal.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010332 /* ProfilePhotoNudgeModal.swift */; };
+		B0010333 /* OnboardingCurrentlyReadingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010333 /* OnboardingCurrentlyReadingView.swift */; };
 		B0010052 /* BookRefresherService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010052 /* BookRefresherService.swift */; };
 		B0010053 /* BookRefresherView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010053 /* BookRefresherView.swift */; };
 		B0010054 /* MatchScoreService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010054 /* MatchScoreService.swift */; };
@@ -241,6 +244,9 @@
 		F0010049 /* PushNotificationPromptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationPromptView.swift; sourceTree = "<group>"; };
 		F0010050 /* PushNotificationNudgeStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationNudgeStorage.swift; sourceTree = "<group>"; };
 		F0010051 /* PushNotificationNudgeModal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationNudgeModal.swift; sourceTree = "<group>"; };
+		F0010331 /* ProfilePhotoNudgeStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfilePhotoNudgeStorage.swift; sourceTree = "<group>"; };
+		F0010332 /* ProfilePhotoNudgeModal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfilePhotoNudgeModal.swift; sourceTree = "<group>"; };
+		F0010333 /* OnboardingCurrentlyReadingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingCurrentlyReadingView.swift; sourceTree = "<group>"; };
 		F0010052 /* BookRefresherService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookRefresherService.swift; sourceTree = "<group>"; };
 		F0010053 /* BookRefresherView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookRefresherView.swift; sourceTree = "<group>"; };
 		F0010054 /* MatchScoreService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatchScoreService.swift; sourceTree = "<group>"; };
@@ -472,6 +478,7 @@
 				F0010043 /* PushNotificationService.swift */,
 				F0010047 /* PushRegistrationDiagnostics.swift */,
 				F0010050 /* PushNotificationNudgeStorage.swift */,
+				F0010331 /* ProfilePhotoNudgeStorage.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -503,6 +510,8 @@
 				F001003D /* WelcomeSpinesGoodreadsModal.swift */,
 				F0010049 /* PushNotificationPromptView.swift */,
 				F0010051 /* PushNotificationNudgeModal.swift */,
+				F0010332 /* ProfilePhotoNudgeModal.swift */,
+				F0010333 /* OnboardingCurrentlyReadingView.swift */,
 				F0010029 /* ReviewerLoginView.swift */,
 			);
 			path = Onboarding;
@@ -905,6 +914,9 @@
 				B0010043 /* PushNotificationService.swift in Sources */,
 				B0010047 /* PushRegistrationDiagnostics.swift in Sources */,
 				B0010050 /* PushNotificationNudgeStorage.swift in Sources */,
+				B0010331 /* ProfilePhotoNudgeStorage.swift in Sources */,
+				B0010332 /* ProfilePhotoNudgeModal.swift in Sources */,
+				B0010333 /* OnboardingCurrentlyReadingView.swift in Sources */,
 				B0010048 /* PushDiagnosticsView.swift in Sources */,
 				B0010049 /* PushNotificationPromptView.swift in Sources */,
 				B0010051 /* PushNotificationNudgeModal.swift in Sources */,
