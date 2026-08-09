@@ -2,11 +2,11 @@
 //  FeedView.swift
 //  Spine
 //
-//  Vertical feed of posts. "Following" row up top (people you follow first —
-//  current readers leading — then a divider and everyone else on Spine with a
-//  quick-follow button), then a feed of finished books, reviews, and
-//  recommendations from people you follow. Themed for the cream/teal palette
-//  with receipt-style row separators.
+//  Vertical feed of posts. One people strip up top with a horizontal sticky
+//  header: "FOLLOWING" (current readers leading) pins at the left until
+//  "ALL USERS" (quick-follow plus on each avatar) scrolls in and replaces
+//  it. Below, a feed of finished books, reviews, and recommendations from
+//  people you follow. Ink/paper palette with receipt-style row separators.
 //
 
 import SwiftUI
@@ -28,6 +28,10 @@ struct FeedView: View {
     @State private var highlightedPostId: String? = nil
     /// Own post awaiting delete confirmation (from the post's ellipsis menu).
     @State private var postPendingDelete: Post? = nil
+    /// Horizontal content offset of the people strip — drives the sticky header.
+    @State private var peopleStripScrollX: CGFloat = 0
+    /// Measured width of the pinned "FOLLOWING" label (for the push-out offset).
+    @State private var followingLabelWidth: CGFloat = 0
 
     private let userRepo = UserRepository()
     private let userBookRepo = UserBookRepository()
@@ -43,33 +47,37 @@ struct FeedView: View {
                             friendsSection
                             feedFriendsDivider
                             feedSectionLabel
-                            LazyVStack(spacing: 0) {
-                                ForEach(appState.feedPosts) { post in
-                                    FeedPostRow(
-                                        post: post,
-                                        currentUserFirebaseUid: authService.firebaseUser?.uid,
-                                        isLiked: appState.likedPostIds.contains(post.id.uuidString),
-                                        onBookTap: { selectedBookForProfile = $0 },
-                                        onCommentTap: { postForComments = post },
-                                        onLikeToggle: { appState.togglePostLike(postId: post.id.uuidString, liked: $0) },
-                                        onEditReviewTap: {
-                                            guard post.type == .finishedBook,
-                                                  let bid = post.bookId,
-                                                  post.userId == authService.firebaseUser?.uid,
-                                                  let ub = appState.userReadBook(forBookId: bid) else { return }
-                                            editReviewFromFeed = EditReadReviewSheetPayload(userBook: ub, feedCaption: post.caption)
-                                        },
-                                        canEditReview: post.bookId.map { appState.userReadBook(forBookId: $0) != nil } ?? false,
-                                        onDeleteTap: { postPendingDelete = post },
-                                        displayTier: effectiveTier(for: post),
-                                        readingNowBooks: readingNowFanBooks(for: post)
-                                    )
-                                    .id(post.id.uuidString)
-                                    .background(Theme.accent.opacity(highlightedPostId == post.id.uuidString ? 0.14 : 0))
+                            if appState.isFeedLoading {
+                                feedBodyLoadingView
+                            } else {
+                                LazyVStack(spacing: 0) {
+                                    ForEach(appState.feedPosts) { post in
+                                        FeedPostRow(
+                                            post: post,
+                                            currentUserFirebaseUid: authService.firebaseUser?.uid,
+                                            isLiked: appState.likedPostIds.contains(post.id.uuidString),
+                                            onBookTap: { selectedBookForProfile = $0 },
+                                            onCommentTap: { postForComments = post },
+                                            onLikeToggle: { appState.togglePostLike(postId: post.id.uuidString, liked: $0) },
+                                            onEditReviewTap: {
+                                                guard post.type == .finishedBook,
+                                                      let bid = post.bookId,
+                                                      post.userId == authService.firebaseUser?.uid,
+                                                      let ub = appState.userReadBook(forBookId: bid) else { return }
+                                                editReviewFromFeed = EditReadReviewSheetPayload(userBook: ub, feedCaption: post.caption)
+                                            },
+                                            canEditReview: post.bookId.map { appState.userReadBook(forBookId: $0) != nil } ?? false,
+                                            onDeleteTap: { postPendingDelete = post },
+                                            displayTier: effectiveTier(for: post),
+                                            readingNowBooks: readingNowFanBooks(for: post)
+                                        )
+                                        .id(post.id.uuidString)
+                                        .background(Theme.accent.opacity(highlightedPostId == post.id.uuidString ? 0.14 : 0))
+                                    }
                                 }
+                                .animation(.easeInOut(duration: 0.35), value: highlightedPostId)
+                                .padding(.bottom, 100)
                             }
-                            .animation(.easeInOut(duration: 0.35), value: highlightedPostId)
-                            .padding(.bottom, 100)
                         }
                     }
                     .refreshable {
@@ -114,6 +122,7 @@ struct FeedView: View {
                     readBooksForSimilar: appState.readBooks,
                     onNotInterested: nil,
                     onWantToRead: { appState.addToWantToRead(book: book); selectedBookForProfile = nil },
+                    onStartReading: { appState.addToQueue(book: book, shelf: .readingNow); selectedBookForProfile = nil },
                     onConfirmRead: { date, rating, post, caption, tier in appState.addAsRead(book: book, dateFinished: date, rating: rating, postToFeed: post, caption: caption, tier: tier); selectedBookForProfile = nil },
                     isOnReadList: appState.isBookOnReadList(bookId: book.id),
                     isInQueue: appState.isBookInQueue(bookId: book.id),
@@ -164,6 +173,20 @@ struct FeedView: View {
                 Task { await loadOtherReaders() }
             }
         }
+    }
+
+    /// Brand spinner shown inside the feed body while posts load (first load and
+    /// scope switches) — the People strip and FEED header stay in place above it.
+    private var feedBodyLoadingView: some View {
+        VStack(spacing: 14) {
+            SpinningSpineLogo(size: 72)
+            Text("Loading your feed…")
+                .font(.system(size: 13, weight: .regular))
+                .foregroundStyle(Theme.textTertiary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 64)
+        .padding(.bottom, 120)
     }
 
     /// Reading-now covers fanned beside the post author's avatar. Own posts use live
@@ -288,9 +311,42 @@ struct FeedView: View {
                 .tracking(1)
                 .foregroundStyle(Theme.chrome)
             Spacer(minLength: 0)
+            feedScopeToggle
         }
         .padding(.horizontal, Theme.horizontalPadding)
         .padding(.bottom, 6)
+    }
+
+    /// FOLLOWING / EVERYONE segmented capsule — switches the feed between people
+    /// you follow and every visible post on SPINE.
+    private var feedScopeToggle: some View {
+        HStack(spacing: 0) {
+            feedScopeSegment("FOLLOWING", scope: .friends)
+            feedScopeSegment("EVERYONE", scope: .everyone)
+        }
+        .overlay(
+            Capsule().stroke(Theme.chrome.opacity(0.45), lineWidth: 1)
+        )
+    }
+
+    private func feedScopeSegment(_ label: String, scope: FeedScope) -> some View {
+        let isSelected = appState.feedScope == scope
+        return Button {
+            guard !isSelected else { return }
+            appState.setFeedScope(scope)
+        } label: {
+            Text(label)
+                .font(.system(size: 10, weight: .bold))
+                .tracking(1)
+                .foregroundStyle(isSelected ? Theme.onChrome : Theme.chrome)
+                .padding(.horizontal, 11)
+                .padding(.vertical, 6)
+                .background(Capsule().fill(isSelected ? Theme.chrome : Color.clear))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(label == "FOLLOWING" ? "Following" : "Everyone") feed")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     /// Uids the signed-in user follows.
@@ -337,15 +393,24 @@ struct FeedView: View {
         return count
     }
 
+    private static let morePeopleTitle = "ALL USERS"
+    /// Fixed people-strip metrics — cells are exactly this wide (the name label's
+    /// frame), which lets the sticky header compute the group boundary statically.
+    private static let peopleCellWidth: CGFloat = 72
+    private static let peopleCellSpacing: CGFloat = 14
+
+    /// Content-space x where the not-yet-followed group starts in the strip.
+    private var morePeopleContentX: CGFloat {
+        let n = CGFloat(followedReaders.count)
+        guard n > 0 else { return Theme.horizontalPadding }
+        return Theme.horizontalPadding
+            + n * (Self.peopleCellWidth + Self.peopleCellSpacing)
+            + Theme.chromeHairline + Self.peopleCellSpacing
+    }
+
     @ViewBuilder
     private var friendsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("PEOPLE")
-                .font(.system(size: 12, weight: .bold))
-                .tracking(1)
-                .foregroundStyle(Theme.chrome)
-                .padding(.horizontal, Theme.horizontalPadding)
-
+        VStack(alignment: .leading, spacing: 6) {
             if isLoadingOtherReaders {
                 HStack(spacing: 8) {
                     ProgressView()
@@ -362,48 +427,84 @@ struct FeedView: View {
             } else if otherReaders.isEmpty {
                 EmptyView()
             } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(alignment: .top, spacing: 14) {
-                        ForEach(followedReaders, id: \.uid) { item in
-                            readerCell(item: item, isFollowed: true)
-                        }
-                        if !followedReaders.isEmpty && !discoverableReaders.isEmpty {
-                            allReadersDivider
-                        }
-                        ForEach(discoverableReaders, id: \.uid) { item in
-                            readerCell(item: item, isFollowed: false)
-                        }
-                    }
-                    .padding(.horizontal, Theme.horizontalPadding)
-                    // Headroom for the quick-follow plus, which overhangs the avatar's
-                    // top edge — without it the ScrollView clips the button.
-                    .padding(.top, 7)
-                    .padding(.bottom, 12)
-                    .animation(.easeInOut(duration: 0.25), value: myFollowingSet)
-                }
+                peopleStickyHeader
+                readerStrip
             }
         }
         .padding(.top, 4)
+        .animation(.easeInOut(duration: 0.25), value: myFollowingSet)
     }
 
-    /// Little rule between the people you follow and the rest of Spine.
-    private var allReadersDivider: some View {
-        VStack(spacing: 6) {
-            Rectangle()
-                .fill(Theme.chrome.opacity(0.45))
-                .frame(width: 1.5, height: 56)
-            Text("ALL")
-                .font(.system(size: 9, weight: .bold))
-                .tracking(1)
-                .foregroundStyle(Theme.chrome)
+    /// One label line above the strip, behaving like a horizontal sticky
+    /// section header: "FOLLOWING" pins at the leading edge while its people
+    /// are in view; "MORE ON SPINE" travels with its group and pushes
+    /// "FOLLOWING" out once it reaches the pin.
+    private var peopleStickyHeader: some View {
+        // Boundary relative to the pin point; 0 = the "more" group is at/under it.
+        let moreOffset = followedReaders.isEmpty
+            ? 0
+            : max(0, morePeopleContentX - peopleStripScrollX - Theme.horizontalPadding)
+        let followingOffset = min(0, moreOffset - followingLabelWidth - 12)
+        return ZStack(alignment: .leading) {
+            if !followedReaders.isEmpty {
+                peopleHeaderLabel("FOLLOWING")
+                    .onGeometryChange(for: CGFloat.self) { proxy in
+                        proxy.size.width
+                    } action: { newValue in
+                        followingLabelWidth = newValue
+                    }
+                    .offset(x: followingOffset)
+            }
+            if !discoverableReaders.isEmpty {
+                peopleHeaderLabel(Self.morePeopleTitle)
+                    .offset(x: moreOffset)
+            }
         }
-        .padding(.top, 4)
-        .padding(.horizontal, 2)
-        .accessibilityHidden(true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: 16)
+        .clipped()
+        .padding(.horizontal, Theme.horizontalPadding)
+        .accessibilityElement(children: .combine)
     }
 
-    /// Avatar + name cell. Reading-now covers float on the bottom-left edge of the
-    /// avatar; the quick-follow plus sits top-right so the two never collide.
+    private func peopleHeaderLabel(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 12, weight: .bold))
+            .tracking(1)
+            .foregroundStyle(Theme.chrome)
+            .fixedSize()
+    }
+
+    /// Single horizontal strip: followed readers first, a hairline, then
+    /// everyone else. Reports its scroll offset so the sticky header knows
+    /// when the "more" group hits the pin.
+    private var readerStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(alignment: .top, spacing: Self.peopleCellSpacing) {
+                ForEach(followedReaders, id: \.uid) { item in
+                    readerCell(item: item, isFollowed: true)
+                }
+                if !followedReaders.isEmpty && !discoverableReaders.isEmpty {
+                    Rectangle()
+                        .fill(Theme.chrome.opacity(0.35))
+                        .frame(width: Theme.chromeHairline, height: 64)
+                        .accessibilityHidden(true)
+                }
+                ForEach(discoverableReaders, id: \.uid) { item in
+                    readerCell(item: item, isFollowed: false)
+                }
+            }
+            .padding(.horizontal, Theme.horizontalPadding)
+            // Headroom for the quick-follow plus, which overhangs the avatar's
+            // top edge — without it the ScrollView clips it.
+            .padding(.top, 7)
+            .padding(.bottom, 10)
+        }
+        .modifier(PeopleStripScrollTracking(scrollX: $peopleStripScrollX))
+    }
+
+    /// Avatar + name cell. Not-yet-followed readers get a quick-follow plus
+    /// top-right; reading-now covers float on the bottom-left of the avatar.
     private func readerCell(item: (uid: String, user: User), isFollowed: Bool) -> some View {
         let readingNow = readingNowByUid[item.uid] ?? []
         return NavigationLink(value: item.uid) {
@@ -429,7 +530,7 @@ struct FeedView: View {
                     .frame(width: 72)
             }
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("\(item.user.displayName), open library")
+            .accessibilityLabel("\(item.user.displayName), \(isFollowed ? "following" : "not following"), open library")
         }
         .buttonStyle(.plain)
     }
@@ -497,6 +598,24 @@ struct FeedView: View {
                     .font(.system(size: size * 0.42, weight: .bold))
                     .foregroundStyle(Theme.onChrome)
             )
+    }
+}
+
+/// Streams the people strip's horizontal content offset into `scrollX`.
+/// Uses `onScrollGeometryChange` where available; on iOS 17 the offset stays 0,
+/// so the header labels sit at their resting positions instead of tracking.
+private struct PeopleStripScrollTracking: ViewModifier {
+    @Binding var scrollX: CGFloat
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.onScrollGeometryChange(for: CGFloat.self) { geo in
+                geo.contentOffset.x + geo.contentInsets.leading
+            } action: { _, newValue in
+                scrollX = newValue
+            }
+        } else {
+            content
+        }
     }
 }
 
@@ -791,14 +910,14 @@ struct FeedPostRow: View {
     }
 }
 
-/// Review/caption text that collapses past 9 lines. Tapping the text or the
+/// Review/caption text that collapses past 14 lines. Tapping the text or the
 /// "read more"/"show less" pill toggles expansion; short text renders plain.
 struct ExpandableReviewText: View {
     let text: String
-    private static let collapsedLineLimit = 9
+    private static let collapsedLineLimit = 14
 
     @State private var expanded = false
-    /// True once measurement shows the full text is taller than 9 lines.
+    /// True once measurement shows the full text is taller than 14 lines.
     @State private var truncatable = false
 
     var body: some View {
@@ -822,7 +941,7 @@ struct ExpandableReviewText: View {
         .background(measurer)
     }
 
-    /// Invisible copies of the text — one clamped to 9 lines, one unclamped —
+    /// Invisible copies of the text — one clamped to 14 lines, one unclamped —
     /// measured to decide whether the toggle is needed at the current width.
     private var measurer: some View {
         ZStack(alignment: .topLeading) {

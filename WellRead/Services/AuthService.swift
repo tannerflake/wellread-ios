@@ -24,6 +24,7 @@ final class AuthService: ObservableObject {
 
     private var authStateListener: AuthStateDidChangeListenerHandle?
     private var currentNonce: String?
+    private var googleSignInAttempt = 0
     private let userRepo: UserRepository
 
     init(userRepository: UserRepository = UserRepository()) {
@@ -185,8 +186,15 @@ final class AuthService: ObservableObject {
         }
         let config = GIDConfiguration(clientID: clientID)
         GIDSignIn.sharedInstance.configuration = config
+        // The SDK can lose a session's callback (google/GoogleSignIn-iOS#378); a
+        // retry replaces the hung flow inside GIDSignIn, which then fails the old
+        // one with a spurious "user canceled" while the new sheet is on screen.
+        // Tag attempts so a superseded flow can't touch UI state.
+        googleSignInAttempt += 1
+        let attempt = googleSignInAttempt
         do {
             let result = try await GIDSignIn.sharedInstance.signIn(withPresenting: presentingViewController, hint: nil, additionalScopes: nil)
+            guard attempt == googleSignInAttempt else { return }
             guard let idToken = result.user.idToken?.tokenString else {
                 authError = "Google sign-in: no ID token."
                 return
@@ -198,6 +206,12 @@ final class AuthService: ObservableObject {
                 await loadOrCreateAppUser(firebaseUser: u)
             }
         } catch {
+            guard attempt == googleSignInAttempt else { return }
+            let nsError = error as NSError
+            // Cancel is a user action, not an error (same treatment as the Apple path).
+            if nsError.domain == kGIDSignInErrorDomain, nsError.code == GIDSignInError.canceled.rawValue {
+                return
+            }
             authError = error.localizedDescription
         }
     }

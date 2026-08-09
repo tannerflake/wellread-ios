@@ -122,6 +122,14 @@
 		B00B1E04 /* BookBlendStoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00B1E04 /* BookBlendStoryView.swift */; };
 		B00B1E05 /* OpenLibraryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00B1E05 /* OpenLibraryService.swift */; };
 		B00B1E06 /* BookSearchCacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00B1E06 /* BookSearchCacheService.swift */; };
+		B7D91A42 /* ISBNdbService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7D91A42 /* ISBNdbService.swift */; };
+		B00D1A01 /* TypewriterText.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00D1A01 /* TypewriterText.swift */; };
+		B00D1A02 /* OnboardingWizard.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00D1A02 /* OnboardingWizard.swift */; };
+		B00D1A03 /* WizardIdentitySteps.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00D1A03 /* WizardIdentitySteps.swift */; };
+		B00D1A04 /* WizardTasteStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00D1A04 /* WizardTasteStep.swift */; };
+		B00D1A05 /* WizardBookSteps.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00D1A05 /* WizardBookSteps.swift */; };
+		B00D1A06 /* WizardSocialSteps.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00D1A06 /* WizardSocialSteps.swift */; };
+		B00D1A07 /* WizardFinaleSteps.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00D1A07 /* WizardFinaleSteps.swift */; };
 		NE01000A /* WellReadNotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = NE010002 /* WellReadNotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		WG01000A /* WellReadWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = WG010002 /* WellReadWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		WG010010 /* WidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = WG010011 /* WidgetSnapshot.swift */; };
@@ -280,6 +288,14 @@
 		F00B1E04 /* BookBlendStoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookBlendStoryView.swift; sourceTree = "<group>"; };
 		F00B1E05 /* OpenLibraryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenLibraryService.swift; sourceTree = "<group>"; };
 		F00B1E06 /* BookSearchCacheService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookSearchCacheService.swift; sourceTree = "<group>"; };
+		F7D91A42 /* ISBNdbService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ISBNdbService.swift; sourceTree = "<group>"; };
+		F00D1A01 /* TypewriterText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypewriterText.swift; sourceTree = "<group>"; };
+		F00D1A02 /* OnboardingWizard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingWizard.swift; sourceTree = "<group>"; };
+		F00D1A03 /* WizardIdentitySteps.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WizardIdentitySteps.swift; sourceTree = "<group>"; };
+		F00D1A04 /* WizardTasteStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WizardTasteStep.swift; sourceTree = "<group>"; };
+		F00D1A05 /* WizardBookSteps.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WizardBookSteps.swift; sourceTree = "<group>"; };
+		F00D1A06 /* WizardSocialSteps.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WizardSocialSteps.swift; sourceTree = "<group>"; };
+		F00D1A07 /* WizardFinaleSteps.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WizardFinaleSteps.swift; sourceTree = "<group>"; };
 		NE010002 /* WellReadNotificationService.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = WellReadNotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		WG010002 /* WellReadWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = WellReadWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		WG010011 /* WidgetSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSnapshot.swift; sourceTree = "<group>"; };
@@ -452,6 +468,7 @@
 				F00B1E02 /* BookBlendService.swift */,
 				F00B1E05 /* OpenLibraryService.swift */,
 				F00B1E06 /* BookSearchCacheService.swift */,
+				F7D91A42 /* ISBNdbService.swift */,
 				F0010020 /* AuthService.swift */,
 				F0010021 /* UserRepository.swift */,
 				F0010023 /* BookRepository.swift */,
@@ -502,9 +519,23 @@
 			path = Views;
 			sourceTree = "<group>";
 		};
+		G00D1A00 /* Wizard */ = {
+			isa = PBXGroup;
+			children = (
+				F00D1A02 /* OnboardingWizard.swift */,
+				F00D1A03 /* WizardIdentitySteps.swift */,
+				F00D1A04 /* WizardTasteStep.swift */,
+				F00D1A05 /* WizardBookSteps.swift */,
+				F00D1A06 /* WizardSocialSteps.swift */,
+				F00D1A07 /* WizardFinaleSteps.swift */,
+			);
+			path = Wizard;
+			sourceTree = "<group>";
+		};
 		G0010008 /* Onboarding */ = {
 			isa = PBXGroup;
 			children = (
+				G00D1A00 /* Wizard */,
 				F001000C /* OnboardingFlowView.swift */,
 				F0010037 /* ProfileCompletionView.swift */,
 				F001003D /* WelcomeSpinesGoodreadsModal.swift */,
@@ -530,6 +561,7 @@
 		G001000A /* Components */ = {
 			isa = PBXGroup;
 			children = (
+				F00D1A01 /* TypewriterText.swift */,
 				F001000F /* BookCoverView.swift */,
 				F0010107 /* TagCatalogPicker.swift */,
 				F00100FA /* Toast.swift */,
@@ -929,6 +961,14 @@
 				B00B1E04 /* BookBlendStoryView.swift in Sources */,
 				B00B1E05 /* OpenLibraryService.swift in Sources */,
 				B00B1E06 /* BookSearchCacheService.swift in Sources */,
+				B7D91A42 /* ISBNdbService.swift in Sources */,
+				B00D1A01 /* TypewriterText.swift in Sources */,
+				B00D1A02 /* OnboardingWizard.swift in Sources */,
+				B00D1A03 /* WizardIdentitySteps.swift in Sources */,
+				B00D1A04 /* WizardTasteStep.swift in Sources */,
+				B00D1A05 /* WizardBookSteps.swift in Sources */,
+				B00D1A06 /* WizardSocialSteps.swift in Sources */,
+				B00D1A07 /* WizardFinaleSteps.swift in Sources */,
 				B0010053 /* BookRefresherView.swift in Sources */,
 				B0018D72 /* BookSummaryMoreView.swift in Sources */,
 				B0010044 /* FeedCommunityWelcomeModal.swift in Sources */,
@@ -1430,7 +1470,7 @@
 			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 8.0.0;
+				minimumVersion = 9.2.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

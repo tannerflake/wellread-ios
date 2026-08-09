@@ -17,16 +17,17 @@ final class BookSearchCacheService {
     private let db = Firestore.firestore()
     private let collection = "bookSearchCache"
 
-    /// Google-sourced entries carry Google's ranking — serve for a month.
-    /// Open Library entries (written during Google quota outages) expire fast so
-    /// a later search can upgrade the entry to Google quality.
-    private let googleTTL: TimeInterval = 30 * 24 * 3600
+    /// ISBNdb/Google-sourced entries carry full metadata and ranking — serve for
+    /// a month. Open Library entries (written during API outages) expire fast so
+    /// a later search can upgrade the entry.
+    private let primaryTTL: TimeInterval = 30 * 24 * 3600
     private let openLibraryTTL: TimeInterval = 24 * 3600
 
     /// Don't let a slow Firestore round trip delay live search — past this, treat as a miss.
     private let lookupTimeout: UInt64 = 1_200_000_000
 
     enum Source: String {
+        case isbndb
         case google
         case openLibrary = "openlibrary"
     }
@@ -58,7 +59,7 @@ final class BookSearchCacheService {
               snapshot.exists, let data = snapshot.data() else { return nil }
         guard let updated = (data["updatedAt"] as? Timestamp)?.dateValue() else { return nil }
         let source = Source(rawValue: data["source"] as? String ?? "") ?? .openLibrary
-        let ttl = source == .google ? googleTTL : openLibraryTTL
+        let ttl = source == .openLibrary ? openLibraryTTL : primaryTTL
         guard Date().timeIntervalSince(updated) < ttl else { return nil }
         guard let raw = data["books"] as? [[String: Any]] else { return nil }
         let books = raw.compactMap(book(from:))

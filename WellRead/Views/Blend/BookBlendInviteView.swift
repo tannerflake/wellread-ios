@@ -74,14 +74,12 @@ struct BookBlendEntryButton: View {
             .shadow(color: Theme.accent.opacity(state == .requestedByMe ? 0 : 0.35), radius: 8, y: 3)
             // Faint breathing pulse — alive without shouting.
             .scaleEffect(state == .requestedByMe ? 1 : (pulse ? 1.015 : 1))
+            // Value-scoped: `withAnimation(.repeatForever)` in onAppear leaks into
+            // the enclosing sheet's transaction and breaks its drag-to-dismiss.
+            .animation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true), value: pulse)
         }
         .buttonStyle(.springPress)
-        .disabled(state == .requestedByMe)
-        .onAppear {
-            withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
-                pulse = true
-            }
-        }
+        .onAppear { pulse = true }
     }
 }
 
@@ -545,11 +543,13 @@ struct BlendAuroraBackground: View {
                 .offset(x: animate ? 100 : -60, y: animate ? 120 : 260)
         }
         .ignoresSafeArea()
+        // Value-scoped animation, not `withAnimation` in onAppear: a bare
+        // repeatForever started during sheet presentation leaks into the sheet's
+        // transaction and breaks interactive drag-to-dismiss tracking.
+        .animation(.easeInOut(duration: 9).repeatForever(autoreverses: true), value: animate)
         .onAppear {
             guard drift else { return }
-            withAnimation(.easeInOut(duration: 9).repeatForever(autoreverses: true)) {
-                animate = true
-            }
+            animate = true
         }
     }
 
@@ -558,5 +558,124 @@ struct BlendAuroraBackground: View {
             .fill(color)
             .frame(width: size, height: size)
             .blur(radius: 90)
+    }
+}
+
+// MARK: - Launch invite modal
+
+/// Per-invite snooze/dismiss state for the launch invite modal. Keyed by uid +
+/// pair id + request time, so a brand-new request (fresh `createdAt`) shows again
+/// even after an earlier invite was dismissed with "No thanks".
+enum BookBlendInviteModalStorage {
+    private static func key(uid: String, blend: BookBlend) -> String {
+        "blendInviteModalState_\(uid)_\(blend.id)_\(Int(blend.createdAt.timeIntervalSince1970))"
+    }
+
+    /// Stored value: `-1` = never show again; positive = epoch after which it may show again.
+    static func isEligible(uid: String, blend: BookBlend, now: Date = Date()) -> Bool {
+        let v = UserDefaults.standard.double(forKey: key(uid: uid, blend: blend))
+        if v == 0 { return true }
+        if v < 0 { return false }
+        return now.timeIntervalSince1970 >= v
+    }
+
+    static func snoozeTwoDays(uid: String, blend: BookBlend, from now: Date = Date()) {
+        UserDefaults.standard.set(
+            now.addingTimeInterval(2 * 24 * 60 * 60).timeIntervalSince1970,
+            forKey: key(uid: uid, blend: blend)
+        )
+    }
+
+    static func dismissForever(uid: String, blend: BookBlend) {
+        UserDefaults.standard.set(-1.0, forKey: key(uid: uid, blend: blend))
+    }
+}
+
+/// Launch modal for a pending blend invite — the in-app fallback so an invite is
+/// never seen only by push. Blend-branded (aurora ink) with both readers' avatars.
+struct BookBlendInviteNudgeModal: View {
+    let blend: BookBlend
+    let onBlend: () -> Void
+    let onRemindLater: () -> Void
+    let onNoThanks: () -> Void
+
+    private var requesterName: String {
+        blend.participants[blend.requesterId]?.firstName ?? "A friend"
+    }
+
+    var body: some View {
+        ZStack {
+            BlendAuroraBackground()
+
+            VStack(spacing: 0) {
+                Spacer()
+
+                BlendAvatarLockup(
+                    leftURL: blend.participants[blend.requesterId]?.photoURL,
+                    rightURL: blend.participants[blend.recipientId]?.photoURL,
+                    leftName: blend.participants[blend.requesterId]?.firstName ?? "?",
+                    rightName: blend.participants[blend.recipientId]?.firstName ?? "?",
+                    size: 84
+                )
+                .padding(.bottom, 22)
+
+                Text("BOOK BLEND")
+                    .font(.system(size: 12, weight: .heavy))
+                    .tracking(4)
+                    .foregroundStyle(Theme.paperFixed.opacity(0.7))
+                    .padding(.bottom, 8)
+
+                Text("\(requesterName) wants to\nBlend with you")
+                    .font(.system(size: 26, weight: .bold))
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(Theme.paperFixed)
+                    .padding(.horizontal, 28)
+                    .padding(.bottom, 12)
+
+                Text("Merge libraries for a taste match score, shared favorites, and books to steal from each other.")
+                    .font(Theme.callout())
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(Theme.paperFixed.opacity(0.75))
+                    .padding(.horizontal, 36)
+
+                Spacer()
+
+                VStack(spacing: 10) {
+                    Button(action: onBlend) {
+                        HStack(spacing: 7) {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 14, weight: .bold))
+                            Text("Let's Blend")
+                                .font(.system(size: 17, weight: .bold))
+                        }
+                        .foregroundStyle(Theme.onChrome)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                    }
+                    .glossyProminent(Theme.accent, cornerRadius: 28)
+                    .buttonStyle(.springPress)
+
+                    Button(action: onRemindLater) {
+                        Text("Remind me in a bit")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Theme.paperFixed.opacity(0.85))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.springPress)
+
+                    Button(action: onNoThanks) {
+                        Text("No thanks")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(Theme.paperFixed.opacity(0.55))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                    }
+                    .buttonStyle(.springPress)
+                }
+                .padding(.horizontal, 28)
+                .padding(.bottom, 18)
+            }
+        }
     }
 }

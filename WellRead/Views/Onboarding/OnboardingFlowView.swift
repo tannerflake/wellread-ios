@@ -2,7 +2,10 @@
 //  OnboardingFlowView.swift
 //  WellRead
 //
-//  Sign in with Apple / Google; optional profile steps later.
+//  Signed-out welcome: Sign in with Apple / Google. Everything after auth is
+//  the OnboardingWizardView (gated in RootView). Keep the hidden gestures:
+//  5-tap = configured test account, 2s long-press = reviewer login. App Review
+//  depends on both.
 //
 
 import SwiftUI
@@ -11,40 +14,21 @@ import AuthenticationServices
 struct OnboardingFlowView: View {
     @EnvironmentObject var authService: AuthService
     @EnvironmentObject var appState: AppState
-    @State private var step: Step = .welcome
-    @State private var username = ""
-    @State private var readingGoal = ""
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showReviewerLogin = false
 
-    // Welcome entrance choreography: logo fades in, then wordmark, then buttons;
-    // once landed the logo breathes on a slow loop.
+    // Welcome entrance choreography: logo fades in, then wordmark, then the
+    // typed tagline, then buttons; once landed the logo breathes on a slow loop.
     @State private var logoRevealed = false
     @State private var wordmarkRevealed = false
     @State private var buttonsRevealed = false
     @State private var logoBreathing = false
 
-    enum Step {
-        case welcome
-        case username
-        case goal
-        case done
-    }
-
     var body: some View {
         ZStack {
             Theme.background.ignoresSafeArea()
-            VStack(spacing: 32) {
-                if step == .welcome {
-                    welcomeStep
-                } else if step == .username {
-                    usernameStep
-                } else if step == .goal {
-                    goalStep
-                } else {
-                    doneStep
-                }
-            }
-            .padding(Theme.horizontalPadding)
+            welcomeStep
+                .padding(Theme.horizontalPadding)
         }
         .sheet(isPresented: $showReviewerLogin) {
             ReviewerLoginView()
@@ -150,72 +134,13 @@ struct OnboardingFlowView: View {
         withAnimation(.easeOut(duration: 1.0).delay(0.9)) {
             wordmarkRevealed = true
         }
-        withAnimation(.easeOut(duration: 0.9).delay(1.6)) {
+        withAnimation(.easeOut(duration: 0.9).delay(2.2)) {
             buttonsRevealed = true
         }
-        withAnimation(.easeInOut(duration: 2.6).delay(1.8).repeatForever(autoreverses: true)) {
-            logoBreathing = true
-        }
-    }
-
-    private var usernameStep: some View {
-        VStack(spacing: 24) {
-            Text("Choose a username")
-                .font(Theme.title())
-                .foregroundStyle(Theme.textPrimary)
-            TextField("Username", text: $username)
-                .textFieldStyle(.plain)
-                .font(Theme.body())
-                .padding()
-                .background(Theme.surface)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
-                .autocapitalization(.none)
-            Button("Continue") {
-                step = .goal
+        if !reduceMotion {
+            withAnimation(.easeInOut(duration: 2.6).delay(1.8).repeatForever(autoreverses: true)) {
+                logoBreathing = true
             }
-            .font(Theme.headline())
-            .foregroundStyle(Theme.background)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .background(Theme.accentGloss)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
         }
-        .padding(.top, 80)
-    }
-
-    private var goalStep: some View {
-        VStack(spacing: 24) {
-            Text("Books to read this year?")
-                .font(Theme.title())
-                .foregroundStyle(Theme.textPrimary)
-            TextField("e.g. 24", text: $readingGoal)
-                .keyboardType(.numberPad)
-                .textFieldStyle(.plain)
-                .font(Theme.body())
-                .padding()
-                .background(Theme.surface)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
-            Button("Finish") {
-                step = .done
-            }
-            .font(Theme.headline())
-            .foregroundStyle(Theme.background)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .background(Theme.accentGloss)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
-        }
-        .padding(.top, 80)
-    }
-
-    private var doneStep: some View {
-        VStack(spacing: 24) {
-            ProgressView()
-                .tint(Theme.accent)
-            Text("Setting up your library…")
-                .font(Theme.body())
-                .foregroundStyle(Theme.textSecondary)
-        }
-        .padding(.top, 80)
     }
 }

@@ -19,7 +19,7 @@ struct TagCatalogPicker: View {
     var separated: Bool = false
 
     /// Categories/tags that only make sense for fiction.
-    private static let fictionOnlyCategories: Set<String> = ["Story Type", "Setting / World", "Character / Dynamics"]
+    private static let fictionOnlyCategories: Set<String> = ["Subgenre", "Story Type", "Setting / World", "Character / Dynamics"]
     private static let fictionOnlyTags: Set<String> = ["Mystery & Thriller", "Sci-Fi & Fantasy", "Romance"]
     /// Categories/tags that only make sense for non-fiction.
     private static let nonFictionOnlyCategories: Set<String> = ["Nonfiction Topics"]

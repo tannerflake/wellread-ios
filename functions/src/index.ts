@@ -66,6 +66,28 @@ async function tokensForUser(uid: string): Promise<string[]> {
   return snap.docs.map((d) => d.data().token as string).filter((t): t is string => typeof t === "string" && t.length > 0);
 }
 
+/**
+ * Data-only background push (no alert, no sound) — wakes the app so it can
+ * react, e.g. clearing a withdrawn blend invite from Notification Center.
+ */
+async function sendSilentToUser(uid: string, data: Record<string, string>): Promise<void> {
+  const tokens = await tokensForUser(uid);
+  if (!tokens.length) return;
+  const messages = tokens.map((token) => ({
+    token,
+    data,
+    apns: {
+      headers: {
+        "apns-push-type": "background",
+        "apns-priority": "5",
+      },
+      payload: { aps: { "content-available": 1 } },
+    },
+  }));
+  const resp = await messaging.sendEach(messages);
+  logger.info("push sendSilentToUser", { uid, type: data.type, tokenCount: tokens.length, successCount: resp.successCount, failureCount: resp.failureCount });
+}
+
 async function sendToUser(
   uid: string,
   title: string,
@@ -130,6 +152,7 @@ const TEST_PUSH_TYPES = new Set([
   "review_liked",
   "review_commented",
   "thread_commented",
+  "new_follower",
 ]);
 
 /**
@@ -148,7 +171,7 @@ export const sendTestPushNotification = onCall(
     if (!type || !TEST_PUSH_TYPES.has(type)) {
       throw new HttpsError(
         "invalid-argument",
-        "type must be one of: friend_review_posted, review_liked, review_commented, thread_commented"
+        "type must be one of: friend_review_posted, review_liked, review_commented, thread_commented, new_follower"
       );
     }
 
@@ -193,6 +216,15 @@ export const sendTestPushNotification = onCall(
           "Alex also commented on the Sample Book review you joined",
           "Adding my two cents here...",
           { type: "thread_commented", postId: TEST_PUSH_POST_ID }
+        );
+        break;
+      case "new_follower":
+        // followerId is the caller so the tap deep-links to a real profile (your own).
+        await sendToUser(
+          uid,
+          "Alex started following you",
+          "See what they're reading on SPINE.",
+          { type: "new_follower", followerId: uid }
         );
         break;
       default:
@@ -315,7 +347,7 @@ export const onUserCreated = onDocumentCreated(
       FOUNDER_UID,
       `${first} joined SPINE`,
       "They follow you — and you now follow them back.",
-      { type: "new_follower" }
+      { type: "new_follower", followerId: uid }
     );
   }
 );
@@ -352,7 +384,7 @@ export const onUserFollowingChanged = onDocumentUpdated(
         target,
         `${first} started following you`,
         "See what they're reading on SPINE.",
-        { type: "new_follower" }
+        { type: "new_follower", followerId: followerUid }
       );
     }
   }
@@ -368,6 +400,8 @@ export const onFriendReviewPosted = onDocumentCreated(
   {
     document: "posts/{postId}",
     database: DATABASE_ID,
+    // Default 60s would kill the function mid-wait (see delay below).
+    timeoutSeconds: 300,
   },
   async (event) => {
     const postId = event.params.postId as string;
@@ -378,23 +412,37 @@ export const onFriendReviewPosted = onDocumentCreated(
     const authorId = data.userId as string;
     if (!authorId) return;
 
+    // Right after reviewing, the author is sent to the tier list to rank the book —
+    // wait so the push can reflect the tier (and not tease a rank that isn't set yet).
+    await new Promise((resolve) => setTimeout(resolve, 2 * 60 * 1000));
+
+    // Re-read the post: the tier/rating may have landed while we waited, and the
+    // author may have deleted the post entirely (in which case, stay silent).
+    const freshSnap = await snap.ref.get();
+    if (!freshSnap.exists) return;
+    const fresh = freshSnap.data() ?? {};
+
     const author = (await db.collection("users").doc(authorId).get()).data();
     const first = firstNameFromUser(author);
     const { title: book, coverURL } = await bookInfo(data.bookId as string | undefined);
     const bookPart = book ?? "a book";
-    const rating = formatRating(data.rating);
-    const caption = (data.caption as string | undefined)?.trim() ?? "";
-    const teaser = teaser8Words(caption);
-    const titleLine = rating !== null
-      ? `${first} gave ${bookPart} a ${rating}`
-      : `${first} read ${bookPart}`;
+    const tier = (fresh.tier as string | undefined)?.trim();
+    const rating = formatRating(fresh.rating);
+    const caption = (fresh.caption as string | undefined)?.trim() ?? "";
 
-    const title = titleLine;
-    const body = teaser
-      ? teaser
-      : rating !== null
-        ? "Open SPINE to read the full review."
-        : "See what they're reading on SPINE.";
+    let title: string;
+    let body: string;
+    if (tier) {
+      const teaser = teaser8Words(caption);
+      title = rating !== null
+        ? `${first} gave ${bookPart} a ${rating}`
+        : `${first} finished ${bookPart}`;
+      body = teaser ? teaser : "Open SPINE to read the full review.";
+    } else {
+      // Unranked: no mention of rating/rank — just the finish and their review.
+      title = `${first} finished ${bookPart}`;
+      body = caption || "See what they're reading on SPINE.";
+    }
 
     const recipients = (await recipientUidsWhoFollow(authorId))
       .filter((uid) => hiddenAccountCanNotify(authorId, uid));
@@ -412,7 +460,9 @@ export const onFriendReviewPosted = onDocumentCreated(
  * Book Blend pair doc (`bookBlends/{uidLow_uidHigh}`) changed:
  * - created as pending, or re-requested (declined → pending): blend_request push to the recipient.
  * - pending → ready (the accepter's device saved the generated result): blend_ready push to the requester.
- * Declines stay silent. Both payloads deep-link via `blendId`.
+ * - deleted while pending (requester undid the request, or account cleanup):
+ *   silent push so the recipient's device removes the stale invite alert.
+ * Declines stay silent. Both alert payloads deep-link via `blendId`.
  */
 export const onBookBlendWritten = onDocumentWritten(
   {
@@ -423,7 +473,19 @@ export const onBookBlendWritten = onDocumentWritten(
     const blendId = event.params.blendId as string;
     const before = event.data?.before.exists ? event.data.before.data() : undefined;
     const after = event.data?.after.exists ? event.data.after.data() : undefined;
-    if (!after) return; // deleted
+    if (!after) {
+      // Deleted. If it was still pending, the invite alert on the recipient's
+      // device is now stale — tell their app to clear it. Best-effort: iOS may
+      // defer or drop background pushes, in which case the alert just stays.
+      const priorRecipient = before?.recipientId as string | undefined;
+      if (before?.status === "pending" && priorRecipient) {
+        await sendSilentToUser(priorRecipient, {
+          type: "blend_request_withdrawn",
+          blendId,
+        });
+      }
+      return;
+    }
 
     const beforeStatus = (before?.status as string | undefined) ?? null;
     const afterStatus = after.status as string | undefined;

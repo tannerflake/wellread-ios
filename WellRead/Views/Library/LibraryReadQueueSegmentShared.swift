@@ -80,8 +80,18 @@ struct LibraryReadingGoalProgressStrip: View {
         }
     }
 
+    /// The parenthetical only celebrates: goal met or ahead. Behind/on-track
+    /// stay silent (the bar color still tells the story).
+    private var showsPaceText: Bool {
+        guard showsPace else { return false }
+        switch pace {
+        case .goalMet, .ahead: return true
+        case .onTrack, .behind: return false
+        }
+    }
+
     private var caption: String {
-        showsPace
+        showsPaceText
             ? "Read \(booksRead)/\(goal) for \(calendarYear) (\(paceText))"
             : "Read \(booksRead)/\(goal) for \(calendarYear)"
     }
@@ -108,7 +118,7 @@ struct LibraryReadingGoalProgressStrip: View {
             .frame(height: 10)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(calendarYear) reading goal")
-            .accessibilityValue(showsPace ? "\(booksRead) of \(goal) books. \(paceText)" : "\(booksRead) of \(goal) books.")
+            .accessibilityValue(showsPaceText ? "\(booksRead) of \(goal) books. \(paceText)" : "\(booksRead) of \(goal) books.")
         }
         .padding(.top, 4)
         .padding(.bottom, 6)

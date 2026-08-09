@@ -2,7 +2,10 @@
 //  GoogleBooksService.swift
 //  WellRead
 //
-//  Fetches book metadata from Google Books API.
+//  The app's book-search hub. Despite the name, `search` runs the full lookup
+//  chain: shared Firestore cache → ISBNdb (paid, primary) → Google Books
+//  (keyed, then keyless long shot) → Open Library. Every book search in the
+//  app goes through here.
 //
 
 import Foundation
@@ -136,11 +139,33 @@ final class GoogleBooksService {
             return cached
         }
         // Shared cross-user Firestore cache: a query any user has run before resolves
-        // without touching either API. (Entries keep the ranking of whoever populated
+        // without touching any API. (Entries keep the ranking of whoever populated
         // them — the libraryAuthors personalization boost isn't re-applied.)
         if let shared = await BookSearchCacheService.shared.lookup(cacheKey: cacheKey) {
             storeInMemory(cacheKey: cacheKey, books: shared)
             return shared
+        }
+        // Tier 1: ISBNdb (paid, dedicated quota). Google runs only when ISBNdb
+        // errors, is rate-limited, or has nothing for the query.
+        if ISBNdbService.shared.isConfigured {
+            do {
+                let books = try await searchISBNdb(
+                    query: query,
+                    isISBNQuery: isISBNQuery,
+                    includeAllEditions: includeAllEditions,
+                    libraryAuthors: libraryAuthors,
+                    languageRestriction: languageRestriction
+                )
+                if !books.isEmpty {
+                    storeInMemory(cacheKey: cacheKey, books: books)
+                    BookSearchCacheService.shared.store(cacheKey: cacheKey, books: books, source: .isbndb)
+                    return books
+                }
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // ISBNdb unavailable or throttled — fall through to Google.
+            }
         }
         var queryItems: [URLQueryItem] = [
             URLQueryItem(name: "q", value: query),
@@ -205,6 +230,42 @@ final class GoogleBooksService {
         storeInMemory(cacheKey: cacheKey, books: books)
         BookSearchCacheService.shared.store(cacheKey: cacheKey, books: books, source: .google)
         return books
+    }
+
+    /// ISBNdb tier of the search chain, shaped to match the Google path:
+    /// same junk-edition filter, same ranker, same language restriction
+    /// (applied client-side — ISBNdb has no langRestrict parameter; records
+    /// with no language stay in, the import's title gate catches translations).
+    private func searchISBNdb(
+        query: String,
+        isISBNQuery: Bool,
+        includeAllEditions: Bool,
+        libraryAuthors: Set<String>,
+        languageRestriction: String?
+    ) async throws -> [Book] {
+        if isISBNQuery {
+            let digits = query.trimmingCharacters(in: .whitespaces).dropFirst(5).filter(\.isNumber)
+            guard let book = try await ISBNdbService.shared.lookupISBN(String(digits)) else { return [] }
+            return [book]
+        }
+        var matches = try await ISBNdbService.shared.search(query: query)
+        if let lang = languageRestriction?.lowercased(), !lang.isEmpty {
+            matches = matches.filter { $0.languageCode == nil || $0.languageCode == lang }
+        }
+        let applyJunkFilter = !includeAllEditions
+        let candidates: [BookSearchRanker.Candidate] = matches.compactMap { match in
+            if applyJunkFilter, isJunkEditionTitle(match.book.title) { return nil }
+            return BookSearchRanker.Candidate(
+                book: match.book,
+                signals: BookSearchSignals(ratingsCount: nil, averageRating: nil, language: match.languageCode)
+            )
+        }
+        return BookSearchRanker.rank(
+            candidates,
+            query: query,
+            deduplicate: !includeAllEditions,
+            libraryAuthors: libraryAuthors
+        )
     }
 
     private func storeInMemory(cacheKey: String, books: [Book]) {
@@ -373,10 +434,7 @@ final class GoogleBooksService {
     /// Use imageLinks in documented size order (best available first). Books without covers still map (empty coverURL — UI uses title placeholder / Open Library). Excludes obvious summary/study-guide entries unless `filterJunkEditions` is false ("show all editions" fallback).
     private func mapToBook(item: GoogleBooksItem, filterJunkEditions: Bool = true) -> Book? {
         guard let info = item.volumeInfo, let title = info.title, !title.isEmpty else { return nil }
-        if filterJunkEditions {
-            if title.range(of: "Summary", options: .caseInsensitive) != nil { return nil }
-            if isLikelyNonBookEdition(title: title) { return nil }
-        }
+        if filterJunkEditions, isJunkEditionTitle(title) { return nil }
         let links = info.imageLinks
         // Prefer thumbnail → medium before extraLarge: very large assets are sometimes interior scans or preview pages, not the marketing cover.
         let rawOrder: [String?] = [
@@ -411,8 +469,9 @@ final class GoogleBooksService {
         )
     }
 
-    /// Filters junk editions that often appear in broad search (not used for strict ISBN queries).
-    private func isLikelyNonBookEdition(title: String) -> Bool {
+    /// Filters junk editions that often appear in broad search (not used for
+    /// strict ISBN queries) — shared by the ISBNdb and Google tiers.
+    private func isJunkEditionTitle(_ title: String) -> Bool {
         let t = title.lowercased()
         let junk = ["summary", "study guide", "sparknotes", "cliffsnotes", "book review", "analysis of", "reading guide"]
         return junk.contains { t.contains($0) }

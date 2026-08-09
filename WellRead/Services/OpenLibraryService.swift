@@ -57,13 +57,51 @@ final class OpenLibraryService {
     static let shared = OpenLibraryService()
     private let session: URLSession
 
+    // Circuit breaker. Open Library throttles per-IP in ~5-minute windows, and a
+    // throttled request stalls until the timeout rather than refusing quickly.
+    // Every caller here has a Google fallback, so once OL looks down, fail fast
+    // for a while instead of paying the timeout on each lookup — the Goodreads
+    // import hits OL first for every ISBN, and those serialized stalls showed up
+    // as multi-minute "Finding your book…" hangs.
+    private let breakerQueue = DispatchQueue(label: "com.wellread.openlibrary.breaker")
+    private var consecutiveFailures = 0
+    private var unavailableUntil: Date?
+
     private init() {
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 15
-        config.timeoutIntervalForResource = 20
+        // Short timeouts: healthy OL answers in ~1-2s, and every caller falls
+        // back to Google Books, so waiting longer only delays the fallback.
+        config.timeoutIntervalForRequest = 8
+        config.timeoutIntervalForResource = 12
         // Identified traffic gets a 3x rate limit vs anonymous (Open Library policy).
         config.httpAdditionalHeaders = ["User-Agent": "SPINE/2.0 (tanner@tinyhealth.com)"]
         session = URLSession(configuration: config)
+    }
+
+    private var breakerOpen: Bool {
+        breakerQueue.sync {
+            guard let until = unavailableUntil else { return false }
+            return until > Date()
+        }
+    }
+
+    /// Two consecutive failures open the breaker for 5 minutes (one throttle
+    /// window). After it expires the next real attempt either resets the count
+    /// or re-opens it immediately.
+    private func recordFailure() {
+        breakerQueue.sync {
+            consecutiveFailures += 1
+            if consecutiveFailures >= 2 {
+                unavailableUntil = Date().addingTimeInterval(5 * 60)
+            }
+        }
+    }
+
+    private func recordSuccess() {
+        breakerQueue.sync {
+            consecutiveFailures = 0
+            unavailableUntil = nil
+        }
     }
 
     /// Free-text search. Results are work-level (one row per book, editions already
@@ -99,6 +137,9 @@ final class OpenLibraryService {
     }
 
     private func fetchDocs(q: String, limit: Int) async throws -> [OpenLibraryDoc] {
+        guard !breakerOpen else {
+            throw NSError(domain: "OpenLibrary", code: 429, userInfo: [NSLocalizedDescriptionKey: "Open Library is busy right now."])
+        }
         var comp = URLComponents(string: "https://openlibrary.org/search.json")!
         comp.queryItems = [
             URLQueryItem(name: "q", value: q),
@@ -111,14 +152,18 @@ final class OpenLibraryService {
         do {
             (data, response) = try await session.data(from: url)
         } catch let urlError as URLError where urlError.code == .cancelled {
+            // Caller cancelled — says nothing about Open Library's health.
             throw CancellationError()
         } catch {
+            recordFailure()
             throw NSError(domain: "OpenLibrary", code: -2, userInfo: [NSLocalizedDescriptionKey: "Can't reach Open Library. Check your connection."])
         }
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+            recordFailure()
             throw NSError(domain: "OpenLibrary", code: code, userInfo: [NSLocalizedDescriptionKey: "Open Library request failed (HTTP \(code))."])
         }
+        recordSuccess()
         return (try? JSONDecoder().decode(OpenLibrarySearchResponse.self, from: data))?.docs ?? []
     }
 

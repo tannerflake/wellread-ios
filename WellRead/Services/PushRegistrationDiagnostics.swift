@@ -158,7 +158,7 @@ enum PushTestNotificationKind: String, CaseIterable, Identifiable {
 
     var buttonLabel: String {
         switch self {
-        case .friendReviewPosted: return "Friend posted review"
+        case .friendReviewPosted: return "Followed reader posted review"
         case .reviewLiked: return "Like on your review"
         case .reviewCommented: return "Comment on your review"
         case .threadCommented: return "Thread you joined"

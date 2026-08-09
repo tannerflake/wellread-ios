@@ -43,6 +43,19 @@ final class BookBlendService {
         return BookBlend.from(data: data, docId: snapshot.documentID)
     }
 
+    /// Pending invites aimed at me — drives the launch invite modal. Fetches all my
+    /// pair docs (a handful at most; `array-contains` keeps the rules query provable)
+    /// and filters to pending ones where I'm the recipient, newest first.
+    func fetchIncomingPendingBlends(myUid: String) async -> [BookBlend] {
+        guard let snapshot = try? await db.collection(collectionName)
+            .whereField("userIds", arrayContains: myUid)
+            .getDocuments() else { return [] }
+        return snapshot.documents
+            .compactMap { BookBlend.from(data: $0.data(), docId: $0.documentID) }
+            .filter { $0.status == .pending && $0.recipientId == myUid }
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+
     /// Creates (or re-opens a declined) pair doc as pending. The Cloud Function on
     /// this write pushes the blend invite to the recipient.
     func requestBlend(myUid: String, me: User?, otherUid: String, other: User?) async throws -> BookBlend {
@@ -63,6 +76,16 @@ final class BookBlendService {
         )
         try await db.collection(collectionName).document(pairId).setData(blend.firestoreData)
         return blend
+    }
+
+    /// Requester withdraws a pending request: deletes the pair doc. The Cloud
+    /// Function reacts with a silent push that clears the invite alert from the
+    /// recipient's Notification Center. Re-checked against the server first so
+    /// a request the recipient already accepted (or declined) is left alone.
+    func cancelRequest(_ blend: BookBlend, myUid: String) async throws {
+        guard blend.requesterId == myUid else { return }
+        if let latest = await fetchBlend(pairId: blend.id), latest.status != .pending { return }
+        try await db.collection(collectionName).document(blend.id).delete()
     }
 
     func decline(_ blend: BookBlend) async throws {

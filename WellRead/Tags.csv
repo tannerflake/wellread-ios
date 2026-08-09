@@ -11,6 +11,30 @@ Genre,Self-Improvement
 Genre,Business
 Genre,Psychology
 Genre,Science
+Genre,Horror
+
+Subgenre,Cozy Mystery
+Subgenre,Psychological Thriller
+Subgenre,Crime & Detective
+Subgenre,Spy & Espionage
+Subgenre,Legal Thriller
+Subgenre,Epic Fantasy
+Subgenre,Urban Fantasy
+Subgenre,Cozy Fantasy
+Subgenre,Space Opera
+Subgenre,Time Travel
+Subgenre,Mythology & Retellings
+Subgenre,Romantasy
+Subgenre,Contemporary Romance
+Subgenre,Historical Romance
+Subgenre,Dark Romance
+Subgenre,Romantic Comedy
+Subgenre,Sports Romance
+Subgenre,Paranormal Romance
+Subgenre,Small Town Romance
+Subgenre,Gothic
+Subgenre,Psychological Horror
+Subgenre,Ghost Story
 
 Story Type,Coming of Age
 Story Type,Survival
@@ -25,7 +49,7 @@ Story Type,Dystopian
 Story Type,Utopian
 Story Type,Alternate History
 Story Type,Heist
-Story Type,Political Intrigue
+Story Type,Political
 
 Tone / Vibe,Dark
 Tone / Vibe,Lighthearted
@@ -50,6 +74,11 @@ Setting / World,Space
 Setting / World,Post-Apocalyptic
 Setting / World,Magical World
 Setting / World,School / Academy
+Setting / World,Supernatural
+Setting / World,World War II
+Setting / World,Regency Era
+Setting / World,Ancient World
+Setting / World,Wild West
 
 Character / Dynamics,Strong Female Lead
 Character / Dynamics,Antihero
@@ -60,6 +89,12 @@ Character / Dynamics,Friends to Lovers
 Character / Dynamics,Mentor / Student
 Character / Dynamics,Rivalry
 Character / Dynamics,Solo Protagonist
+Character / Dynamics,Fake Dating
+Character / Dynamics,Grumpy / Sunshine
+Character / Dynamics,Forced Proximity
+Character / Dynamics,Second Chance
+Character / Dynamics,Forbidden Love
+Character / Dynamics,Love Triangle
 
 Pacing / Style,Fast-Paced
 Pacing / Style,Slow Burn
@@ -89,6 +124,9 @@ Nonfiction Topics,Neuroscience
 Nonfiction Topics,Relationships
 Nonfiction Topics,Health & Fitness
 Nonfiction Topics,Creativity
+Nonfiction Topics,True Crime
+Nonfiction Topics,History
+Nonfiction Topics,Spirituality
 
 Reading Experience,Easy Read
 Reading Experience,Challenging Read
@@ -97,3 +135,7 @@ Reading Experience,Relaxing Read
 Reading Experience,Informative
 Reading Experience,Inspiring
 Reading Experience,Emotional Rollercoaster
+Reading Experience,Binge-Worthy
+Reading Experience,Comfort Read
+Reading Experience,Tearjerker
+Reading Experience,Mind-Bending

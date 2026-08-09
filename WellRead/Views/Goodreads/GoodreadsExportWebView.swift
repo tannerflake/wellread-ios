@@ -5,8 +5,11 @@
 //  Embedded browser for the Goodreads export page. Three jobs:
 //  1. Keep navigation inside Spine — goodreads.com registers a catch-all
 //     universal link, so opening the page externally hands off to the Goodreads
-//     app (where the CSV can't be downloaded). Universal links never trigger
-//     from an embedded web view.
+//     app (where the CSV can't be downloaded). Embedded web views are mostly
+//     immune, EXCEPT user-gesture navigations that cross domains and land back
+//     on goodreads.com (the Sign in with Apple redirect chain does exactly
+//     this) — those can still trigger the handoff, so every navigation is
+//     allowed with WebKit's "without app link" policy (see Coordinator).
 //  2. Intercept the library-export CSV download via WKDownloadDelegate and feed
 //     the parsed rows straight back to the import wizard — no Files app, no
 //     upload step.
@@ -141,11 +144,11 @@ struct GoodreadsExportWebView: View {
 
     private var instructionText: Text {
         if mode == .login {
-            Text("Sign in to Goodreads, then tap “I’m logged in” at the top.")
+            Text("Sign in to Goodreads, then tap “I’m logged in” at the top. If your phone opens the Goodreads app, close it and come back to SPINE.")
         } else {
             Text("Tap “Export Library”, then tap the ")
                 + GoodreadsExportLinkMock.text
-                + Text(" link when it appears — SPINE takes it from there.")
+                + Text(" link when it appears.")
         }
     }
 }
@@ -181,6 +184,14 @@ private struct GoodreadsExportWebViewRepresentable: UIViewRepresentable {
         private let parent: GoodreadsExportWebViewRepresentable
         private var downloadDestination: URL?
 
+        /// WebKit's "allow without trying the app link" policy (allow + 2).
+        /// Plain .allow lets iOS hand user-gesture cross-domain navigations
+        /// back to goodreads.com (e.g. the Sign in with Apple redirect) off to
+        /// the Goodreads app, which strands the export flow there. Falls back
+        /// to .allow if the raw value ever stops resolving.
+        private static let allowInWebView =
+            WKNavigationActionPolicy(rawValue: WKNavigationActionPolicy.allow.rawValue + 2) ?? .allow
+
         init(_ parent: GoodreadsExportWebViewRepresentable) {
             self.parent = parent
         }
@@ -203,7 +214,7 @@ private struct GoodreadsExportWebViewRepresentable: UIViewRepresentable {
             decidePolicyFor navigationAction: WKNavigationAction,
             decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
         ) {
-            decisionHandler(navigationAction.shouldPerformDownload ? .download : .allow)
+            decisionHandler(navigationAction.shouldPerformDownload ? .download : Self.allowInWebView)
         }
 
         func webView(

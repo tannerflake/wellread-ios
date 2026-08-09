@@ -71,6 +71,20 @@ final class UserRepository {
     private let handleClaims = "handleClaims"
 
     /// Returns the User document for this uid if it exists.
+    /// How many accounts existed on or before `date` — the user's "member
+    /// number" for the library card (the 50th account to join is member 50).
+    /// Server-side count aggregation; nil on failure so callers can fall back.
+    func memberNumber(joinedAt date: Date) async -> Int? {
+        do {
+            let snapshot = try await db.collection(users)
+                .whereField("joinedAt", isLessThanOrEqualTo: Timestamp(date: date))
+                .count.getAggregation(source: .server)
+            return snapshot.count.intValue
+        } catch {
+            return nil
+        }
+    }
+
     func getUser(uid: String) async -> User? {
         let ref = db.collection(users).document(uid)
         do {
@@ -80,6 +94,55 @@ final class UserRepository {
         } catch {
             return nil
         }
+    }
+
+    /// Session cache for bulk profile lookups (feed post authors). Profiles
+    /// change rarely; a slightly stale name/photo beats re-fetching every
+    /// author on each feed update. `getUser` stays uncached for fresh reads.
+    private static var bulkUserCache: [String: User] = [:]
+    private static let bulkUserCacheLock = NSLock()
+
+    /// Bulk lookup: cache hits return immediately; the rest load through
+    /// parallel `in` queries (30 uids each) rather than one round trip per
+    /// user. Missing/failed uids are simply absent from the result.
+    func getUsers(uids: [String]) async -> [String: User] {
+        var result: [String: User] = [:]
+        var missing: [String] = []
+        Self.bulkUserCacheLock.lock()
+        for uid in Set(uids) {
+            if let cached = Self.bulkUserCache[uid] {
+                result[uid] = cached
+            } else {
+                missing.append(uid)
+            }
+        }
+        Self.bulkUserCacheLock.unlock()
+        guard !missing.isEmpty else { return result }
+        let chunks = stride(from: 0, to: missing.count, by: 30).map { Array(missing[$0..<min($0 + 30, missing.count)]) }
+        let fetched = await withTaskGroup(of: [(String, User)].self) { group in
+            for chunk in chunks {
+                group.addTask { [self] in
+                    do {
+                        let snapshot = try await db.collection(users)
+                            .whereField(FieldPath.documentID(), in: chunk)
+                            .getDocuments()
+                        return snapshot.documents.compactMap { doc in
+                            user(from: doc.data(), uid: doc.documentID).map { (doc.documentID, $0) }
+                        }
+                    } catch {
+                        return []
+                    }
+                }
+            }
+            var all: [(String, User)] = []
+            for await pairs in group { all.append(contentsOf: pairs) }
+            return all
+        }
+        Self.bulkUserCacheLock.lock()
+        for (uid, u) in fetched { Self.bulkUserCache[uid] = u }
+        Self.bulkUserCacheLock.unlock()
+        for (uid, u) in fetched { result[uid] = u }
+        return result
     }
 
     /// All user profiles for the “Your friends” strip (Firebase uid + `User`). Excludes `excludingUid` if set. Sorted by display name.

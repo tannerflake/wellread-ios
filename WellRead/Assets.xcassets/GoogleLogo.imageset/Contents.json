@@ -3,6 +3,16 @@
     {
       "filename" : "GoogleLogo.png",
       "idiom" : "universal"
+    },
+    {
+      "appearances" : [
+        {
+          "appearance" : "luminosity",
+          "value" : "dark"
+        }
+      ],
+      "filename" : "GoogleLogoDark.png",
+      "idiom" : "universal"
     }
   ],
   "info" : {

@@ -222,13 +222,18 @@ struct QueueBookDragCover: UIViewControllerRepresentable {
     let userBookId: UUID
     let bookSize: CGFloat
     var onTap: (() -> Void)?
+    /// In-app queue drop landed on this cover: (dropped userBook id, insertBefore).
+    /// Left half of the cover inserts before it, right half after. A `UIDropInteraction`
+    /// (not a SwiftUI overlay) so the cover stays fully tappable and drag-liftable.
+    var onDropItem: ((UUID, Bool) -> Void)? = nil
     @ObservedObject var dragCoordinator: QueueBookDragCoordinator
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
             userBookId: userBookId,
             dragCoordinator: dragCoordinator,
-            onTap: onTap
+            onTap: onTap,
+            onDropItem: onDropItem
         )
     }
 
@@ -239,9 +244,12 @@ struct QueueBookDragCover: UIViewControllerRepresentable {
         context.coordinator.host = host
         context.coordinator.userBookId = userBookId
         context.coordinator.onTap = onTap
+        context.coordinator.onDropItem = onDropItem
 
         let drag = UIDragInteraction(delegate: context.coordinator)
         host.view.addInteraction(drag)
+        let drop = UIDropInteraction(delegate: context.coordinator)
+        host.view.addInteraction(drop)
 
         return host
     }
@@ -251,22 +259,26 @@ struct QueueBookDragCover: UIViewControllerRepresentable {
         context.coordinator.host = host
         context.coordinator.userBookId = userBookId
         context.coordinator.onTap = onTap
+        context.coordinator.onDropItem = onDropItem
     }
 
-    final class Coordinator: NSObject, UIDragInteractionDelegate {
+    final class Coordinator: NSObject, UIDragInteractionDelegate, UIDropInteractionDelegate {
         var userBookId: UUID
         let dragCoordinator: QueueBookDragCoordinator
         var onTap: (() -> Void)?
+        var onDropItem: ((UUID, Bool) -> Void)?
         weak var host: UIHostingController<BookCoverView>?
 
         init(
             userBookId: UUID,
             dragCoordinator: QueueBookDragCoordinator,
-            onTap: (() -> Void)?
+            onTap: (() -> Void)?,
+            onDropItem: ((UUID, Bool) -> Void)?
         ) {
             self.userBookId = userBookId
             self.dragCoordinator = dragCoordinator
             self.onTap = onTap
+            self.onDropItem = onDropItem
         }
 
         // MARK: UIDragInteractionDelegate
@@ -302,6 +314,30 @@ struct QueueBookDragCover: UIViewControllerRepresentable {
             let params = UIDragPreviewParameters()
             params.visiblePath = UIBezierPath(roundedRect: view.bounds, cornerRadius: 6)
             return UITargetedDragPreview(view: view, parameters: params)
+        }
+
+        // MARK: UIDropInteractionDelegate — the whole cover accepts queue drops
+
+        func dropInteraction(_ interaction: UIDropInteraction, canHandle session: UIDropSession) -> Bool {
+            // In-app queue drags only (the drag item carries the uuid as localObject).
+            onDropItem != nil && session.localDragSession?.items.first?.localObject is String
+        }
+
+        func dropInteraction(_ interaction: UIDropInteraction, sessionDidEnter session: UIDropSession) {
+            LibraryDragHaptics.dropTargetHoverEntered()
+        }
+
+        func dropInteraction(_ interaction: UIDropInteraction, sessionDidUpdate session: UIDropSession) -> UIDropProposal {
+            UIDropProposal(operation: .move)
+        }
+
+        func dropInteraction(_ interaction: UIDropInteraction, performDrop session: UIDropSession) {
+            guard let view = host?.view,
+                  let idString = session.localDragSession?.items.first?.localObject as? String,
+                  let droppedId = UUID(uuidString: idString)
+            else { return }
+            let insertBefore = session.location(in: view).x < view.bounds.midX
+            onDropItem?(droppedId, insertBefore)
         }
     }
 }

@@ -23,7 +23,21 @@ struct MainTabView: View {
     @State private var showProfilePhotoNudgeModal = false
     @State private var showCurrentlyReadingPrompt = false
     @State private var keyboardVisible = false
+    /// New-follower push tapped: the follower's profile presented full-height over any tab.
+    @State private var deepLinkProfile: DeepLinkUserProfile?
+    /// Pending Book Blend invite surfaced as a launch modal (push-independent).
+    @State private var incomingBlendInvite: BookBlend?
+    /// True once a modal button decided the invite's fate — a plain swipe-down
+    /// dismissal (no decision) snoozes it two days like "Remind me in a bit".
+    @State private var blendInviteDecided = false
+    /// Kept through dismissal so onDismiss can snooze the undecided invite
+    /// (`incomingBlendInvite` is already nil by then).
+    @State private var lastPresentedBlendInvite: BookBlend?
     @Namespace private var tabLensNamespace
+
+    private struct DeepLinkUserProfile: Identifiable {
+        let id: String
+    }
 
     enum Tab: String, CaseIterable {
         case feed
@@ -32,7 +46,9 @@ struct MainTabView: View {
         case profile
     }
     
-    var body: some View {
+    /// Tab switch + tab bar + search drawer (split out of `body`: the full
+    /// modifier chain became too much for the type-checker in one expression).
+    private var tabContent: some View {
         Group {
             switch selectedTab {
             case .feed: FeedView()
@@ -86,6 +102,11 @@ struct MainTabView: View {
             // through) and stay pinned when the keyboard rises.
             .ignoresSafeArea(.all, edges: .bottom)
         }
+    }
+
+    /// Onboarding/nudge sheets attached to the tab content.
+    private var tabContentWithSheets: some View {
+        tabContent
         .sheet(isPresented: $showCompleteProfileSheet, onDismiss: {
             schedulePostProfileOnboardingFlow()
         }) {
@@ -180,21 +201,85 @@ struct MainTabView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
+    }
+
+    var body: some View {
+        tabContentWithSheets
         .onReceive(NotificationCenter.default.publisher(for: .wellreadOpenFeed)) { _ in
             selectedTab = .feed
             appState.deepLinkFeedPostId = nil
         }
         .onReceive(NotificationCenter.default.publisher(for: .wellreadOpenFeedPost)) { note in
+            // Consume the cold-start stash too, so onAppear doesn't re-handle.
+            _ = PushNotificationService.consumePendingOpenPostCommentsTap()
             if let id = note.userInfo?["postId"] as? String {
                 selectedTab = .feed
                 appState.deepLinkFeedPostId = id
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .wellreadOpenFeedScrollToPost)) { note in
+            _ = PushNotificationService.consumePendingScrollToFeedPostTap()
             if let id = note.userInfo?["postId"] as? String {
                 selectedTab = .feed
                 appState.scrollToFeedPostId = id
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .spineOpenUserProfile)) { note in
+            _ = PushNotificationService.consumePendingProfileUserTap()
+            if let uid = note.userInfo?["userId"] as? String, !uid.isEmpty {
+                presentDeepLinkProfile(userId: uid)
+            }
+        }
+        .sheet(item: $deepLinkProfile) { profile in
+            NavigationStack {
+                UserLibraryDetailView(userId: profile.id)
+            }
+            .environmentObject(authService)
+            .environmentObject(appState)
+        }
+        .sheet(item: $incomingBlendInvite, onDismiss: {
+            // Swipe-down without choosing = "Remind me in a bit".
+            if !blendInviteDecided, let uid = authService.firebaseUser?.uid,
+               let invite = lastPresentedBlendInvite {
+                BookBlendInviteModalStorage.snoozeTwoDays(uid: uid, blend: invite)
+            }
+            lastPresentedBlendInvite = nil
+        }) { invite in
+            BookBlendInviteNudgeModal(
+                blend: invite,
+                onBlend: {
+                    if let uid = authService.firebaseUser?.uid {
+                        // Snoozed, not consumed: if they bail out of the landing
+                        // without deciding, the invite can resurface later.
+                        BookBlendInviteModalStorage.snoozeTwoDays(uid: uid, blend: invite)
+                    }
+                    blendInviteDecided = true
+                    incomingBlendInvite = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        NotificationCenter.default.post(
+                            name: .spineOpenBookBlend,
+                            object: nil,
+                            userInfo: ["blendId": invite.id]
+                        )
+                    }
+                },
+                onRemindLater: {
+                    if let uid = authService.firebaseUser?.uid {
+                        BookBlendInviteModalStorage.snoozeTwoDays(uid: uid, blend: invite)
+                    }
+                    blendInviteDecided = true
+                    incomingBlendInvite = nil
+                },
+                onNoThanks: {
+                    if let uid = authService.firebaseUser?.uid {
+                        BookBlendInviteModalStorage.dismissForever(uid: uid, blend: invite)
+                    }
+                    blendInviteDecided = true
+                    incomingBlendInvite = nil
+                }
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
         }
         .onReceive(NotificationCenter.default.publisher(for: .spineHighlightTierBook)) { _ in
             selectedTab = .profile
@@ -227,13 +312,50 @@ struct MainTabView: View {
             if ProcessInfo.processInfo.arguments.contains("-uiPreviewCurrentlyReading") {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { showCurrentlyReadingPrompt = true }
             }
+            // `-uiPreviewBlendInviteModal`: force the blend invite launch modal on
+            // demo data for simulator UI verification.
+            if ProcessInfo.processInfo.arguments.contains("-uiPreviewBlendInviteModal") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    blendInviteDecided = false
+                    lastPresentedBlendInvite = .uiPreviewDemo
+                    incomingBlendInvite = .uiPreviewDemo
+                }
+            }
             #endif
             appState.loadDiscoverSuggestionsIfNeeded()
             PushNotificationService.registerForRemoteNotificationsOnly()
+            // Push tapped on a cold start: the tap fired before this view mounted,
+            // so its NotificationCenter post was lost — replay it from the stash.
+            // (Blend taps are replayed the same way by bookBlendPushPresenter.)
+            if let postId = PushNotificationService.consumePendingScrollToFeedPostTap() {
+                selectedTab = .feed
+                appState.scrollToFeedPostId = postId
+            }
+            if let postId = PushNotificationService.consumePendingOpenPostCommentsTap() {
+                selectedTab = .feed
+                appState.deepLinkFeedPostId = postId
+            }
+            if let uid = PushNotificationService.consumePendingProfileUserTap() {
+                presentDeepLinkProfile(userId: uid)
+            }
             if appState.pendingGoodreadsImportRows != nil || appState.pendingGoodreadsImportError != nil || appState.pendingGoodreadsImportURL != nil {
                 selectedTab = .profile
             }
             syncCompleteProfileSheet()
+            // Recovery for accounts killed mid-wizard after the profile commit:
+            // profile is complete but the push prompt (and the currently-reading
+            // and Goodreads steps behind it) never ran, and nothing else would
+            // ever ask again. The legacy chain picks up exactly there. Wizard
+            // graduates have the flag set, so this is a no-op for them.
+            if !OnboardingWizardModel.justCompletedThisLaunch,
+               authService.appUser?.needsProfileCompletion == false,
+               authService.appUser?.hasSeenPushNotificationPrompt == false {
+                schedulePostProfileOnboardingFlow()
+            }
+            // Blend invite outranks the photo/push nudges — it's another person waiting.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+                considerShowingBlendInviteModal()
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
                 considerShowingProfilePhotoNudge()
             }
@@ -245,6 +367,9 @@ struct MainTabView: View {
             if phase == .active {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     PushNotificationService.syncFCMTokenToFirestoreIfSignedIn()
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    considerShowingBlendInviteModal()
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                     considerShowingPushNudgeModal()
@@ -328,7 +453,51 @@ struct MainTabView: View {
     private var isAnyLaunchModalUp: Bool {
         showCompleteProfileSheet || showPushNotificationPromptSheet || showWelcomeGoodreadsModal
             || showGoodreadsImportFromWelcome || showAddBook || showPushNudgeModal
-            || showProfilePhotoNudgeModal || showCurrentlyReadingPrompt
+            || showProfilePhotoNudgeModal || showCurrentlyReadingPrompt || deepLinkProfile != nil
+            || incomingBlendInvite != nil
+    }
+
+    /// Pending blend invite aimed at me that isn't snoozed/dismissed → surface the
+    /// invite modal. Push-independent: this is how invites reach users without
+    /// notification permission.
+    private func considerShowingBlendInviteModal() {
+        guard let uid = authService.firebaseUser?.uid else { return }
+        guard authService.appUser?.needsProfileCompletion == false else { return }
+        guard !isAnyLaunchModalUp, !isDeepLinkPending else { return }
+        Task {
+            let invites = await BookBlendService.shared.fetchIncomingPendingBlends(myUid: uid)
+            guard let invite = invites.first(where: {
+                BookBlendInviteModalStorage.isEligible(uid: uid, blend: $0)
+            }) else { return }
+            await MainActor.run {
+                guard !isAnyLaunchModalUp, !isDeepLinkPending else { return }
+                blendInviteDecided = false
+                lastPresentedBlendInvite = invite
+                incomingBlendInvite = invite
+            }
+        }
+    }
+
+    /// A push deep link is (about to be) presenting — launch nudges must stand down,
+    /// or SwiftUI drops the deep-link sheet silently (only one sheet can present).
+    private var isDeepLinkPending: Bool {
+        deepLinkProfile != nil
+            || appState.deepLinkFeedPostId != nil
+            || appState.scrollToFeedPostId != nil
+            // A fast feed load can consume the pending ids before the nudge timers
+            // fire — the recent-tap window covers that gap.
+            || PushNotificationService.recentlyHandledDeepLinkTap
+    }
+
+    /// New-follower push tapped: present the follower's profile. Any launch nudge that's
+    /// already up is dismissed first — the user's explicit tap outranks a nudge — and the
+    /// sheet presents after a beat so the dismissal has finished.
+    private func presentDeepLinkProfile(userId: String) {
+        showProfilePhotoNudgeModal = false
+        showPushNudgeModal = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+            deepLinkProfile = DeepLinkUserProfile(id: userId)
+        }
     }
 
     /// Recurring prompt when push permission is missing and snooze window has passed.
@@ -336,7 +505,7 @@ struct MainTabView: View {
         guard let uid = authService.firebaseUser?.uid else { return }
         guard authService.appUser?.needsProfileCompletion == false else { return }
         guard authService.appUser?.hasSeenPushNotificationPrompt == true else { return }
-        guard !isAnyLaunchModalUp else { return }
+        guard !isAnyLaunchModalUp, !isDeepLinkPending else { return }
         guard PushNotificationNudgeStorage.isEligibleForNudge(uid: uid) else { return }
 
         PushNotificationService.needsPushPermissionNudge { needs in
@@ -349,12 +518,16 @@ struct MainTabView: View {
     /// Launch reminder for users without a profile photo: shows each cold launch
     /// until a photo is set or the user has dismissed it 4 times.
     private func considerShowingProfilePhotoNudge() {
+        // The onboarding wizard just offered the photo step in this session;
+        // nudging 1.2s after "Skip for now" would undercut it. Next cold launch
+        // is fair game.
+        guard !OnboardingWizardModel.justCompletedThisLaunch else { return }
         guard let uid = authService.firebaseUser?.uid,
               let user = authService.appUser,
               !user.needsProfileCompletion,
               (user.profileImageURL ?? "").isEmpty,
               ProfilePhotoNudgeStorage.isEligible(uid: uid) else { return }
-        guard !isAnyLaunchModalUp else { return }
+        guard !isAnyLaunchModalUp, !isDeepLinkPending else { return }
         showProfilePhotoNudgeModal = true
     }
 

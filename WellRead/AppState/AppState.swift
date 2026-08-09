@@ -9,11 +9,26 @@ import SwiftUI
 import Combine
 import FirebaseFirestore
 
+/// Whose posts the feed shows: everyone on Spine (default) or people you follow.
+enum FeedScope: String {
+    case friends
+    case everyone
+}
+
 final class AppState: ObservableObject {
     @Published var isAuthenticated: Bool = false
     @Published var currentUser: User?
     @Published var userBooks: [UserBook] = []
     @Published var feedPosts: [Post] = []
+    /// True until the feed listener delivers its first complete, server-confirmed
+    /// merge — the Feed tab shows the brand spinner instead of a partial feed.
+    @Published var isFeedLoading = true
+    /// Feed scope toggle (friends vs everyone). Defaults to everyone; persisted
+    /// per device once the user switches. Set via `setFeedScope`.
+    @Published private(set) var feedScope: FeedScope =
+        FeedScope(rawValue: UserDefaults.standard.string(forKey: AppState.feedScopeDefaultsKey) ?? "") ?? .everyone
+
+    private static let feedScopeDefaultsKey = "feedScope"
     @Published var dismissedBookIds: Set<String> = []
     @Published var discoverCurrentSuggestion: Book?
     @Published var discoverSuggestionQueue: [Book] = []
@@ -54,9 +69,19 @@ final class AppState: ObservableObject {
     private var feedListener: FeedListenerHandle?
     private var recommendationsListener: ListenerRegistration?
     private var currentUserId: String?
+    /// Uids the signed-in user follows, kept for feed-listener restarts on scope switches.
+    private var currentFollowing: [String] = []
 
     /// Firebase Auth uid for the current user (use for Firestore writes).
     var authUserId: String? { currentUserId }
+
+    #if DEBUG
+    /// `-uiPreview` runs only: gives the demo session a uid so write paths
+    /// (addToQueue, setQueueShelfAndOrder, …) mutate local state instead of
+    /// silently bailing on the `currentUserId` guard. No listeners run, and the
+    /// fire-and-forget repo writes fail harmlessly against the fake uid.
+    func seedPreviewAuth(uid: String) { currentUserId = uid }
+    #endif
 
     init() {}
 
@@ -66,7 +91,13 @@ final class AppState: ObservableObject {
     /// unfollow via `refreshAppUser`), which restarts the feed with the new graph.
     func startFirestoreListeners(uid: String, following: [String]) {
         stopFirestoreListeners()
+        // Spinner only when there's nothing to show — a listener restart from a
+        // follow/unfollow keeps the current posts up while the new feed loads.
+        if uid != currentUserId || feedPosts.isEmpty {
+            isFeedLoading = true
+        }
         currentUserId = uid
+        currentFollowing = following
         dismissedBookIdsLoaded = false
         refreshGoodreadsWizardResumeState()
 
@@ -92,9 +123,7 @@ final class AppState: ObservableObject {
                 }
             }
         }
-        feedListener = postRepo.listenFeed(authorIds: following + [uid]) { [weak self] list in
-            self?.feedPosts = list
-        }
+        feedListener = makeFeedListener(uid: uid)
         recommendationsListener = recommendationRepo.listenIncoming(userId: uid) { [weak self] list in
             guard let self = self else { return }
             self.incomingRecommendations = list
@@ -114,6 +143,34 @@ final class AppState: ObservableObject {
             guard let self = self, let uid = self.currentUserId else { return }
             let liked = await self.postRepo.fetchLikedPostIds(userId: uid)
             await MainActor.run { self.likedPostIds = liked }
+        }
+    }
+
+    /// Switches the feed between friends-only and everyone: persists the choice
+    /// and restarts the feed listener under the new scope.
+    func setFeedScope(_ scope: FeedScope) {
+        guard scope != feedScope else { return }
+        feedScope = scope
+        UserDefaults.standard.set(scope.rawValue, forKey: Self.feedScopeDefaultsKey)
+        guard let uid = currentUserId else { return }
+        feedListener?.remove()
+        isFeedLoading = true
+        feedPosts = []
+        feedListener = makeFeedListener(uid: uid)
+    }
+
+    /// Feed listener for the current scope — friends queries the follow graph,
+    /// everyone streams the global posts collection.
+    private func makeFeedListener(uid: String) -> FeedListenerHandle {
+        let onUpdate: ([Post]) -> Void = { [weak self] list in
+            self?.feedPosts = list
+            self?.isFeedLoading = false
+        }
+        switch feedScope {
+        case .friends:
+            return postRepo.listenFeed(authorIds: currentFollowing + [uid], onUpdate: onUpdate)
+        case .everyone:
+            return postRepo.listenAllPosts(onUpdate: onUpdate)
         }
     }
 
@@ -159,10 +216,12 @@ final class AppState: ObservableObject {
     func signOut() {
         stopFirestoreListeners()
         currentUserId = nil
+        currentFollowing = []
         currentUser = nil
         isAuthenticated = false
         userBooks = []
         feedPosts = []
+        isFeedLoading = true
         incomingRecommendations = []
         recommenderProfiles = [:]
         dismissedBookIds = []
@@ -531,9 +590,19 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Add a book to Queue. No-op if already in queue. Firestore listener will update userBooks.
+    /// Add a book to Queue. Firestore listener will update userBooks.
+    /// If any edition of the same work is already queued, no duplicate is created:
+    /// a backlog copy is pulled to the top of the backlog instead, and a copy on
+    /// Reading Now / Up Next stays where it is.
     func addToWantToRead(book: Book) {
-        guard !isBookInQueue(bookId: book.id), let uid = currentUserId else { return }
+        guard let uid = currentUserId else { return }
+        if let existing = userBook(sameWorkAs: book, status: .wantToRead) {
+            if existing.queueShelf == nil || existing.queueShelf == .backlog {
+                setQueueShelfAndOrder(for: existing.id, shelf: .backlog, insertionIndex: 0)
+                Task { @MainActor in ToastCenter.shared.show(.addedToQueue(bookTitle: book.title)) }
+            }
+            return
+        }
         Task { @MainActor in ToastCenter.shared.show(.addedToQueue(bookTitle: book.title)) }
         Task {
             _ = try? await userBookRepo.addUserBook(userId: uid, book: book, status: .wantToRead, rating: nil, reviewText: nil, dateStarted: nil, dateFinished: nil)
@@ -541,9 +610,20 @@ final class AppState: ObservableObject {
     }
 
     /// Add a book directly onto a specific queue shelf (from the shelf "Add" tiles),
-    /// landing at the end of that shelf. No-op if already in queue.
+    /// landing at the end of that shelf. If any edition of the same work is already
+    /// queued (even on another shelf), that entry moves to the top of the target
+    /// shelf instead of a duplicate being created.
     func addToQueue(book: Book, shelf: QueueShelf) {
-        guard !isBookInQueue(bookId: book.id), let uid = currentUserId else { return }
+        guard let uid = currentUserId else { return }
+        if let existing = userBook(sameWorkAs: book, status: .wantToRead) {
+            setQueueShelfAndOrder(for: existing.id, shelf: shelf, insertionIndex: 0)
+            Task { @MainActor in
+                ToastCenter.shared.show(shelf == .readingNow
+                    ? .startedReading(bookTitle: book.title)
+                    : .addedToQueue(bookTitle: book.title))
+            }
+            return
+        }
         let endOrder: Int = {
             switch shelf {
             case .readingNow: return wantToReadReadingNow.count

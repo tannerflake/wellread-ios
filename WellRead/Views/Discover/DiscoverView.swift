@@ -59,9 +59,11 @@ struct DiscoverView: View {
                     readBooksForSimilar: appState.readBooks,
                     onNotInterested: { selectedBookForProfile = nil },
                     onWantToRead: { appState.addToWantToRead(book: book); selectedBookForProfile = nil },
+                    onStartReading: { appState.addToQueue(book: book, shelf: .readingNow); selectedBookForProfile = nil },
                     onConfirmRead: { date, rating, post, caption, tier in appState.addAsRead(book: book, dateFinished: date, rating: rating, postToFeed: post, caption: caption, tier: tier); selectedBookForProfile = nil },
                     isOnReadList: appState.isBookOnReadList(bookId: book.id),
                     isInQueue: appState.isBookInQueue(bookId: book.id),
+                    onRemoveFromQueue: { appState.removeFromQueue(book: book); selectedBookForProfile = nil },
                     readEntryForReview: appState.userReadBook(forBookId: book.id),
                     canEditReadReview: true,
                     showRecommend: false
@@ -167,6 +169,7 @@ struct DiscoverView: View {
             readBooksForSimilar: appState.readBooks,
             onNotInterested: { performNotInterested(book) },
             onWantToRead: { performWantToRead(book) },
+            onStartReading: { performStartReading(book) },
             onConfirmRead: { date, rating, post, caption, tier in performHaveRead(book, dateFinished: date, rating: rating, postToFeed: post, caption: caption, tier: tier) },
             onBookTap: { tappedBook in
                 bookWeCameFrom = appState.discoverCurrentSuggestion
@@ -174,6 +177,7 @@ struct DiscoverView: View {
             },
             isOnReadList: appState.isBookOnReadList(bookId: book.id),
             isInQueue: appState.isBookInQueue(bookId: book.id),
+            onRemoveFromQueue: { appState.removeFromQueue(book: book) },
             readEntryForReview: appState.userReadBook(forBookId: book.id),
             canEditReadReview: true,
             showRecommend: false
@@ -189,6 +193,12 @@ struct DiscoverView: View {
 
     private func performWantToRead(_ book: Book) {
         appState.addToWantToRead(book: book)
+        actionedBookCount += 1
+        appState.advanceDiscoverSuggestion()
+    }
+
+    private func performStartReading(_ book: Book) {
+        appState.addToQueue(book: book, shelf: .readingNow)
         actionedBookCount += 1
         appState.advanceDiscoverSuggestion()
     }
@@ -223,7 +233,7 @@ struct DiscoverBookCard: View {
     }
 }
 
-/// Loading indicator for Discover: the SPINE mark spinning with a 4-second
+/// Brand loading indicator: the SPINE mark spinning with a 4-second
 /// cycle — it launches fast, bleeds off speed, and just as it's about to
 /// stop it whips back up to full speed. Each cycle covers whole turns so the
 /// repeat is seamless. Rotation is derived from the clock rather than an
@@ -233,7 +243,9 @@ struct DiscoverBookCard: View {
 /// Motion blur is faked with ghost copies trailing the mark along its arc;
 /// the trail length follows the spin curve's angular velocity, so the blur
 /// is heavy during the whip and melts away as the spin coasts.
-private struct SpinningSpineLogo: View {
+struct SpinningSpineLogo: View {
+    var size: CGFloat = 144
+
     private static let curve = UnitCurve.bezier(
         startControlPoint: UnitPoint(x: 0.1, y: 0.8),
         endControlPoint: UnitPoint(x: 0.2, y: 1.0)
@@ -271,7 +283,7 @@ private struct SpinningSpineLogo: View {
             .resizable()
             .renderingMode(.template)
             .scaledToFit()
-            .frame(width: 144, height: 144)
+            .frame(width: size, height: size)
             .foregroundStyle(Theme.accent)
     }
 }

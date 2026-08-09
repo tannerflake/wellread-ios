@@ -138,13 +138,13 @@ struct MediumWidgetView: View {
 
     private func friendsPane(_ snapshot: WidgetSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text("FRIENDS ARE READING")
+            Text("FOLLOWING ARE READING")
                 .font(.system(size: 9, weight: .semibold))
                 .tracking(1.1)
                 .foregroundStyle(SpinePalette.textSecondary)
 
             if snapshot.friends.isEmpty {
-                Text("No friends reading yet")
+                Text("No one you follow is reading yet")
                     .font(.system(size: 12))
                     .foregroundStyle(SpinePalette.textSecondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)

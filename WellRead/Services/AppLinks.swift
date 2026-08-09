@@ -19,4 +19,10 @@ enum AppLinks {
         }
         return "I want to suggest a book to you. Get SPINE and I'll send it over: \(appStore)"
     }
+
+    /// Prefilled SMS body for the onboarding wizard's invite step, where no
+    /// book context exists yet.
+    static func onboardingInviteMessage() -> String {
+        "Share your reading with me on SPINE! \(appStore)"
+    }
 }

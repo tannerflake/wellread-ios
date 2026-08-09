@@ -557,7 +557,7 @@ final class GoodreadsWizardModel: ObservableObject {
                             importOutcome = await appState.importGoodreadsReadBook(
                                 book: book,
                                 rating: GoodreadsImportService.ratingOutOfTen(from: row.myRating),
-                                review: row.myReview,
+                                review: row.plainTextReview,
                                 dateFinished: row.dateRead ?? row.dateAdded,
                                 tier: nil
                             )
@@ -756,7 +756,7 @@ struct GoodreadsImportView: View {
         reviewFocused = false
         selectedTier = nil
         guard let row = model.currentRow else { return }
-        cardReview = row.myReview ?? ""
+        cardReview = row.plainTextReview ?? ""
         if let dateRead = row.dateRead {
             cardDateRead = dateRead
             cardDateNote = nil
@@ -810,9 +810,9 @@ struct GoodreadsImportView: View {
                             GridRow {
                                 stepNumberBadge(2, done: false, active: false)
                                 stepBody(
-                                    Text("Tap “Get my Goodreads export”, then “Export Library”, then the ")
+                                    Text("Tap “Export Library”, then the ")
                                         + GoodreadsExportLinkMock.text
-                                        + Text(" link — SPINE takes it from there.")
+                                        + Text(" link.")
                                 )
                             }
                         }
@@ -1100,19 +1100,14 @@ struct GoodreadsImportView: View {
     }
 
     private var matchingCard: some View {
-        VStack(spacing: 16) {
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Theme.surface)
-                .frame(width: 120, height: 180)
-                .overlay(
-                    ProgressView()
-                        .tint(Theme.accent)
-                )
+        VStack(spacing: 20) {
+            SpinningSpineLogo()
             Text("Finding your book…")
-                .font(Theme.callout())
+                .font(Theme.title2())
                 .foregroundStyle(Theme.textSecondary)
         }
-        .padding(.top, 40)
+        .frame(maxWidth: .infinity)
+        .padding(.top, 96)
     }
 
     private func wizardProgressHeader(position: Int, total: Int, remaining: Int) -> some View {

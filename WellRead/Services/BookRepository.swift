@@ -75,6 +75,48 @@ final class BookRepository {
         }
     }
 
+    /// Bulk lookup: cache hits return immediately; the rest load through
+    /// parallel `in` queries (30 ids each) instead of one round trip per book,
+    /// so hydrating a large library costs a couple of queries, not hundreds.
+    /// Missing/failed ids are simply absent from the result.
+    func getBooks(ids: [String]) async -> [String: Book] {
+        var result: [String: Book] = [:]
+        var missing: [String] = []
+        cacheQueue.sync {
+            for id in Set(ids) {
+                if let cached = memoryCache[id] {
+                    result[id] = cached
+                } else {
+                    missing.append(id)
+                }
+            }
+        }
+        guard !missing.isEmpty else { return result }
+        let chunks = stride(from: 0, to: missing.count, by: 30).map { Array(missing[$0..<min($0 + 30, missing.count)]) }
+        let fetched = await withTaskGroup(of: [Book].self) { group in
+            for chunk in chunks {
+                group.addTask { [self] in
+                    do {
+                        let snapshot = try await db.collection(books)
+                            .whereField(FieldPath.documentID(), in: chunk)
+                            .getDocuments()
+                        return snapshot.documents.compactMap { book(from: $0.data(), id: $0.documentID) }
+                    } catch {
+                        return []
+                    }
+                }
+            }
+            var all: [Book] = []
+            for await books in group { all.append(contentsOf: books) }
+            return all
+        }
+        cacheQueue.sync {
+            for b in fetched { memoryCache[b.id] = b }
+        }
+        for b in fetched { result[b.id] = b }
+        return result
+    }
+
     /// Ensures a book document exists; creates it if missing. Use when a user adds a book.
     func ensureBook(_ book: Book) async throws {
         let ref = db.collection(books).document(book.id)

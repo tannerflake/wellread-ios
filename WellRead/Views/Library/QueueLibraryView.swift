@@ -43,8 +43,6 @@ private struct QueueShelfDropSlot: View {
     }
 }
 
-private let queueBookDropZoneFraction: CGFloat = 0.3
-
 private struct QueueBookCell: View {
     @EnvironmentObject private var queueDragCoordinator: QueueBookDragCoordinator
 
@@ -63,28 +61,21 @@ private struct QueueBookCell: View {
                     BookCoverView(book: book, size: bookSize, onTap: onBookTap != nil ? { onBookTap?(book) } : nil)
                         .frame(width: bookSize, height: bookSize * 1.5)
                 } else {
-                    ZStack {
-                        QueueBookDragCover(
-                            book: book,
-                            userBookId: userBook.id,
-                            bookSize: bookSize,
-                            onTap: onBookTap != nil ? { onBookTap?(book) } : nil,
-                            dragCoordinator: queueDragCoordinator
-                        )
-                        .frame(width: bookSize, height: bookSize * 1.5)
-                        .overlay(alignment: .leading) {
-                            HStack(spacing: 0) {
-                                dropZone(insertAt: insertionIndex)
-                                    .frame(width: bookSize * queueBookDropZoneFraction)
-                                Color.clear
-                                    .frame(maxWidth: .infinity)
-                                    .allowsHitTesting(false)
-                                dropZone(insertAt: insertionIndex + 1)
-                                    .frame(width: bookSize * queueBookDropZoneFraction)
-                            }
-                            .frame(width: bookSize, height: bookSize * 1.5)
-                        }
-                    }
+                    // Drops on the cover are handled by a UIKit `UIDropInteraction`
+                    // inside `QueueBookDragCover` (left half = before, right half =
+                    // after), so the whole cover stays tappable and drag-liftable —
+                    // SwiftUI drop overlays would swallow those touches.
+                    QueueBookDragCover(
+                        book: book,
+                        userBookId: userBook.id,
+                        bookSize: bookSize,
+                        onTap: onBookTap != nil ? { onBookTap?(book) } : nil,
+                        onDropItem: { droppedId, insertBefore in
+                            onUpdate(droppedId, shelf, insertBefore ? insertionIndex : insertionIndex + 1)
+                        },
+                        dragCoordinator: queueDragCoordinator
+                    )
+                    .frame(width: bookSize, height: bookSize * 1.5)
                 }
             }
         }
@@ -92,18 +83,6 @@ private struct QueueBookCell: View {
         .frame(width: bookSize, alignment: .topLeading)
         .layoutPriority(1)
         .fixedSize(horizontal: true, vertical: false)
-    }
-
-    private func dropZone(insertAt index: Int) -> some View {
-        Color.clear
-            .contentShape(Rectangle())
-            .dropDestination(for: TierDragItem.self) { items, _ in
-                guard let payload = items.first else { return false }
-                onUpdate(payload.userBookId, shelf, index)
-                return true
-            } isTargeted: { targeted in
-                if targeted { LibraryDragHaptics.dropTargetHoverEntered() }
-            }
     }
 }
 
@@ -227,7 +206,8 @@ private struct QueueSectionGrid: View {
         let narrowSlotCount = queueBooksPerRow + 1
         let slotSpace = CGFloat(narrowSlotCount) * queueDropSlotWidth
         let bookSize = min(CGFloat(100), max(CGFloat(56), (available - slotSpace) / CGFloat(queueBooksPerRow)))
-        let slotHeight = max(64, bookSize * 1.15)
+        // Full cover height so between-cover slots have no dead band under the covers.
+        let slotHeight = max(64, bookSize * 1.5)
 
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
@@ -264,6 +244,23 @@ private struct QueueSectionGrid: View {
                 }
             } else {
                 queueRows(bookSize: bookSize, slotHeight: slotHeight)
+            }
+        }
+        // Catch-all drop region behind the whole section (title, covers, gaps, and a
+        // 12pt bleed past the edges): a drop that misses a precise slot still lands
+        // on this shelf, at the end. Precise slots sit on top and keep priority.
+        .background {
+            if !readOnly {
+                Color.clear
+                    .padding(-12)
+                    .contentShape(Rectangle())
+                    .dropDestination(for: TierDragItem.self) { items, _ in
+                        guard let payload = items.first else { return false }
+                        onUpdateShelfAndOrder(payload.userBookId, shelf, nil)
+                        return true
+                    } isTargeted: { targeted in
+                        if targeted { LibraryDragHaptics.dropTargetHoverEntered() }
+                    }
             }
         }
         .animation(.easeInOut(duration: 0.3), value: books.map(\.id))
@@ -322,6 +319,13 @@ private struct QueueSectionGrid: View {
                                 if let onAddTap = onAddTap {
                                     QueueAddBookTile(bookSize: bookSize, onTap: onAddTap)
                                         .frame(width: bookSize, alignment: .leading)
+                                        .dropDestination(for: TierDragItem.self) { items, _ in
+                                            guard let payload = items.first else { return false }
+                                            onUpdateShelfAndOrder(payload.userBookId, shelf, books.count)
+                                            return true
+                                        } isTargeted: { targeted in
+                                            if targeted { LibraryDragHaptics.dropTargetHoverEntered() }
+                                        }
                                 }
                             }
                         }
@@ -423,11 +427,11 @@ struct QueueLibraryView: View {
         }
     }
 
-    // MARK: - Recommended shelf (books friends sent; accept → queue, or dismiss)
+    // MARK: - Recommended shelf (books other readers sent; accept → queue, or dismiss)
 
     private var recommendedShelf: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Recommended by friends")
+            Text("Recommended by other readers")
                 .font(Theme.headline())
                 .foregroundStyle(Theme.textSecondary)
 
@@ -455,7 +459,7 @@ struct QueueLibraryView: View {
                             .font(Theme.caption())
                             .foregroundStyle(Theme.textSecondary)
                             .lineLimit(1)
-                        Text("from \(recommenderNames[rec.fromUserId] ?? "a friend")")
+                        Text("from \(recommenderNames[rec.fromUserId] ?? "another reader")")
                             .font(Theme.caption())
                             .foregroundStyle(Theme.accent)
                         if let note = rec.note, !note.isEmpty {

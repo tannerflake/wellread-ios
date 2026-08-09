@@ -160,6 +160,131 @@ final class CoverImageCache {
         return mean > 0.91 && variance < 0.022
     }
 
+    // MARK: ISBNdb quality checks
+
+    /// ISBNdb serves a generic grey “BOOK COVER NOT AVAILABLE” card for records it
+    /// has no art for — from ordinary covers/….jpg URLs, so only the pixels give it
+    /// away. The CDN returns the same file byte-for-byte (52 of 52 sampled records);
+    /// this is its SHA-256. The grid check below catches re-encoded copies (the disk
+    /// cache stores PNG) and rescaled variants.
+    private static let isbndbNoCoverSHA256 = "3e6a3c1e989a8368161e8baaa04b4c347cfc0057d878240dd2760b139b5c3488"
+
+    /// 8×10 luminance grid of that placeholder. Against a 166-cover corpus the
+    /// closest real cover measures 0.078 mean absolute difference while re-encodes
+    /// and rescales of the placeholder stay ≤ 0.005, so the 0.03 gate has >2.5×
+    /// margin each way; the placeholder is also fully achromatic (chroma ≤ 0.002).
+    private static let isbndbNoCoverGrid: [Double] = [
+        0.91, 0.91, 0.86, 0.87, 0.87, 0.85, 0.90, 0.91,
+        0.92, 0.90, 0.84, 0.85, 0.84, 0.83, 0.89, 0.92,
+        0.92, 0.93, 0.94, 0.94, 0.94, 0.94, 0.94, 0.92,
+        0.92, 0.99, 1.00, 1.00, 0.97, 0.99, 1.00, 0.92,
+        0.92, 0.99, 0.96, 0.87, 0.91, 0.97, 1.00, 0.92,
+        0.90, 0.99, 0.95, 0.81, 0.81, 0.96, 1.00, 0.90,
+        0.85, 0.99, 0.95, 0.81, 0.81, 0.97, 1.00, 0.86,
+        0.80, 0.99, 0.98, 0.88, 0.83, 0.98, 1.00, 0.81,
+        0.74, 0.95, 0.97, 0.97, 0.97, 0.97, 0.96, 0.75,
+        0.69, 0.69, 0.69, 0.69, 0.69, 0.69, 0.69, 0.69
+    ]
+
+    private func isISBNdbHost(_ url: URL) -> Bool {
+        url.host?.contains("images.isbndb.com") == true
+    }
+
+    /// Downsamples to w×h and returns RGBA bytes (nil when Core Graphics balks).
+    private func sampledPixels(image: UIImage, w: Int, h: Int) -> [UInt8]? {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: w, height: h), format: format)
+        let sampled = renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: CGSize(width: w, height: h)))
+        }
+        guard let cgImage = sampled.cgImage else { return nil }
+        var pixels = [UInt8](repeating: 0, count: w * h * 4)
+        guard let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let ctx = CGContext(
+                data: &pixels,
+                width: w,
+                height: h,
+                bitsPerComponent: 8,
+                bytesPerRow: w * 4,
+                space: space,
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+              ) else { return nil }
+        ctx.interpolationQuality = .medium
+        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: w, height: h))
+        return pixels
+    }
+
+    /// ISBNdb's “BOOK COVER NOT AVAILABLE” card. Exact byte hash first (network
+    /// fetches), luminance-grid match as the re-encode/rescale-proof fallback.
+    private func isISBNdbNoCoverPlaceholder(data: Data?, image: UIImage, url: URL) -> Bool {
+        guard isISBNdbHost(url) else { return false }
+        if let data = data {
+            let hex = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+            if hex == Self.isbndbNoCoverSHA256 { return true }
+        }
+        let w = 8, h = 10
+        guard let pixels = sampledPixels(image: image, w: w, h: h) else { return false }
+        var mad = 0.0
+        var sumChroma = 0.0
+        for i in 0..<(w * h) {
+            let r = Double(pixels[i * 4])
+            let g = Double(pixels[i * 4 + 1])
+            let b = Double(pixels[i * 4 + 2])
+            let lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0
+            mad += abs(lum - Self.isbndbNoCoverGrid[i])
+            sumChroma += (max(r, max(g, b)) - min(r, min(g, b))) / 255.0
+        }
+        let n = Double(w * h)
+        return mad / n < 0.03 && sumChroma / n < 0.02
+    }
+
+    /// ISBNdb mirrors Internet Archive library scans, and some arrive as a
+    /// cover-plus-interior-page **spread** (e.g. 529×500 with the right ~40% a blank
+    /// white page) or as a photo of the physical book lying on a table. Real front
+    /// covers are portrait, so: wider than 5:4 can never display in the app's 2:3
+    /// frame without absurd crops — reject outright; near-square-or-wider with a
+    /// bright achromatic right quarter that's ≥0.15 lum above the left half is a
+    /// spread (no false positives across the 166-cover corpus — square audiobook
+    /// art fails the white-right-band test).
+    private func isISBNdbLikelySpreadScan(image: UIImage, url: URL) -> Bool {
+        guard isISBNdbHost(url) else { return false }
+        let scale = image.scale > 0 ? image.scale : 1
+        let width = image.size.width * scale
+        let height = image.size.height * scale
+        guard height > 0 else { return false }
+        let aspect = width / height
+        guard aspect > 0.95 else { return false }
+        if aspect > 1.25 { return true }
+        let w = 32, h = 24
+        guard let pixels = sampledPixels(image: image, w: w, h: h) else { return false }
+        var rightLum = 0.0, rightChroma = 0.0, leftLum = 0.0
+        var rightN = 0, leftN = 0
+        for y in 0..<h {
+            for x in 0..<w {
+                let i = (y * w + x) * 4
+                let r = Double(pixels[i])
+                let g = Double(pixels[i + 1])
+                let b = Double(pixels[i + 2])
+                let lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0
+                if x >= (w * 3) / 4 {
+                    rightLum += lum
+                    rightChroma += (max(r, max(g, b)) - min(r, min(g, b))) / 255.0
+                    rightN += 1
+                } else if x < w / 2 {
+                    leftLum += lum
+                    leftN += 1
+                }
+            }
+        }
+        guard rightN > 0, leftN > 0 else { return false }
+        let rl = rightLum / Double(rightN)
+        let rc = rightChroma / Double(rightN)
+        let ll = leftLum / Double(leftN)
+        return rl > 0.88 && rc < 0.08 && rl - ll > 0.15
+    }
+
     /// Rejects Google Books' large **grey “synthetic” placeholder** (fake title bars, subtle texture, tiny logo) that isn’t a real cover. Those images are usually high-res so they pass byte/size checks.
     private func isGoogleBooksLikelyGreySyntheticPlaceholder(image: UIImage, url: URL) -> Bool {
         guard url.absoluteString.contains("books.google.com") else { return false }
@@ -310,6 +435,11 @@ final class CoverImageCache {
             try? fileManager.removeItem(at: fileURL)
             return nil
         }
+        if isISBNdbNoCoverPlaceholder(data: data, image: img, url: url)
+            || isISBNdbLikelySpreadScan(image: img, url: url) {
+            try? fileManager.removeItem(at: fileURL)
+            return nil
+        }
         return img
     }
 
@@ -353,6 +483,9 @@ final class CoverImageCache {
             } else if isGoogleBooksLikelyInteriorPageScan(image: cached, url: url) {
                 cache.removeObject(forKey: key)
             } else if isGoogleBooksLikelyGreySyntheticPlaceholder(image: cached, url: url) {
+                cache.removeObject(forKey: key)
+            } else if isISBNdbNoCoverPlaceholder(data: nil, image: cached, url: url)
+                        || isISBNdbLikelySpreadScan(image: cached, url: url) {
                 cache.removeObject(forKey: key)
             } else {
                 return cached
@@ -398,7 +531,9 @@ final class CoverImageCache {
         if isGoogleBooksPlaceholder(data: data, image: img, url: url)
             || isOpenLibraryMissingCover(data: data, image: img, url: url)
             || isGoogleBooksLikelyInteriorPageScan(image: img, url: url)
-            || isGoogleBooksLikelyGreySyntheticPlaceholder(image: img, url: url) {
+            || isGoogleBooksLikelyGreySyntheticPlaceholder(image: img, url: url)
+            || isISBNdbNoCoverPlaceholder(data: data, image: img, url: url)
+            || isISBNdbLikelySpreadScan(image: img, url: url) {
             markKnownBad(url)
             return .missing
         }

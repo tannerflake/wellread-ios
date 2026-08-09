@@ -49,11 +49,11 @@ final class UserBookRepository {
                     self.userBook(from: doc.data(), docId: doc.documentID)
                 }
                 Task {
-                    var withBooks: [UserBook] = []
-                    for ub in list {
+                    let books = await self.bookRepo.getBooks(ids: list.map(\.bookId))
+                    let withBooks = list.map { ub -> UserBook in
                         var ub = ub
-                        ub.book = await self.bookRepo.getBook(id: ub.bookId)
-                        withBooks.append(ub)
+                        ub.book = books[ub.bookId]
+                        return ub
                     }
                     await MainActor.run {
                         guard sequencer.shouldDeliver(generation) else { return }
@@ -70,14 +70,13 @@ final class UserBookRepository {
                 .whereField("userId", isEqualTo: userId)
                 .order(by: "updatedAt", descending: true)
                 .getDocuments()
-            var list: [UserBook] = []
-            for doc in snapshot.documents {
-                guard let ub = userBook(from: doc.data(), docId: doc.documentID) else { continue }
-                var withBook = ub
-                withBook.book = await bookRepo.getBook(id: ub.bookId)
-                list.append(withBook)
+            let list = snapshot.documents.compactMap { userBook(from: $0.data(), docId: $0.documentID) }
+            let books = await bookRepo.getBooks(ids: list.map(\.bookId))
+            return list.map { ub -> UserBook in
+                var ub = ub
+                ub.book = books[ub.bookId]
+                return ub
             }
-            return list
         } catch {
             return []
         }
@@ -91,14 +90,13 @@ final class UserBookRepository {
                 .whereField("status", isEqualTo: status.rawValue)
                 .order(by: "updatedAt", descending: true)
                 .getDocuments()
-            var list: [UserBook] = []
-            for doc in snapshot.documents {
-                guard let ub = userBook(from: doc.data(), docId: doc.documentID) else { continue }
-                var withBook = ub
-                withBook.book = await bookRepo.getBook(id: ub.bookId)
-                list.append(withBook)
+            let list = snapshot.documents.compactMap { userBook(from: $0.data(), docId: $0.documentID) }
+            let books = await bookRepo.getBooks(ids: list.map(\.bookId))
+            return list.map { ub -> UserBook in
+                var ub = ub
+                ub.book = books[ub.bookId]
+                return ub
             }
-            return list
         } catch {
             return []
         }
@@ -150,13 +148,11 @@ final class UserBookRepository {
                       ub.status == .wantToRead, ub.queueShelf == .readingNow else { continue }
                 rowsByUid[ub.userId, default: []].append(ub)
             }
+            let allBooks = await bookRepo.getBooks(ids: rowsByUid.values.flatMap { $0.map(\.bookId) })
             var result: [String: [Book]] = [:]
             for (uid, rows) in rowsByUid {
                 let ordered = rows.sorted { ($0.queueOrder ?? 999) < ($1.queueOrder ?? 999) }
-                var books: [Book] = []
-                for ub in ordered {
-                    if let b = await bookRepo.getBook(id: ub.bookId) { books.append(b) }
-                }
+                let books = ordered.compactMap { allBooks[$0.bookId] }
                 if !books.isEmpty { result[uid] = books }
             }
             return result

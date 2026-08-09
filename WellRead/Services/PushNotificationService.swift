@@ -52,6 +52,28 @@ enum PushNotificationService {
         return pendingBlendId
     }
 
+    /// Cold-start stashes for the non-blend pushes (same problem as `pendingBlendId`:
+    /// the tap fires before MainTabView mounts, so the NotificationCenter post is lost).
+    /// Warm taps are handled by the observers, which also consume the stash.
+    private static var pendingScrollToFeedPostId: String?
+    private static var pendingOpenPostCommentsId: String?
+    private static var pendingProfileUserId: String?
+
+    static func consumePendingScrollToFeedPostTap() -> String? {
+        defer { pendingScrollToFeedPostId = nil }
+        return pendingScrollToFeedPostId
+    }
+
+    static func consumePendingOpenPostCommentsTap() -> String? {
+        defer { pendingOpenPostCommentsId = nil }
+        return pendingOpenPostCommentsId
+    }
+
+    static func consumePendingProfileUserTap() -> String? {
+        defer { pendingProfileUserId = nil }
+        return pendingProfileUserId
+    }
+
     /// Registers with APNs without showing the permission dialog (for users who already granted alerts, or after cold start).
     static func registerForRemoteNotificationsOnly() {
         DispatchQueue.main.async {
@@ -140,7 +162,37 @@ enum PushNotificationService {
         }
     }
 
+    /// The requester withdrew a Book Blend request: clear the matching invite
+    /// alert from this device's Notification Center (arrives as a silent push
+    /// so the withdrawal itself never makes a sound).
+    static func removeDeliveredBlendRequestNotifications(blendId: String, completion: @escaping () -> Void) {
+        let center = UNUserNotificationCenter.current()
+        center.getDeliveredNotifications { delivered in
+            let ids = delivered
+                .filter { note in
+                    let info = note.request.content.userInfo
+                    return WellreadDeepLink.pushNotificationType(from: info) == "blend_request"
+                        && (info[AnyHashable("blendId")] as? String) == blendId
+                }
+                .map(\.request.identifier)
+            if !ids.isEmpty {
+                center.removeDeliveredNotifications(withIdentifiers: ids)
+            }
+            DispatchQueue.main.async { completion() }
+        }
+    }
+
+    /// When the user last tapped a push (any type). Launch nudges stand down for a
+    /// while afterwards so they don't cover the screen the tap navigated to.
+    private(set) static var lastDeepLinkTapAt: Date?
+
+    static var recentlyHandledDeepLinkTap: Bool {
+        guard let t = lastDeepLinkTapAt else { return false }
+        return Date().timeIntervalSince(t) < 30
+    }
+
     static func handleRemoteNotificationTap(userInfo: [AnyHashable: Any]) {
+        lastDeepLinkTapAt = Date()
         let type = WellreadDeepLink.pushNotificationType(from: userInfo)
         /// Book Blend pushes (invite or ready) land on the blend landing screen,
         /// which routes by the doc's status — both types carry `blendId`.
@@ -155,9 +207,11 @@ enum PushNotificationService {
             }
             return
         }
-        /// Friend-review pushes land on the feed scrolled to that review (no comment thread).
-        if type == "friend_review_posted" {
+        /// Friend-review and review-liked pushes land on the feed scrolled to that
+        /// review (highlighted, no comment thread).
+        if type == "friend_review_posted" || type == "review_liked" {
             if let postId = WellreadDeepLink.postId(fromNotificationUserInfo: userInfo) {
+                pendingScrollToFeedPostId = postId
                 NotificationCenter.default.post(
                     name: .wellreadOpenFeedScrollToPost,
                     object: nil,
@@ -168,12 +222,25 @@ enum PushNotificationService {
             }
             return
         }
-        /// New-follower pushes land on the feed, where the Following strip lives.
+        /// New-follower pushes land on the follower's profile (their tier list).
+        /// Legacy payloads without `followerId` fall back to the feed.
         if type == "new_follower" {
-            NotificationCenter.default.post(name: .wellreadOpenFeed, object: nil)
+            if let followerId = userInfo[AnyHashable("followerId")] as? String, !followerId.isEmpty {
+                pendingProfileUserId = followerId
+                NotificationCenter.default.post(
+                    name: .spineOpenUserProfile,
+                    object: nil,
+                    userInfo: ["userId": followerId]
+                )
+            } else {
+                NotificationCenter.default.post(name: .wellreadOpenFeed, object: nil)
+            }
             return
         }
+        /// Everything else (review_commented, comment_replied, thread_commented)
+        /// opens the post's comment thread.
         guard let postId = WellreadDeepLink.postId(fromNotificationUserInfo: userInfo) else { return }
+        pendingOpenPostCommentsId = postId
         NotificationCenter.default.post(
             name: .wellreadOpenFeedPost,
             object: nil,
@@ -194,4 +261,6 @@ extension Notification.Name {
     static let spineOpenQueue = Notification.Name("spineOpenQueue")
     /// Blend push tapped: present the Book Blend landing screen. `userInfo["blendId"]` is the pair doc id.
     static let spineOpenBookBlend = Notification.Name("spineOpenBookBlend")
+    /// New-follower push tapped: present the follower's profile (tier list). `userInfo["userId"]` is their Firebase UID.
+    static let spineOpenUserProfile = Notification.Name("spineOpenUserProfile")
 }

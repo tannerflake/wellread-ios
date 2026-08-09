@@ -33,6 +33,11 @@ final class WellReadTagCatalog {
         }
         map[Self.normalizeKey("Non-fiction")] = Self.nonFictionTag
         map[Self.normalizeKey("non-fiction")] = Self.nonFictionTag
+        // 2026-08 rename: existing book profiles / user tags may still carry
+        // the old name; keep them resolving to the current catalog tag.
+        if let political = map[Self.normalizeKey("Political")] {
+            map[Self.normalizeKey("Political Intrigue")] = political
+        }
         self.canonicalByKey = map
     }
 
@@ -114,6 +119,7 @@ final class WellReadTagCatalog {
     static let onboardingCategoryPriority: [String] = [
         "Format",
         "Genre",
+        "Subgenre",
         "Reading Experience",
         "Pacing / Style",
         "Nonfiction Topics",

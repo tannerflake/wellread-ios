@@ -34,6 +34,7 @@ struct OnboardingCurrentlyReadingView: View {
     @State private var hasSearched = false
     @State private var searchError: String?
     @State private var searchTask: Task<Void, Never>?
+    @State private var didAddBook = false
 
     var body: some View {
         ZStack {
@@ -149,6 +150,9 @@ struct OnboardingCurrentlyReadingView: View {
     /// One tap adds the book straight onto Reading Now and finishes the step.
     private func resultRow(_ book: Book) -> some View {
         Button {
+            // One-shot: a second tap before the sheet closes must not add again.
+            guard !didAddBook else { return }
+            didAddBook = true
             appState.addToQueue(book: book, shelf: .readingNow)
             onDone()
         } label: {

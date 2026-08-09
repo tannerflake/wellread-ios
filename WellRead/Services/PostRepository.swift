@@ -23,13 +23,21 @@ final class FeedListenerHandle {
 /// Merges per-chunk feed query results into one newest-first list. Hydration
 /// (book + author fetches) is async, so a chunk's older snapshot can finish
 /// after a newer one — generations guard against the stale write.
+///
+/// The very first emit waits only until every chunk has delivered its first
+/// snapshot — cache or server, whichever is fastest — so the initial screen
+/// paints in one shot instead of trickling in chunk by chunk. Fresher server
+/// data then flows through as normal in-place updates.
 private actor FeedChunkMerger {
     private var postsByChunk: [Int: [Post]] = [:]
     private var appliedGeneration: [Int: Int] = [:]
+    private var hasEmitted = false
+    private let totalChunks: Int
     private let limit: Int
     private let onUpdate: ([Post]) -> Void
 
-    init(limit: Int, onUpdate: @escaping ([Post]) -> Void) {
+    init(totalChunks: Int, limit: Int, onUpdate: @escaping ([Post]) -> Void) {
+        self.totalChunks = totalChunks
         self.limit = limit
         self.onUpdate = onUpdate
     }
@@ -38,6 +46,20 @@ private actor FeedChunkMerger {
         guard generation > appliedGeneration[chunk, default: 0] else { return }
         appliedGeneration[chunk] = generation
         postsByChunk[chunk] = posts
+        guard hasEmitted || postsByChunk.count == totalChunks else { return }
+        hasEmitted = true
+        await emit()
+    }
+
+    /// Fallback for a chunk that never reports (query error, no cache while
+    /// offline): emit what has arrived so the feed isn't stuck loading.
+    func flushIfNotEmitted() async {
+        guard !hasEmitted, !postsByChunk.isEmpty else { return }
+        hasEmitted = true
+        await emit()
+    }
+
+    private func emit() async {
         let merged = Array(
             postsByChunk.values
                 .flatMap { $0 }
@@ -58,39 +80,81 @@ final class PostRepository {
     /// follow), newest first. Query-time rather than fan-out, so following someone
     /// retroactively surfaces their whole post history.
     func listenFeed(authorIds: [String], onUpdate: @escaping ([Post]) -> Void) -> FeedListenerHandle {
-        let handle = FeedListenerHandle()
         let ids = Array(Set(authorIds))
         guard !ids.isEmpty else {
+            let handle = FeedListenerHandle()
             DispatchQueue.main.async { onUpdate([]) }
             return handle
         }
         let chunks = stride(from: 0, to: ids.count, by: 30).map { Array(ids[$0..<min($0 + 30, ids.count)]) }
-        let merger = FeedChunkMerger(limit: 50, onUpdate: onUpdate)
-        for (chunkIndex, chunk) in chunks.enumerated() {
+        let queries = chunks.map {
+            db.collection(posts)
+                .whereField("userId", in: $0)
+                .order(by: "createdAt", descending: true)
+                .limit(to: 50) as Query
+        }
+        return listen(queries: queries, onUpdate: onUpdate)
+    }
+
+    /// Listens to every post on Spine (the feed's "everyone" scope), newest
+    /// first. One global query — hidden accounts are still filtered per doc.
+    func listenAllPosts(onUpdate: @escaping ([Post]) -> Void) -> FeedListenerHandle {
+        let query = db.collection(posts)
+            .order(by: "createdAt", descending: true)
+            .limit(to: 50) as Query
+        return listen(queries: [query], onUpdate: onUpdate)
+    }
+
+    /// Shared listener plumbing: one snapshot registration per query, merged
+    /// newest-first through `FeedChunkMerger` (first emit waits for every
+    /// chunk's first snapshot so the initial paint is one shot).
+    private func listen(queries: [Query], onUpdate: @escaping ([Post]) -> Void) -> FeedListenerHandle {
+        let handle = FeedListenerHandle()
+        let merger = FeedChunkMerger(totalChunks: queries.count, limit: 50, onUpdate: onUpdate)
+        for (chunkIndex, query) in queries.enumerated() {
             // Snapshot handlers for one query run serially on the main queue, so
             // this counter assigns generations in snapshot order.
             var latestGeneration = 0
-            let registration = db.collection(posts)
-                .whereField("userId", in: chunk)
-                .order(by: "createdAt", descending: true)
-                .limit(to: 50)
+            let registration = query
                 .addSnapshotListener { [weak self] snapshot, _ in
                     guard let self = self, let snapshot = snapshot else { return }
                     latestGeneration += 1
                     let generation = latestGeneration
                     Task {
-                        var list: [Post] = []
-                        for doc in snapshot.documents {
-                            if let uid = doc.data()["userId"] as? String, HiddenAccounts.isHiddenFromCurrentViewer(uid: uid) { continue }
-                            guard let post = await self.post(from: doc.data(), docId: doc.documentID) else { continue }
-                            list.append(post)
-                        }
+                        let list = await self.hydratedPosts(from: snapshot.documents)
                         await merger.update(chunk: chunkIndex, generation: generation, posts: list)
                     }
                 }
             handle.registrations.append(registration)
         }
+        // Fallback: a chunk whose query errors (or has no cache while offline)
+        // never reports — emit whatever arrived so the feed isn't stuck.
+        Task {
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            await merger.flushIfNotEmitted()
+        }
         return handle
+    }
+
+    /// Hydrates a snapshot's posts with their books and authors in two bulk
+    /// lookups (cache-first, parallel `in` queries) rather than one round
+    /// trip per post — the difference between a feed that paints in ~one
+    /// round trip and one that takes seconds.
+    private func hydratedPosts(from documents: [QueryDocumentSnapshot]) async -> [Post] {
+        let rawDocs = documents.compactMap { doc -> ([String: Any], String)? in
+            if let uid = doc.data()["userId"] as? String, HiddenAccounts.isHiddenFromCurrentViewer(uid: uid) { return nil }
+            return (doc.data(), doc.documentID)
+        }
+        let parsed = rawDocs.compactMap { data, docId in parsePost(from: data, docId: docId) }
+        async let booksTask = bookRepo.getBooks(ids: parsed.compactMap(\.bookId))
+        async let usersTask = userRepo.getUsers(uids: parsed.map(\.userId))
+        let (books, users) = await (booksTask, usersTask)
+        return parsed.map { post -> Post in
+            var post = post
+            if let bid = post.bookId { post.book = books[bid] }
+            post.user = users[post.userId]
+            return post
+        }
     }
 
     /// Loads a single post by Firestore document id (UUID string).
@@ -186,35 +250,37 @@ final class PostRepository {
     }
 
     private func post(from data: [String: Any], docId: String) async -> Post? {
+        guard var post = parsePost(from: data, docId: docId) else { return nil }
+        if let bid = post.bookId { post.book = await bookRepo.getBook(id: bid) }
+        post.user = await userRepo.getUser(uid: post.userId)
+        return post
+    }
+
+    /// Decodes a post document without hydrating book/author — bulk callers
+    /// (`hydratedPosts`) fill those in from batched lookups instead.
+    private func parsePost(from data: [String: Any], docId: String) -> Post? {
         guard let userId = data["userId"] as? String,
               let typeRaw = data["type"] as? String,
               let type = PostType(rawValue: typeRaw),
               let createdAt = (data["createdAt"] as? Timestamp)?.dateValue(),
               let id = UUID(uuidString: docId) else { return nil }
-        let bookId = data["bookId"] as? String
-        let likeCount = data["likeCount"] as? Int ?? 0
-        let commentCount = data["commentCount"] as? Int ?? 0
         let rating = decodePostRating(from: data)
-        let dateFinished = (data["dateFinished"] as? Timestamp)?.dateValue()
         let tier = (data["tier"] as? String).flatMap { spineTierLabels.contains($0) ? $0 : nil }
-        var post = Post(
+        return Post(
             id: id,
             userId: userId,
             type: type,
-            bookId: bookId,
+            bookId: data["bookId"] as? String,
             book: nil,
             caption: data["caption"] as? String,
             createdAt: createdAt,
-            likeCount: likeCount,
-            commentCount: commentCount,
+            likeCount: data["likeCount"] as? Int ?? 0,
+            commentCount: data["commentCount"] as? Int ?? 0,
             user: nil,
             rating: rating,
-            dateFinished: dateFinished,
+            dateFinished: (data["dateFinished"] as? Timestamp)?.dateValue(),
             tier: tier
         )
-        if let bid = bookId { post.book = await bookRepo.getBook(id: bid) }
-        post.user = await userRepo.getUser(uid: userId)
-        return post
     }
 
     /// Prefers `rating` (0–10); migrates legacy `ratingPercent` (1–100) → ÷10.

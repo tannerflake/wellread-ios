@@ -64,6 +64,9 @@ struct AddBookFlowView: View {
     /// Recent search activity shown while the field is empty.
     @State private var recentQueries: [String] = []
     @State private var recentBooks: [Book] = []
+    /// Live offset while the grab handle is being dragged — the drawer follows
+    /// the finger, then either flies off (dismiss) or springs back on release.
+    @State private var dragOffset: CGFloat = 0
     /// When set (opened from a queue shelf's "Add" tile), book profiles show a primary
     /// CTA that adds the book straight onto this shelf.
     var targetShelf: QueueShelf? = nil
@@ -116,8 +119,9 @@ struct AddBookFlowView: View {
                     .frame(height: fullHeight)
                     .clipShape(UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
                     .overlay(alignment: .top) {
-                        // Grab handle — swiping it down dismisses (replaces the system
-                        // sheet's interactive dismissal).
+                        // Grab handle — dragging it moves the drawer with the finger
+                        // (replaces the system sheet's interactive dismissal). Fixed
+                        // height: down tracks 1:1, up only tugs with heavy resistance.
                         Capsule()
                             .fill(Theme.textTertiary.opacity(0.5))
                             .frame(width: 40, height: 5)
@@ -126,13 +130,27 @@ struct AddBookFlowView: View {
                             .frame(height: 34, alignment: .top)
                             .contentShape(Rectangle())
                             .gesture(
-                                DragGesture(minimumDistance: 12)
+                                DragGesture(minimumDistance: 1)
+                                    .onChanged { value in
+                                        let h = value.translation.height
+                                        dragOffset = h >= 0 ? h : max(h / 10, -14)
+                                    }
                                     .onEnded { value in
-                                        if value.translation.height > 60 { close() }
+                                        // Dismiss on a real pull or a flick (projected
+                                        // landing well past the threshold).
+                                        if value.translation.height > 90
+                                            || value.predictedEndTranslation.height > 220 {
+                                            close()
+                                        } else {
+                                            withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
+                                                dragOffset = 0
+                                            }
+                                        }
                                     }
                             )
                     }
                     .shadow(color: .black.opacity(0.18), radius: 18, y: -4)
+                    .offset(y: dragOffset)
             }
         }
         // Pin the drawer: without this, keyboard avoidance shrinks the geometry and
@@ -173,6 +191,10 @@ struct AddBookFlowView: View {
                     // Adding to the queue should land the user on their queue (with the success
                     // toast), not drop them back on the search bar. Dismiss the whole search sheet.
                     onWantToRead: { appState.addToWantToRead(book: book); appState.openQueue(); close() },
+                    // Suppress READING when the shelf CTA above is already "+ READING NOW".
+                    onStartReading: targetShelf == .readingNow ? nil : {
+                        appState.addToQueue(book: book, shelf: .readingNow); appState.openQueue(); close()
+                    },
                     // Marking read fires the tier-highlight flow (switches to Profile → Read and
                     // scrolls to the book). Dismiss the whole search sheet so that lands in view,
                     // rather than popping back to the search bar.

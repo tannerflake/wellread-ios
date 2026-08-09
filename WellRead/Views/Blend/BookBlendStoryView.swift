@@ -33,6 +33,9 @@ struct BookBlendStoryView: View {
     @State private var pageProgress: Double = 0
     @State private var paused = false
     @State private var pressStarted: Date?
+    /// Live offset while the user pulls the story downward — the whole story
+    /// follows the finger, then dismisses or springs back on release.
+    @State private var dismissDrag: CGFloat = 0
     /// Score page count-up.
     @State private var displayedScore = 0
     @State private var scoreRevealToken = 0
@@ -116,6 +119,7 @@ struct BookBlendStoryView: View {
                 }
             }
             .contentShape(Rectangle())
+            .offset(y: dismissDrag)
             .gesture(storyGesture(width: geo.size.width))
         }
         .preferredColorScheme(.dark)
@@ -139,21 +143,32 @@ struct BookBlendStoryView: View {
     // MARK: Mechanics
 
     /// One gesture does it all: press-and-hold pauses, a quick release taps
-    /// (left third = back, rest = forward), a downward fling dismisses.
+    /// (left third = back, rest = forward), a downward pull tracks the finger
+    /// and dismisses when released past the threshold (or flicked).
     private func storyGesture(width: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 0)
-            .onChanged { _ in
+            .onChanged { value in
                 if pressStarted == nil { pressStarted = Date() }
                 paused = true
+                let h = value.translation.height
+                // Follow a downward-dominant pull; ignore horizontal scrubs.
+                if dismissDrag > 0 || (h > 10 && h > abs(value.translation.width)) {
+                    dismissDrag = max(0, h)
+                }
             }
             .onEnded { value in
                 defer {
                     paused = false
                     pressStarted = nil
                 }
-                if value.translation.height > 90 {
+                if value.translation.height > 90 || value.predictedEndTranslation.height > 220 {
                     onDismiss()
                     return
+                }
+                if dismissDrag != 0 {
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
+                        dismissDrag = 0
+                    }
                 }
                 let held = pressStarted.map { Date().timeIntervalSince($0) } ?? 0
                 let moved = hypot(value.translation.width, value.translation.height)

@@ -6,9 +6,11 @@
 //
 //  Matching order (confident-only — a row that can't be matched confidently is
 //  reported unmatched, never guessed):
-//    1. ISBN-13, then ISBN-10 — Open Library first (per-IP rate limit, spares the
-//       shared Google quota), then Google Books `isbn:` query verified against
-//       the returned volume's own identifiers.
+//    1. ISBN-13, then ISBN-10 — through the search hub's ISBNdb → Google chain,
+//       verified against the returned volume's identifiers, with Open Library as
+//       a final coverage fallback. The resolved book must also pass the
+//       title/author confidence gate — catalog records for an ISBN sometimes
+//       carry a translation's title, and a wrong guess is worse than no match.
 //    2. Title + author search, accepted only when the normalized main title and
 //       the author's last name both agree with the export row. This recovers the
 //       large share of Goodreads rows with no ISBN (Kindle/audio editions) and
@@ -39,7 +41,18 @@ final class GoodreadsImportService {
         var book: Book?
         for isbn in [row.isbn13, row.isbn].compactMap({ $0 }) where !isbn.isEmpty {
             do {
-                if let b = try await lookupByISBN(isbn) { book = b; break }
+                // An ISBN is edition-exact, but the catalogs' records for one
+                // aren't always titled like the edition the user shelved — Open
+                // Library work records and mis-merged Google volumes can carry a
+                // translation's title ("Más allá de las creencias" for an English
+                // "Beyond Belief" row). Confident-only applies here too: the
+                // resolved book must still look like the row, otherwise fall
+                // through to the verified title+author search.
+                if let b = try await lookupByISBN(isbn),
+                   GoodreadsTitleMatcher.isConfidentMatch(rowTitle: row.title, rowAuthor: row.author, candidate: b) {
+                    book = b
+                    break
+                }
             } catch {
                 sawError = true
             }
@@ -63,32 +76,31 @@ final class GoodreadsImportService {
         return .matched(merged)
     }
 
-    /// Resolve an ISBN, Open Library first: the lookup is deterministic (relevance
-    /// ranking doesn't matter for an exact identifier), Open Library rate-limits
-    /// per-IP instead of against the shared 1,000/day Google project quota, and an
-    /// import fires this once or twice per book — the app's biggest quota burner.
-    /// Google remains the fallback for ISBNs Open Library hasn't indexed.
+    /// Resolve an ISBN through the search hub (ISBNdb → Google, cached in the
+    /// shared Firestore cache), then Open Library as a final coverage fallback
+    /// for ISBNs neither paid source has indexed.
     private func lookupByISBN(_ isbn: String) async throws -> Book? {
         let digits = isbn.filter(\.isNumber)
         guard digits.count == 10 || digits.count == 13 else { return nil }
-        do {
-            if let book = try await OpenLibraryService.shared.lookupISBN(digits) {
-                return book
-            }
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch {
-            // Open Library unreachable — fall through to Google.
-        }
         let results = try await googleBooks.search(query: "isbn:\(digits)")
         for book in results {
             if let bid = book.isbn, ISBNMatcher.equivalent(digits, bid) {
                 return book
             }
         }
-        // Rare: API omits industryIdentifiers; if exactly one volume returned for isbn: query, trust it.
+        // Rare: API omits identifiers; if exactly one volume returned for the isbn: query, trust it.
         if results.count == 1, let only = results.first {
             return only
+        }
+        if results.isEmpty {
+            do {
+                return try await OpenLibraryService.shared.lookupISBN(digits)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // Open Library unreachable — the chain already exhausted both paid sources.
+                return nil
+            }
         }
         return nil
     }
@@ -214,10 +226,21 @@ enum LibraryDedup {
         workKey(title: book.title, author: book.author)
     }
 
+    /// Full-title variant of `workKey`: no subtitle stripping, so
+    /// "Sapiens : a Graphic History" and "Sapiens A Graphic History" agree
+    /// even though their colon placement gives them different main titles.
+    static func fullTitleKey(for book: Book) -> String? {
+        let t = GoodreadsTitleMatcher.normalize(book.title)
+        guard !t.isEmpty else { return nil }
+        let a = GoodreadsTitleMatcher.authorLastName(GoodreadsTitleMatcher.primaryAuthor(book.author)) ?? ""
+        return t + "|" + a
+    }
+
     /// Same volume id, equivalent ISBNs, or same work key.
     static func isSameWork(_ a: Book, _ b: Book) -> Bool {
         if a.id == b.id { return true }
         if let ia = a.isbn, let ib = b.isbn, ISBNMatcher.equivalent(ia, ib) { return true }
+        if let fa = fullTitleKey(for: a), let fb = fullTitleKey(for: b), fa == fb { return true }
         guard let ka = workKey(for: a), let kb = workKey(for: b) else { return false }
         return ka == kb
     }

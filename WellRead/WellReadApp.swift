@@ -57,6 +57,19 @@ class AppDelegate: NSObject, UIApplicationDelegate, MessagingDelegate, UNUserNot
         db.settings.cacheSettings = PersistentCacheSettings(sizeBytes: 50 * 1024 * 1024 as NSNumber)
         Messaging.messaging().delegate = self
         UNUserNotificationCenter.current().delegate = self
+        #if DEBUG
+        // `-uiPreviewPushTap <type>[:<id>]` simulates a push tap at launch (before the
+        // UI mounts — the cold-start path) for simulator verification, e.g.
+        // `-uiPreviewPushTap new_follower:<uid>` or `-uiPreviewPushTap review_liked:<postId>`.
+        if let raw = UserDefaults.standard.string(forKey: "uiPreviewPushTap") {
+            let parts = raw.split(separator: ":", maxSplits: 1).map(String.init)
+            var userInfo: [AnyHashable: Any] = ["type": parts[0]]
+            if parts.count > 1 {
+                userInfo[parts[0] == "new_follower" ? "followerId" : "postId"] = parts[1]
+            }
+            PushNotificationService.handleRemoteNotificationTap(userInfo: userInfo)
+        }
+        #endif
         return true
     }
 
@@ -76,6 +89,22 @@ class AppDelegate: NSObject, UIApplicationDelegate, MessagingDelegate, UNUserNot
         guard let token = fcmToken else { return }
         PushRegistrationDiagnostics.setFCMToken(token)
         PushNotificationService.persistFCMTokenToFirestore(token)
+    }
+
+    /// Silent (content-available) pushes land here. `blend_request_withdrawn`
+    /// means the requester undid a Book Blend request — remove the now-stale
+    /// invite alert from Notification Center.
+    func application(_ application: UIApplication,
+                     didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+                     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        if WellreadDeepLink.pushNotificationType(from: userInfo) == "blend_request_withdrawn",
+           let blendId = userInfo[AnyHashable("blendId")] as? String, !blendId.isEmpty {
+            PushNotificationService.removeDeliveredBlendRequestNotifications(blendId: blendId) {
+                completionHandler(.newData)
+            }
+            return
+        }
+        completionHandler(.noData)
     }
 
     func userNotificationCenter(

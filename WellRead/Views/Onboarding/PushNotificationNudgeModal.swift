@@ -24,7 +24,7 @@ struct PushNotificationNudgeModal: View {
                     .font(.system(size: 44))
                     .symbolRenderingMode(.palette)
                     .foregroundStyle(Theme.accent, Theme.textSecondary)
-                Text("Turn on alerts so you never miss when friends post reviews, like yours, or reply in threads.")
+                Text("Turn on alerts so you never miss when people you follow post reviews, like yours, or reply in threads.")
                     .font(Theme.body())
                     .foregroundStyle(Theme.textSecondary)
                     .multilineTextAlignment(.center)

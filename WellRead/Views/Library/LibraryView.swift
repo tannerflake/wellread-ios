@@ -27,6 +27,9 @@ struct ProfileLibraryView: View {
     @State private var queueTabDropTargeted = false
     @State private var showEditProfile = false
     @State private var showDeleteAccountConfirm = false
+    /// Second confirmation step: the user must type DELETE before the account is removed.
+    @State private var showDeleteAccountTypeConfirm = false
+    @State private var deleteAccountConfirmText = ""
     @State private var isDeletingAccount = false
     @State private var deleteAccountError: String?
     /// Set when the edit-profile sheet was opened by tapping the goal strip —
@@ -117,6 +120,7 @@ struct ProfileLibraryView: View {
                     readBooksForSimilar: appState.readBooks,
                     onNotInterested: nil,
                     onWantToRead: { appState.addToWantToRead(book: book); selectedBookForProfile = nil },
+                    onStartReading: { appState.addToQueue(book: book, shelf: .readingNow); selectedBookForProfile = nil },
                     onConfirmRead: { date, rating, post, caption, tier in appState.addAsRead(book: book, dateFinished: date, rating: rating, postToFeed: post, caption: caption, tier: tier); selectedBookForProfile = nil },
                     isOnReadList: appState.isBookOnReadList(bookId: book.id),
                     isInQueue: appState.isBookInQueue(bookId: book.id),
@@ -215,10 +219,24 @@ struct ProfileLibraryView: View {
             .alert("Delete your account?", isPresented: $showDeleteAccountConfirm) {
                 Button("Cancel", role: .cancel) {}
                 Button("Delete account", role: .destructive) {
-                    Task { await performAccountDeletion() }
+                    deleteAccountConfirmText = ""
+                    showDeleteAccountTypeConfirm = true
                 }
             } message: {
-                Text("This permanently deletes your account and all of your data — library, reviews, comments, likes, and follows. This can't be undone.")
+                Text("This permanently deletes your account and all of your data: library, reviews, comments, likes, and follows. This can't be undone.")
+            }
+            .alert("Are you sure?", isPresented: $showDeleteAccountTypeConfirm) {
+                TextField("Type DELETE to confirm", text: $deleteAccountConfirmText)
+                    .textInputAutocapitalization(.characters)
+                    .autocorrectionDisabled()
+                Button("Cancel", role: .cancel) { deleteAccountConfirmText = "" }
+                Button("Delete forever", role: .destructive) {
+                    guard deleteAccountTextMatches else { return }
+                    Task { await performAccountDeletion() }
+                }
+                .disabled(!deleteAccountTextMatches)
+            } message: {
+                Text("This cannot be undone. Type DELETE to permanently delete your account.")
             }
             .alert("Couldn't delete account", isPresented: Binding(
                 get: { deleteAccountError != nil },
@@ -597,6 +615,14 @@ struct ProfileLibraryView: View {
                     .foregroundStyle(Theme.textSecondary)
             }
         }
+    }
+
+    /// True when the type-to-confirm field contains DELETE (case-insensitive,
+    /// whitespace-trimmed) — the destructive button stays disabled until then.
+    private var deleteAccountTextMatches: Bool {
+        deleteAccountConfirmText
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .caseInsensitiveCompare("DELETE") == .orderedSame
     }
 
     /// Runs the full deletion (Firestore data + Auth user via the `deleteAccount`

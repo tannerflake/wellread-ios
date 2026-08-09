@@ -20,6 +20,11 @@ struct UserLibraryDetailView: View {
     @State private var profileUser: User?
     @State private var books: [UserBook] = []
     @State private var booksListener: ListenerRegistration?
+    /// First books snapshot has arrived — until then the tier list would render
+    /// misleadingly empty, so the view shows the brand spinner instead.
+    @State private var hasLoadedBooks = false
+    /// Profile fetch finished (even if it came back nil), so the spinner can't hang on a failed lookup.
+    @State private var profileFetchCompleted = false
     @State private var segment: LibraryReadQueueTab = .read
     @State private var selectedYear: Int? = nil
     @State private var selectedBookForProfile: Book? = nil
@@ -32,6 +37,7 @@ struct UserLibraryDetailView: View {
     @State private var blendListener: ListenerRegistration?
     @State private var blendRequestInFlight = false
     @State private var showBlendLanding = false
+    @State private var showUndoBlendConfirm = false
 
     private var readBooks: [UserBook] {
         books.filter { $0.status == .read }
@@ -95,45 +101,65 @@ struct UserLibraryDetailView: View {
         return g
     }
 
+    /// Everything the header + tier list needs, loaded before anything renders —
+    /// no flash of an empty library while Firestore catches up.
+    private var isInitialLoading: Bool {
+        !hasLoadedBooks || !profileFetchCompleted
+    }
+
     var body: some View {
         ZStack {
             Theme.background.ignoresSafeArea()
-            VStack(spacing: 0) {
-                HStack(alignment: .center, spacing: 12) {
-                    followToggleButton
-
-                    otherUserSegmentControl
-                        .frame(maxWidth: .infinity)
-
-                    if !availableYears.isEmpty {
-                        yearFilterInline
+            if isInitialLoading {
+                loadingView
+            } else {
+                VStack(spacing: 0) {
+                    // Small follow pill tucked under the toolbar avatar (top right),
+                    // kept compact so it barely pushes the content down.
+                    if authService.firebaseUser?.uid != nil, authService.firebaseUser?.uid != userId {
+                        HStack {
+                            Spacer()
+                            followToggleButton
+                        }
+                        .padding(.trailing, 10)
+                        .padding(.top, 2)
                     }
-                }
-                .padding(.vertical, 10)
 
-                if let me = authService.firebaseUser?.uid, me != userId {
-                    BookBlendEntryButton(
-                        state: blendEntryState(myUid: me),
-                        otherFirstName: profileUser?.firstName ?? "They",
-                        action: { handleBlendButtonTap(myUid: me) }
-                    )
-                    .padding(.horizontal, 8)
-                    .padding(.bottom, 8)
-                }
+                    HStack(alignment: .center, spacing: 12) {
+                        otherUserSegmentControl
+                            .frame(maxWidth: .infinity)
 
-                if let goal = activeReadingGoal {
-                    LibraryReadingGoalProgressStrip(
-                        calendarYear: calendarYear,
-                        booksRead: booksFinishedThisCalendarYear,
-                        goal: goal,
-                        copy: .other(displayFirstName: profileUser?.firstName)
-                    )
-                    .padding(.bottom, 4)
-                }
+                        if !availableYears.isEmpty {
+                            yearFilterInline
+                        }
+                    }
+                    .padding(.top, 4)
+                    .padding(.bottom, 10)
 
-                libraryContent
+                    if let me = authService.firebaseUser?.uid, me != userId {
+                        BookBlendEntryButton(
+                            state: blendEntryState(myUid: me),
+                            otherFirstName: profileUser?.firstName ?? "They",
+                            action: { handleBlendButtonTap(myUid: me) }
+                        )
+                        .padding(.horizontal, 8)
+                        .padding(.bottom, 8)
+                    }
+
+                    if let goal = activeReadingGoal {
+                        LibraryReadingGoalProgressStrip(
+                            calendarYear: calendarYear,
+                            booksRead: booksFinishedThisCalendarYear,
+                            goal: goal,
+                            copy: .other(displayFirstName: profileUser?.firstName)
+                        )
+                        .padding(.bottom, 4)
+                    }
+
+                    libraryContent
+                }
+                .padding(.horizontal, 4)
             }
-            .padding(.horizontal, 4)
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Theme.background, for: .navigationBar)
@@ -144,6 +170,7 @@ struct UserLibraryDetailView: View {
                 readBooksForSimilar: appState.readBooks,
                 onNotInterested: nil,
                 onWantToRead: { appState.addToWantToRead(book: book); selectedBookForProfile = nil },
+                onStartReading: { appState.addToQueue(book: book, shelf: .readingNow); selectedBookForProfile = nil },
                 onConfirmRead: { date, rating, post, caption, tier in
                     appState.addAsRead(book: book, dateFinished: date, rating: rating, postToFeed: post, caption: caption, tier: tier)
                     selectedBookForProfile = nil
@@ -158,10 +185,12 @@ struct UserLibraryDetailView: View {
         .onAppear {
             Task {
                 profileUser = await userRepo.getUser(uid: userId)
+                profileFetchCompleted = true
                 await refreshIFollowState()
             }
             booksListener = userBookRepo.listenUserBooks(userId: userId) { list in
                 books = list
+                hasLoadedBooks = true
             }
             startBlendListener()
         }
@@ -184,6 +213,24 @@ struct UserLibraryDetailView: View {
                     .environmentObject(appState)
             }
         }
+        .alert("Undo blend request?", isPresented: $showUndoBlendConfirm) {
+            Button("Undo Request", role: .destructive) { undoBlendRequest() }
+            Button("Keep Request", role: .cancel) {}
+        } message: {
+            Text("The invite to \(profileUser?.firstName ?? "them") will be withdrawn and their notification removed.")
+        }
+    }
+
+    /// Brand spinner shown until the first books snapshot and the profile
+    /// fetch both land — never an empty tier list that fills in later.
+    private var loadingView: some View {
+        VStack(spacing: 20) {
+            SpinningSpineLogo(size: 120)
+            Text("Loading library…")
+                .font(Theme.title2())
+                .foregroundStyle(Theme.textSecondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Book Blend
@@ -219,9 +266,23 @@ struct UserLibraryDetailView: View {
                 await MainActor.run { blendRequestInFlight = false }
             }
         case .requestedByMe:
-            break
+            showUndoBlendConfirm = true
         case .invitedMe, .ready:
             showBlendLanding = true
+        }
+    }
+
+    /// Deletes the pending pair doc; the blend listener flips the button back to
+    /// "Request a Book Blend" when the delete lands. The Cloud Function clears
+    /// the recipient's invite notification via a silent push.
+    private func undoBlendRequest() {
+        guard let me = authService.firebaseUser?.uid,
+              let blend, blend.status == .pending, blend.requesterId == me,
+              !blendRequestInFlight else { return }
+        blendRequestInFlight = true
+        Task {
+            try? await BookBlendService.shared.cancelRequest(blend, myUid: me)
+            await MainActor.run { blendRequestInFlight = false }
         }
     }
 
@@ -334,15 +395,14 @@ struct UserLibraryDetailView: View {
                 Task { await toggleFollow() }
             } label: {
                 Text(iFollowThem ? "Following" : "Follow")
-                    .font(Theme.caption())
-                    .fontWeight(.semibold)
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(iFollowThem ? Theme.textPrimary : Theme.background)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
                     .background(iFollowThem ? Theme.surface : Theme.accent)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .clipShape(Capsule())
                     .overlay(
-                        RoundedRectangle(cornerRadius: 10)
+                        Capsule()
                             .strokeBorder(Theme.textTertiary.opacity(iFollowThem ? 0.35 : 0), lineWidth: 1)
                     )
             }

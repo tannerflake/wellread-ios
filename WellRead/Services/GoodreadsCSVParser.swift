@@ -23,6 +23,17 @@ struct GoodreadsRow: Identifiable, Equatable, Codable {
     let myReview: String?
 }
 
+extension GoodreadsRow {
+    /// Goodreads exports reviews as HTML fragments — line breaks arrive as
+    /// `<br/>`, emphasis as `<b>`/`<i>`, and special characters as entities
+    /// (`&amp;`, `&#39;`). `myReview` keeps the raw value (persisted wizard
+    /// sessions already store it); read this wherever the review is shown
+    /// or saved so the markup never reaches the user.
+    var plainTextReview: String? {
+        GoodreadsCSVParser.plainText(fromReviewHTML: myReview)
+    }
+}
+
 /// Goodreads CSV column names (export format).
 private enum GoodreadsColumn: String, CaseIterable {
     case bookId = "Book Id"
@@ -211,6 +222,50 @@ final class GoodreadsCSVParser {
             if let d = f.date(from: s) { return d }
         }
         return nil
+    }
+
+    /// Reduces a Goodreads review HTML fragment to plain text: break-like
+    /// tags become newlines, every other tag is dropped, and HTML entities
+    /// are decoded. Plain-text reviews pass through untouched.
+    static func plainText(fromReviewHTML html: String?) -> String? {
+        guard var t = html?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty else { return nil }
+        guard t.contains("<") || t.contains("&") else { return t }
+        t = t.replacingOccurrences(of: "<br\\s*/?\\s*>", with: "\n", options: [.regularExpression, .caseInsensitive])
+        t = t.replacingOccurrences(of: "</(p|div|blockquote)>", with: "\n\n", options: [.regularExpression, .caseInsensitive])
+        // Only strip runs that look like actual tags (letter after the angle
+        // bracket) so prose like "4 < 5 but > 3" survives.
+        t = t.replacingOccurrences(of: "</?[a-zA-Z][^<>]*>", with: "", options: .regularExpression)
+        t = decodeHTMLEntities(t)
+        t = t.replacingOccurrences(of: "\\n{3,}", with: "\n\n", options: .regularExpression)
+        return t.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+    }
+
+    private static func decodeHTMLEntities(_ s: String) -> String {
+        var t = s
+        // Numeric entities: &#8217; and &#x2019;
+        while let range = t.range(of: "&#(?:x[0-9a-fA-F]+|[0-9]+);", options: [.regularExpression, .caseInsensitive]) {
+            let body = t[range].dropFirst(2).dropLast()
+            let value = body.lowercased().hasPrefix("x")
+                ? UInt32(body.dropFirst(), radix: 16)
+                : UInt32(body)
+            if let v = value, let scalar = Unicode.Scalar(v) {
+                t.replaceSubrange(range, with: String(Character(scalar)))
+            } else {
+                t.replaceSubrange(range, with: "")
+            }
+        }
+        // &amp; must decode last so double-escaped text ("&amp;lt;") stays literal.
+        let named: [(String, String)] = [
+            ("&nbsp;", " "), ("&quot;", "\""), ("&apos;", "'"),
+            ("&lsquo;", "\u{2018}"), ("&rsquo;", "\u{2019}"),
+            ("&ldquo;", "\u{201C}"), ("&rdquo;", "\u{201D}"),
+            ("&mdash;", "\u{2014}"), ("&ndash;", "\u{2013}"), ("&hellip;", "\u{2026}"),
+            ("&lt;", "<"), ("&gt;", ">"), ("&amp;", "&")
+        ]
+        for (entity, char) in named {
+            t = t.replacingOccurrences(of: entity, with: char)
+        }
+        return t
     }
 
     private static func parseBookshelves(_ s: String?) -> [String] {

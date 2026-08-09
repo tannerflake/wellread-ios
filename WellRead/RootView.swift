@@ -12,6 +12,20 @@ struct RootView: View {
     @EnvironmentObject var authService: AuthService
     @EnvironmentObject var appState: AppState
 
+    /// Latched while the onboarding wizard runs. `completeProfileSetup` refreshes
+    /// `appUser` mid-wizard (flipping `needsProfileCompletion` to false), so the
+    /// gate below cannot be purely reactive or the wizard would be swapped out
+    /// after the taste step. The wizard clears the latch from `finish()`.
+    @State private var onboardingWizardActive = false
+
+    #if DEBUG
+    /// Launch with `-uiPreviewOnboardingWizard` to walk the wizard with no
+    /// signed-in session (no Firestore writes; canned roster and handle checks).
+    private var isWizardPreviewRun: Bool {
+        ProcessInfo.processInfo.arguments.contains("-uiPreviewOnboardingWizard")
+    }
+    #endif
+
     #if DEBUG
     /// Launch with `-uiPreview` (simulator UI verification) to render the main UI
     /// without a signed-in session. Firestore listeners never start; local demo
@@ -33,6 +47,7 @@ struct RootView: View {
         appState.isAuthenticated = true
         let now = Date()
         let uid = "ui-preview"
+        appState.seedPreviewAuth(uid: uid)
         func book(_ id: String, _ title: String, _ author: String) -> Book {
             Book(id: id, title: title, author: author, coverURL: "", pageCount: nil, publishedDate: nil, description: nil, genres: [])
         }
@@ -43,7 +58,15 @@ struct RootView: View {
             entry(book("rn1", "Endurance", "Alfred Lansing"), status: .wantToRead, shelf: .readingNow, order: 0),
             entry(book("rn2", "The Founders", "Jimmy Soni"), status: .wantToRead, shelf: .readingNow, order: 1),
             entry(book("rn3", "Choke", "Chuck Palahniuk"), status: .wantToRead, shelf: .readingNow, order: 2),
+            entry(book("un1", "Chip War", "Chris Miller"), status: .wantToRead, shelf: .upNext, order: 0),
+            entry(book("bl1", "The Nvidia Way", "Tae Kim"), status: .wantToRead, shelf: .backlog, order: 0),
+            entry(book("bl2", "Titan", "Ron Chernow"), status: .wantToRead, shelf: .backlog, order: 1),
             entry(book("r1", "Build", "Tony Fadell"), status: .read, tier: "S", finishedDaysAgo: 10),
+            entry(book("r6", "Shoe Dog", "Phil Knight"), status: .read, tier: "S", finishedDaysAgo: 15),
+            entry(book("r7", "The Hard Thing About Hard Things", "Ben Horowitz"), status: .read, tier: "S", finishedDaysAgo: 20),
+            entry(book("r8", "Zero to One", "Peter Thiel"), status: .read, tier: "S", finishedDaysAgo: 25),
+            entry(book("r9", "Creativity, Inc.", "Ed Catmull"), status: .read, tier: "S", finishedDaysAgo: 28),
+            entry(book("r10", "The Everything Store", "Brad Stone"), status: .read, tier: "S", finishedDaysAgo: 29),
             entry(book("r2", "Basic Economics", "Thomas Sowell"), status: .read, tier: "A", finishedDaysAgo: 30),
             entry(book("r3", "Brain Energy", "Christopher Palmer"), status: .read, tier: "A", finishedDaysAgo: 55),
             entry(book("r4", "Misbelief", "Dan Ariely"), status: .read, tier: "B", finishedDaysAgo: 80),
@@ -52,6 +75,7 @@ struct RootView: View {
         appState.feedPosts = [
             Post(id: UUID(), userId: uid, type: .finishedBook, bookId: "r1", book: book("r1", "Build", "Tony Fadell"), caption: "An unorthodox guide to making things worth making.", createdAt: now.addingTimeInterval(-86400 * 2), likeCount: 4, commentCount: 0, user: .demo, rating: nil, dateFinished: now, tier: "A")
         ]
+        appState.isFeedLoading = false
         if SearchRecents.queries(uid: "anon").isEmpty {
             SearchRecents.addQuery("tony fadell", uid: "anon")
             SearchRecents.addQuery("sapiens", uid: "anon")
@@ -64,7 +88,9 @@ struct RootView: View {
     var body: some View {
         Group {
             #if DEBUG
-            if isWelcomePreviewRun {
+            if isWizardPreviewRun {
+                OnboardingWizardView(previewMode: true, onFinished: {})
+            } else if isWelcomePreviewRun {
                 OnboardingFlowView()
             } else if isUIPreviewRun {
                 MainTabView()
@@ -91,6 +117,12 @@ struct RootView: View {
             }
         }
         .onChange(of: authService.appUser) { _, newUser in
+            #if DEBUG
+            // A leftover simulator keychain session must not hijack `-uiPreview`
+            // or `-uiPreviewOnboardingWizard` runs: it would overwrite the demo
+            // user and start real listeners.
+            if isUIPreviewRun || isWizardPreviewRun { return }
+            #endif
             if let user = newUser {
                 appState.currentUser = user
                 appState.isAuthenticated = true
@@ -102,7 +134,11 @@ struct RootView: View {
             }
         }
         .onChange(of: authService.firebaseUser?.uid) { _, newValue in
+            #if DEBUG
+            if isUIPreviewRun || isWizardPreviewRun { return }
+            #endif
             if newValue == nil {
+                onboardingWizardActive = false
                 appState.signOut()
             }
         }
@@ -114,8 +150,12 @@ struct RootView: View {
             loadingView
         } else if authService.firebaseUser == nil {
             OnboardingFlowView()
+                .onAppear { onboardingWizardActive = false }
         } else if authService.appUser == nil {
             loadingView
+        } else if let user = authService.appUser, user.needsProfileCompletion || onboardingWizardActive {
+            OnboardingWizardView(onFinished: { onboardingWizardActive = false })
+                .onAppear { onboardingWizardActive = true }
         } else {
             MainTabView()
         }
