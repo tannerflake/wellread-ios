@@ -89,7 +89,7 @@ enum DiscoverSuggestionsService {
             }
             let userMessage = "\(criteriaLine)\(historyLine) Suggest 5 books they might enjoy next. Reply with exactly 5 lines, each line one book title (optionally 'Title by Author')."
             do {
-                let response = try await ClaudeService.shared.sendMessage(system: system, userMessage: userMessage)
+                let response = try await ClaudeService.shared.sendMessage(system: system, userMessage: userMessage, tier: .simple)
                 let lines = parseClaudeBookLines(response)
                 var books: [Book] = []
                 var filteredThisRound: [String] = []

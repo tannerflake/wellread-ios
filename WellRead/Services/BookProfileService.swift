@@ -31,7 +31,7 @@ final class BookProfileService {
             input = "Book: \(book.title) by \(book.author). Write a brief summary in at most two sentences, under 200 characters."
         }
         do {
-            let response = try await ClaudeService.shared.sendMessage(system: system, userMessage: input)
+            let response = try await ClaudeService.shared.sendMessage(system: system, userMessage: input, tier: .simple)
             var trimmed = response.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.count > summaryMaxCharacters {
                 trimmed = String(trimmed.prefix(summaryMaxCharacters)).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -58,7 +58,8 @@ final class BookProfileService {
             input = "Book: \(book.title) by \(book.author). Give one notable or famous quote from this book."
         }
         do {
-            let response = try await ClaudeService.shared.sendMessage(system: system, userMessage: input)
+            // Verbatim quote recall: keep on the smarter tier so we don't fabricate quotes.
+            let response = try await ClaudeService.shared.sendMessage(system: system, userMessage: input, tier: .complex)
             let trimmed = response.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty || trimmed.lowercased().contains("no notable quote") {
                 queue.sync { quoteCache[key] = nil }
@@ -116,7 +117,7 @@ final class BookProfileService {
         }
         input += "\n\nWrite the blurb (three sentences max)."
         do {
-            let response = try await ClaudeService.shared.sendMessage(system: system, userMessage: input)
+            let response = try await ClaudeService.shared.sendMessage(system: system, userMessage: input, tier: .simple)
             let trimmed = response.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { return nil }
             queue.sync { whyLikeCache[key] = trimmed }
@@ -169,7 +170,7 @@ final class BookProfileService {
         }
         let userMessage = "Assign tags for this book.\n\n\(metadata)"
         do {
-            let response = try await ClaudeService.shared.sendMessage(system: system, userMessage: userMessage)
+            let response = try await ClaudeService.shared.sendMessage(system: system, userMessage: userMessage, tier: .simple)
             let parsed = parseTagsFromResponse(response) ?? []
             let normalized = normalizeProfileTags(parsed, book: enriched)
             queue.sync { tagsCache[key] = normalized }
@@ -323,7 +324,7 @@ final class BookProfileService {
         return [root] + extra
     }
 
-    /// Books from the user's read list that are most similar to this book. Returns 2–3 books for "Similar to" section. Uses Claude to pick by title/author; empty if read list is empty or Claude returns nothing.
+    /// Books from the user's read list that are most similar to this book. Returns 2–4 books for "Similar to" section. Uses Claude to pick by title/author; empty if read list is empty or Claude returns nothing.
     func similarBooks(for book: Book, readBooks: [UserBook]) async -> [Book] {
         let readTitles = readBooks.compactMap { ub -> (title: String, book: Book)? in
             guard let b = ub.book else { return nil }
@@ -331,16 +332,16 @@ final class BookProfileService {
         }
         guard !readTitles.isEmpty else { return [] }
         let titleList = readTitles.map(\.title).joined(separator: ", ")
-        let system = "You are a book comparison assistant. Given one book and a list of books the user has read, pick 2 or 3 books from the list that are most similar in theme, genre, or style. Reply with only those book titles, one per line. Use the exact title as given. If none are similar, reply with exactly: None."
-        let input = "Book to compare: \(book.title) by \(book.author).\n\nBooks the user has read:\n\(titleList)\n\nList 2 or 3 titles from the user's list that are most similar (one per line), or reply None."
+        let system = "You are a book comparison assistant. Given one book and a list of books the user has read, pick 2 to 4 books from the list that are most similar in theme, genre, or style. Reply with only those book titles, one per line. Use the exact title as given. If none are similar, reply with exactly: None."
+        let input = "Book to compare: \(book.title) by \(book.author).\n\nBooks the user has read:\n\(titleList)\n\nList 2 to 4 titles from the user's list that are most similar (one per line), or reply None."
         do {
-            let response = try await ClaudeService.shared.sendMessage(system: system, userMessage: input)
+            let response = try await ClaudeService.shared.sendMessage(system: system, userMessage: input, tier: .simple)
             let lines = response
                 .components(separatedBy: .newlines)
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.isEmpty && !$0.lowercased().hasPrefix("none") }
             var result: [Book] = []
-            for line in lines.prefix(3) {
+            for line in lines.prefix(4) {
                 let normalized = line.lowercased()
                 if let match = readTitles.first(where: { $0.title.lowercased() == normalized || $0.title.lowercased().contains(normalized) || normalized.contains($0.title.lowercased()) }) {
                     result.append(match.book)

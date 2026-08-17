@@ -46,7 +46,7 @@ struct WizardRosterStep: View {
                     model.finishRosterStep()
                 }
             }
-            .wizardReveal(delay: 0.45)
+            .wizardReveal(delay: 0.3)
             .padding(.top, 12)
         }
         .padding(.horizontal, 28)
@@ -180,16 +180,13 @@ struct WizardRosterStep: View {
     }
 
     private func rosterAvatar(for user: User) -> some View {
-        CachedProfileImage(url: URL(string: user.profileImageURL ?? ""), contentMode: .fill) {
-            ZStack {
-                Circle().fill(Theme.textPrimary)
-                Text(String(user.displayName.prefix(1)).uppercased())
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundStyle(Theme.onChrome)
-            }
-        }
-        .frame(width: 42, height: 42)
-        .clipShape(Circle())
+        UserAvatarView(
+            urlString: user.profileImageURL,
+            displayName: user.displayName,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            size: 42
+        )
     }
 
     private func followButton(for entry: OnboardingWizardModel.RosterEntry) -> some View {
@@ -220,9 +217,12 @@ struct WizardRosterStep: View {
 struct WizardInviteStep: View {
     @ObservedObject var model: OnboardingWizardModel
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     @State private var contactToInvite: SyncedContact?
     @State private var cantSendTextAlert = false
     @State private var contactSearch = ""
+    @State private var leafPulsing = false
 
     private var filteredInviteCandidates: [SyncedContact] {
         let query = contactSearch.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -261,10 +261,16 @@ struct WizardInviteStep: View {
                 Spacer()
 
                 Image(systemName: "leaf")
-                    .font(.system(size: 64, weight: .light))
+                    .font(.system(size: 192, weight: .light))
                     .foregroundStyle(Theme.textPrimary.opacity(0.25))
+                    .scaleEffect(leafPulsing && !reduceMotion ? 1.08 : 0.94)
+                    .animation(
+                        reduceMotion ? nil : .easeInOut(duration: 1.8).repeatForever(autoreverses: true),
+                        value: leafPulsing
+                    )
                     .frame(maxWidth: .infinity)
-                    .wizardReveal(delay: 0.35)
+                    .wizardReveal(delay: 0.3)
+                    .onAppear { leafPulsing = true }
 
                 Spacer()
             }
@@ -286,7 +292,7 @@ struct WizardInviteStep: View {
                     }
                 }
             }
-            .wizardReveal(delay: 0.55)
+            .wizardReveal(delay: 0.3)
             .padding(.top, 12)
         }
         .padding(.horizontal, 28)
@@ -481,6 +487,12 @@ struct WizardNotificationsStep: View {
                 .wizardReveal(delay: 0.2)
                 .padding(.top, 10)
 
+            Text("ex.")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Theme.textTertiary)
+                .wizardReveal(delay: 0.25)
+                .padding(.top, 24)
+
             VStack(spacing: 10) {
                 mockCard(
                     symbol: "star.fill",
@@ -495,16 +507,16 @@ struct WizardNotificationsStep: View {
                     message: "Project Hail Mary. \u{201C}trust me on this one\u{201D}",
                     time: "1h"
                 )
-                .wizardReveal(delay: 0.4)
+                .wizardReveal(delay: 0.3)
                 mockCard(
                     symbol: "at",
                     title: "Priya replied to your review",
                     message: "\u{201C}completely agree about the ending\u{201D}",
                     time: "3h"
                 )
-                .wizardReveal(delay: 0.5)
+                .wizardReveal(delay: 0.3)
             }
-            .padding(.top, 24)
+            .padding(.top, 8)
 
             Spacer()
 
@@ -516,7 +528,7 @@ struct WizardNotificationsStep: View {
                     model.finishNotificationsStep(enable: false)
                 }
             }
-            .wizardReveal(delay: 0.55)
+            .wizardReveal(delay: 0.3)
         }
         .padding(.horizontal, 28)
         .padding(.top, 10)

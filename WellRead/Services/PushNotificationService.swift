@@ -263,4 +263,6 @@ extension Notification.Name {
     static let spineOpenBookBlend = Notification.Name("spineOpenBookBlend")
     /// New-follower push tapped: present the follower's profile (tier list). `userInfo["userId"]` is their Firebase UID.
     static let spineOpenUserProfile = Notification.Name("spineOpenUserProfile")
+    /// Feed tab tapped while already selected: FeedView scrolls to top if scrolled down, or refreshes if already at top.
+    static let spineFeedTabTappedAgain = Notification.Name("spineFeedTabTappedAgain")
 }

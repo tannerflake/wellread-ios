@@ -16,6 +16,7 @@ struct CommentsView: View {
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var authService: AuthService
     @StateObject private var viewModel: CommentsViewModel
+    @FocusState private var isCommentFieldFocused: Bool
 
     init(post: Post) {
         self.post = post
@@ -82,6 +83,19 @@ struct CommentsView: View {
         .onAppear {
             viewModel.startListening()
         }
+        .task {
+            // Focus right away so the keyboard rises with the sheet instead of
+            // after it lands. SwiftUI drops focus set mid-presentation (and
+            // resets the binding to false), so re-assert until it sticks.
+            for _ in 0..<6 {
+                isCommentFieldFocused = true
+                try? await Task.sleep(nanoseconds: 80_000_000)
+                if isCommentFieldFocused { return }
+            }
+        }
+        .onChange(of: viewModel.replyingTo?.id) { _, newValue in
+            if newValue != nil { isCommentFieldFocused = true }
+        }
         .onDisappear {
             viewModel.stopListening()
         }
@@ -125,6 +139,7 @@ struct CommentsView: View {
         HStack(spacing: 10) {
             TextField(viewModel.replyingTo == nil ? "> add a comment…" : "> add a reply…", text: $viewModel.commentText, axis: .vertical)
                 .textFieldStyle(.plain)
+                .focused($isCommentFieldFocused)
                 .font(Theme.body())
                 .foregroundStyle(Theme.textPrimary)
                 .padding(.horizontal, 12)
@@ -171,31 +186,36 @@ struct CommentRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
+            // Avatar sits beside the name/body column so the comment text
+            // starts right under the name, not below the avatar's height.
+            // The NavigationLink hides behind the content (zero-opacity overlay)
+            // so the List doesn't render its disclosure chevron.
             HStack(alignment: .top, spacing: 10) {
-                NavigationLink(value: comment.userId) {
-                    HStack(alignment: .top, spacing: 10) {
-                        commentAvatar
-                        HStack(spacing: 8) {
-                            Text(comment.displayName ?? "User")
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundStyle(Theme.textPrimary)
-                            TimelineView(.periodic(from: .now, by: 15)) { context in
-                                Text(Theme.commentRelativeTimestamp(comment.createdAt, now: context.date))
-                                    .font(.system(size: 10, weight: .regular))
-                                    .tracking(0.5)
-                                    .foregroundStyle(Theme.chrome)
-                            }
+                commentAvatar
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Text(comment.displayName ?? "User")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(Theme.textPrimary)
+                        TimelineView(.periodic(from: .now, by: 15)) { context in
+                            Text(Theme.commentRelativeTimestamp(comment.createdAt, now: context.date))
+                                .font(.system(size: 10, weight: .regular))
+                                .tracking(0.5)
+                                .foregroundStyle(Theme.chrome)
                         }
                     }
+                    Text(comment.text)
+                        .font(Theme.body())
+                        .foregroundStyle(Theme.textPrimary)
+                        .lineSpacing(Theme.bodyLineSpacing)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .buttonStyle(.plain)
                 Spacer(minLength: 0)
             }
-            Text(comment.text)
-                .font(Theme.body())
-                .foregroundStyle(Theme.textPrimary)
-                .lineSpacing(Theme.bodyLineSpacing)
-                .padding(.leading, Self.avatarSize + 10)
+            .overlay(
+                NavigationLink(value: comment.userId) { EmptyView() }
+                    .opacity(0)
+            )
             if let onReply {
                 Button(action: onReply) {
                     Text("Reply")
@@ -211,32 +231,10 @@ struct CommentRow: View {
     }
 
     private var commentAvatar: some View {
-        let initial = String((comment.displayName ?? "User").prefix(1))
-        return Group {
-            if let urlStr = profileImageURL, let url = URL(string: urlStr) {
-                CachedProfileImage(url: url, contentMode: .fill) {
-                    commentAvatarPlaceholder(initial: initial)
-                }
-                .frame(width: Self.avatarSize, height: Self.avatarSize)
-                .clipShape(Circle())
-                .overlay(
-                    Circle()
-                        .strokeBorder(Theme.chrome.opacity(0.5), lineWidth: 1)
-                )
-            } else {
-                commentAvatarPlaceholder(initial: initial)
-            }
-        }
-    }
-
-    private func commentAvatarPlaceholder(initial: String) -> some View {
-        Circle()
-            .fill(Theme.chrome)
-            .frame(width: Self.avatarSize, height: Self.avatarSize)
+        UserAvatarView(urlString: profileImageURL, displayName: comment.displayName, size: Self.avatarSize)
             .overlay(
-                Text(initial.uppercased())
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(Theme.onChrome)
+                Circle()
+                    .strokeBorder(Theme.chrome.opacity(0.5), lineWidth: 1)
             )
     }
 }

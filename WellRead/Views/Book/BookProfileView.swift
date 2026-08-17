@@ -43,6 +43,10 @@ struct BookProfileView: View {
     /// When `false`, hides the "Recommend to a Friend" section. Discover suppresses it
     /// since those are books the user hasn't read yet.
     var showRecommend: Bool = true
+    /// UID of the reader whose tier list or feed post led here. Their row is
+    /// included in "Read by" even when the viewer doesn't follow them, pinned
+    /// to the top of the section, and gently highlighted.
+    var sourceReaderUid: String? = nil
 
     @EnvironmentObject private var appState: AppState
 
@@ -269,24 +273,27 @@ struct BookProfileView: View {
             whyLikeLoading = false
             if let myUid = appState.authUserId {
                 let following = Set(appState.currentUser?.following ?? [])
-                if !following.isEmpty {
+                let sourceUid = sourceReaderUid
+                if !following.isEmpty || sourceUid != nil {
                     let bookId = book.id
                     Task {
                         let entries = await UserBookRepository().fetchReadEntries(bookId: bookId)
                         var seen = Set<String>()
-                        let followed = entries.filter {
-                            $0.userId != myUid && following.contains($0.userId) && seen.insert($0.userId).inserted
+                        let included = entries.filter {
+                            $0.userId != myUid
+                                && (following.contains($0.userId) || $0.userId == sourceUid)
+                                && seen.insert($0.userId).inserted
                         }
-                        guard !followed.isEmpty else { return }
+                        guard !included.isEmpty else { return }
                         let repo = UserRepository()
                         var readers: [ReadByReader] = []
-                        for entry in followed {
+                        for entry in included {
                             if let user = await repo.getUser(uid: entry.userId) {
                                 readers.append(ReadByReader(uid: entry.userId, user: user, entry: entry))
                             }
                         }
                         let sorted = readers.sorted {
-                            ($0.entry.dateFinished ?? .distantPast) > ($1.entry.dateFinished ?? .distantPast)
+                            Self.readByPrecedes($0, $1, sourceUid: sourceUid)
                         }
                         await MainActor.run {
                             guard bookId == book.id else { return }
@@ -807,10 +814,23 @@ struct BookProfileView: View {
         }
     }
 
+    /// "Read by" ordering: the source reader (whose tier list or feed post led
+    /// here) pins to the top, then best-ranked first (S → F, unranked last),
+    /// most recently finished breaking ties.
+    private static func readByPrecedes(_ a: ReadByReader, _ b: ReadByReader, sourceUid: String?) -> Bool {
+        if let sourceUid, (a.uid == sourceUid) != (b.uid == sourceUid) {
+            return a.uid == sourceUid
+        }
+        let aRank = a.entry.normalizedTier.flatMap(spineTierLabels.firstIndex(of:)) ?? spineTierLabels.count
+        let bRank = b.entry.normalizedTier.flatMap(spineTierLabels.firstIndex(of:)) ?? spineTierLabels.count
+        if aRank != bRank { return aRank < bRank }
+        return (a.entry.dateFinished ?? .distantPast) > (b.entry.dateFinished ?? .distantPast)
+    }
+
     private var readByWindow: some View {
         VStack(alignment: .leading, spacing: 16) {
             ForEach(Array(readByReaders.enumerated()), id: \.element.id) { index, reader in
-                readByRow(reader)
+                readByRow(reader, highlighted: reader.uid == sourceReaderUid)
                 if index < readByReaders.count - 1 {
                     Rectangle()
                         .fill(Theme.chrome.opacity(0.18))
@@ -821,7 +841,7 @@ struct BookProfileView: View {
         .hingeSectionCard(title: "Read by")
     }
 
-    private func readByRow(_ reader: ReadByReader) -> some View {
+    private func readByRow(_ reader: ReadByReader, highlighted: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 readerAvatar(user: reader.user, size: 36)
@@ -849,6 +869,20 @@ struct BookProfileView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+        // Highlight bleeds past the row without shifting its layout, so the
+        // source reader's row stays aligned with the others.
+        .padding(highlighted ? 8 : 0)
+        .background {
+            if highlighted {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Theme.chrome.opacity(0.07))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Theme.chrome.opacity(0.25), lineWidth: 1)
+                    )
+            }
+        }
+        .padding(highlighted ? -8 : 0)
     }
 
     // MARK: - Recommend window
@@ -976,27 +1010,13 @@ struct BookProfileView: View {
     }
 
     private func readerAvatar(user: User, size: CGFloat = 52) -> some View {
-        ZStack {
-            if let urlString = user.profileImageURL, let url = URL(string: urlString) {
-                CachedProfileImage(url: url, contentMode: .fill) {
-                    initialCircle(user.displayName, size: size)
-                }
-            } else {
-                initialCircle(user.displayName, size: size)
-            }
-        }
-        .frame(width: size, height: size)
-        .clipShape(Circle())
-    }
-
-    private func initialCircle(_ name: String, size: CGFloat = 52) -> some View {
-        Circle()
-            .fill(Theme.chrome)
-            .overlay(
-                Text(String(name.prefix(1)).uppercased())
-                    .font(.system(size: size * 0.38, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Theme.onChrome)
-            )
+        UserAvatarView(
+            urlString: user.profileImageURL,
+            displayName: user.displayName,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            size: size
+        )
     }
 
     private func sendRecommendation(to reader: RecommendReader) {

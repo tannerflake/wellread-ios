@@ -28,6 +28,10 @@ struct WizardCardStep: View {
 
     /// Number ticker is mid-count; the card № gets visual emphasis while live.
     @State private var isCounting = false
+    /// Avatar resolved to a UIImage for the downloadable card: ImageRenderer
+    /// cannot wait on an async loader, so an unresolved URL would export as the
+    /// monogram even though the card on screen shows the photo.
+    @State private var resolvedPhoto: UIImage?
 
     // Stamp order: photo, name, handle, goal stamp, then the OG badge.
     private let photoStampIndex = 0
@@ -55,13 +59,19 @@ struct WizardCardStep: View {
                     .rotationEffect(.degrees(dealt ? -1 : 5))
                     .opacity(dealt ? 1 : 0)
 
-                Text("Here's your card.")
+                Text("Keep it safe. You might need it.")
                     .font(.system(size: 16))
                     .foregroundStyle(Theme.textSecondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
                     .padding(.top, 26)
                     .wizardReveal(delay: captionBeat)
+
+                // Secondary here: Next is the way forward, downloading is the
+                // optional keepsake.
+                LibraryCardDownloadButton(details: exportDetails, prominent: false)
+                    .padding(.top, 18)
+                    .wizardReveal(delay: captionBeat + 0.15)
 
                 Spacer()
 
@@ -82,6 +92,26 @@ struct WizardCardStep: View {
         }
         .onAppear(perform: runChoreography)
         .onDisappear { isLive = false }
+        .task {
+            guard model.localProfileImage == nil else { return }
+            resolvedPhoto = await LibraryCardExporter.loadPhoto(urlString: authService.appUser?.profileImageURL)
+        }
+    }
+
+    /// What the downloaded image prints. Mirrors the stamped card above.
+    private var exportDetails: LibraryCardDetails {
+        let name = "\(model.firstName) \(model.lastName)"
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return LibraryCardDetails(
+            name: name.isEmpty ? model.displayFirstName : name,
+            handle: model.normalizedHandle,
+            cardNumber: model.cardNumber,
+            memberSinceText: model.memberSinceText,
+            goalText: model.goalYearText,
+            photo: model.localProfileImage ?? resolvedPhoto,
+            monogramInitial: String(model.displayFirstName.prefix(1)),
+            isOGEligible: model.isOGEligible
+        )
     }
 
     // MARK: Card
@@ -235,12 +265,12 @@ struct WizardCardStep: View {
     }
 
     private var monogram: some View {
-        ZStack {
-            Circle().fill(Theme.textPrimary)
-            Text(String(model.displayFirstName.prefix(1)))
-                .font(.system(size: 26, weight: .bold))
-                .foregroundStyle(Theme.onChrome)
-        }
+        InitialsAvatarView(
+            displayName: nil,
+            firstName: model.displayFirstName,
+            lastName: model.lastName,
+            size: 66
+        )
     }
 
     /// The reading goal is the card's one stamp: pressed on slightly tilted,
@@ -291,9 +321,11 @@ struct WizardCardStep: View {
         guard !hasChoreographed else { return }
         hasChoreographed = true
 
+        let isOGEligible = model.isOGEligible
+
         if reduceMotion {
             dealt = true
-            appearedStamps = Set(0...ogStampIndex)
+            appearedStamps = isOGEligible ? Set(0...ogStampIndex) : Set(0..<ogStampIndex)
             displayedCardNumber = model.cardNumber
             return
         }
@@ -318,7 +350,9 @@ struct WizardCardStep: View {
         stampIn(handleStampIndex, at: 2.5)
         stampIn(goalStampIndex, at: goalBeat)
         runCountUp(after: countUpBeat, duration: countUpDuration)
-        stampIn(ogStampIndex, at: ogBeat, heavy: true)
+        if isOGEligible {
+            stampIn(ogStampIndex, at: ogBeat, heavy: true)
+        }
     }
 
     private func stampIn(_ index: Int, at delay: Double, heavy: Bool = false) {
@@ -416,7 +450,7 @@ I'm glad you're here.
                     letter
                         .overlay(alignment: .topTrailing) {
                             polaroid
-                                .offset(x: 18, y: -34)
+                                .offset(x: 18, y: -64)
                         }
                         .scaleEffect(x: 1, y: noteUnfolded || reduceMotion ? 1 : 0.16, anchor: .top)
                         .opacity(noteUnfolded || reduceMotion ? 1 : 0.9)
@@ -585,11 +619,11 @@ I'm glad you're here.
         Image("founder-note-photo")
             .resizable()
             .scaledToFill()
-            .frame(width: 76, height: 88)
+            .frame(width: 58, height: 67)
             .clipped()
-            .padding(.top, 5)
-            .padding(.horizontal, 5)
-            .padding(.bottom, 18)
+            .padding(.top, 4)
+            .padding(.horizontal, 4)
+            .padding(.bottom, 14)
             .background(Color.white)
             .shadow(color: Theme.shadowInk.opacity(0.3), radius: 10, y: 6)
             .rotationEffect(.degrees(6))

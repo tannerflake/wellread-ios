@@ -33,6 +33,11 @@ struct User: Identifiable, Codable, Equatable {
     var readingInterestTags: [String]
     /// Discover tuning criteria (`discoverCriteria` map in Firestore); default = overall taste.
     var discoverCriteria: DiscoverCriteria = .default
+    /// Decided once, at account creation, and never revisited: whether this account missed the
+    /// library card's OG stamp (the first 250 real members). Missing/false means eligible, so every
+    /// account that existed before this field shipped is grandfathered in rather than losing a stamp
+    /// it already showed them. See `UserRepository.ensureUserDocument` and `TestAccountSignatures`.
+    var ogIneligible: Bool = false
 
     static let demo = User(
         id: UUID(),

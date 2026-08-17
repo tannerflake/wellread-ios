@@ -180,7 +180,7 @@ struct OnboardingCurrentlyReadingView: View {
         .buttonStyle(.plain)
     }
 
-    /// Debounces keystrokes so results populate as the user types (mirrors AddBookFlowView).
+    /// Debounces keystrokes so results populate as the user types (mirrors SearchView).
     private func scheduleSearch(for value: String) {
         searchTask?.cancel()
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)

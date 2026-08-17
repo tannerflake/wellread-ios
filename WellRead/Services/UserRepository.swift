@@ -31,6 +31,39 @@ enum HiddenAccounts {
     }
 }
 
+/// Test/backdoor accounts that should never count as a real reader: Tanner's own
+/// test logins, the App Store review account, and Apple's automated review
+/// sign-in. Used to (a) flag new docs with `isTestAccount: true` at creation in
+/// `ensureUserDocument` and (b) exclude those docs from `memberNumber`'s count
+/// (and therefore from OG-stamp eligibility on the library card). Distinct from
+/// `HiddenAccounts` (app-wide visibility) and `OtherReadersExclusion` (friends
+/// strip only) — some accounts land in more than one of these, and the literal
+/// email/name lists are intentionally kept separate rather than shared, so a
+/// change to one exclusion's scope can't silently change another's.
+enum TestAccountSignatures {
+    static let emailsLowercased: Set<String> = [
+        "tanner@tinyhealth.com", // @tantest, see HiddenAccounts
+        "tanner+onboarding@tinyhealth.com", // onboarding-flow test account, see onboarding-test-account memory
+        "review@spynesapp.com",
+        "review@spinesapp.com",
+    ]
+
+    /// Apple's automated App Review sign-in creates a fresh account (random uid,
+    /// privaterelay email) most review cycles, defaulting to this display name
+    /// when no real name is shared. Matched by name since the uid changes every time.
+    static func isAppleReviewName(_ displayName: String?) -> Bool {
+        (displayName ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "john apple"
+    }
+
+    static func matches(email: String?, displayName: String?) -> Bool {
+        if let e = email?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+           emailsLowercased.contains(e) {
+            return true
+        }
+        return isAppleReviewName(displayName)
+    }
+}
+
 /// Accounts hidden from the Feed “Your friends” strip (Apple review / internal test users).
 private enum OtherReadersExclusion {
     /// `displayName` match (trimmed, case-insensitive), e.g. default Apple review accounts.
@@ -73,13 +106,22 @@ final class UserRepository {
     /// Returns the User document for this uid if it exists.
     /// How many accounts existed on or before `date` — the user's "member
     /// number" for the library card (the 50th account to join is member 50).
-    /// Server-side count aggregation; nil on failure so callers can fall back.
+    /// Excludes docs flagged `isTestAccount` (see `TestAccountSignatures`) so
+    /// backdoor/review/duplicate accounts don't inflate real members' numbers
+    /// or count toward the OG-stamp cutoff. Server-side count aggregation;
+    /// nil on failure so callers can fall back.
     func memberNumber(joinedAt date: Date) async -> Int? {
+        let cutoff = Timestamp(date: date)
         do {
-            let snapshot = try await db.collection(users)
-                .whereField("joinedAt", isLessThanOrEqualTo: Timestamp(date: date))
+            async let totalAgg = db.collection(users)
+                .whereField("joinedAt", isLessThanOrEqualTo: cutoff)
                 .count.getAggregation(source: .server)
-            return snapshot.count.intValue
+            async let testAgg = db.collection(users)
+                .whereField("isTestAccount", isEqualTo: true)
+                .whereField("joinedAt", isLessThanOrEqualTo: cutoff)
+                .count.getAggregation(source: .server)
+            let (total, test) = try await (totalAgg, testAgg)
+            return max(0, total.count.intValue - test.count.intValue)
         } catch {
             return nil
         }
@@ -165,6 +207,40 @@ final class UserRepository {
         }
     }
 
+    /// Profiles for a known set of uids (the people you follow), applying the
+    /// same hidden/excluded filtering as the roster pages. Uncached, unlike
+    /// `getUsers`, so the strip shows current names and photos.
+    func fetchReaderProfiles(uids: [String], excludingUid: String?) async -> [(uid: String, user: User)] {
+        let wanted = Array(Set(uids)).filter { $0 != excludingUid }
+        guard !wanted.isEmpty else { return [] }
+        let chunks = stride(from: 0, to: wanted.count, by: 30).map {
+            Array(wanted[$0..<min($0 + 30, wanted.count)])
+        }
+        return await withTaskGroup(of: [(uid: String, user: User)].self) { group in
+            for chunk in chunks {
+                group.addTask { [self] in
+                    do {
+                        let snapshot = try await db.collection(users)
+                            .whereField(FieldPath.documentID(), in: chunk)
+                            .getDocuments()
+                        return snapshot.documents.compactMap { doc -> (uid: String, user: User)? in
+                            if HiddenAccounts.isHidden(uid: doc.documentID, viewerUid: excludingUid) { return nil }
+                            let data = doc.data()
+                            guard let u = user(from: data, uid: doc.documentID) else { return nil }
+                            if OtherReadersExclusion.shouldExclude(firestoreData: data, user: u) { return nil }
+                            return (doc.documentID, u)
+                        }
+                    } catch {
+                        return []
+                    }
+                }
+            }
+            var all: [(uid: String, user: User)] = []
+            for await rows in group { all.append(contentsOf: rows) }
+            return all
+        }
+    }
+
     /// Creates a user document in Firestore if one doesn't exist (so first-time Google/Apple sign-in gets an account).
     func ensureUserDocument(uid: String, displayName: String?, email: String?, photoURL: String?) async {
         let ref = db.collection(users).document(uid)
@@ -172,11 +248,22 @@ final class UserRepository {
             let snapshot = try await ref.getDocument()
             if snapshot.exists {
                 await migrateHandleClaimIfNeeded(uid: uid, data: snapshot.data())
+                var updates: [String: Any] = [:]
                 if let e = email?.trimmingCharacters(in: .whitespacesAndNewlines), !e.isEmpty {
                     let current = snapshot.data()?["email"] as? String
                     if current != e {
-                        try? await ref.updateData(["email": e])
+                        updates["email"] = e
                     }
+                }
+                // Self-heal: catches accounts that predate this flag, or whose
+                // matching signature (e.g. a fresh Apple review sign-in) only
+                // became known after the doc was first created.
+                if snapshot.data()?["isTestAccount"] == nil,
+                   TestAccountSignatures.matches(email: email, displayName: displayName) {
+                    updates["isTestAccount"] = true
+                }
+                if !updates.isEmpty {
+                    try? await ref.updateData(updates)
                 }
                 return
             }
@@ -202,6 +289,23 @@ final class UserRepository {
             ]
             if let e = email?.trimmingCharacters(in: .whitespacesAndNewlines), !e.isEmpty {
                 newUser["email"] = e
+            }
+            let isTestAccount = TestAccountSignatures.matches(email: email, displayName: displayName)
+            if isTestAccount {
+                newUser["isTestAccount"] = true
+            }
+            // OG-stamp eligibility is decided once, right here, and never revisited: accounts
+            // that predate this field are grandfathered in (see `User.ogIneligible`), so only
+            // brand-new signups get checked against the 250-member cap. `memberNumber` already
+            // excludes test accounts, and this doc doesn't exist yet, so its result is exactly
+            // "how many real members joined before this one."
+            if isTestAccount {
+                newUser["ogIneligible"] = true
+            } else {
+                let realCountBeforeThisSignup = await memberNumber(joinedAt: Date()) ?? Int.max
+                if realCountBeforeThisSignup >= LibraryCardDetails.ogCutoff {
+                    newUser["ogIneligible"] = true
+                }
             }
             try await ref.setData(newUser)
             try await setHandleClaim(handle: username, uid: uid)
@@ -427,6 +531,27 @@ final class UserRepository {
         }
     }
 
+    /// The accounts that follow `uid`, as profiles (their `following` contains the
+    /// uid). Same O(n) query as `countUsersFollowing`; hidden accounts are dropped
+    /// for everyone but their viewers. Sorted by display name.
+    func usersFollowingProfiles(uid: String, viewerUid: String?) async -> [(uid: String, user: User)] {
+        do {
+            let snapshot = try await db.collection(users)
+                .whereField("following", arrayContains: uid)
+                .getDocuments()
+            var rows: [(uid: String, user: User)] = []
+            for doc in snapshot.documents {
+                if HiddenAccounts.isHidden(uid: doc.documentID, viewerUid: viewerUid) { continue }
+                guard let u = user(from: doc.data(), uid: doc.documentID) else { continue }
+                rows.append((doc.documentID, u))
+            }
+            rows.sort { $0.user.displayName.localizedCaseInsensitiveCompare($1.user.displayName) == .orderedAscending }
+            return rows
+        } catch {
+            return []
+        }
+    }
+
     /// Persists dismissal of the first-time feed welcome modal (`users/{uid}.hasSeenFounderWelcomeModal`).
     func markHasSeenFounderWelcomeModal(uid: String) async throws {
         try await db.collection(users).document(uid).updateData([
@@ -498,7 +623,9 @@ final class UserRepository {
             totalPagesRead: totalPagesRead,
             readingGoal: readingGoal,
             readingInterestTags: data["readingInterestTags"] as? [String] ?? [],
-            discoverCriteria: DiscoverCriteria(firestoreMap: data["discoverCriteria"] as? [String: Any])
+            discoverCriteria: DiscoverCriteria(firestoreMap: data["discoverCriteria"] as? [String: Any]),
+            // Missing field: grandfathered in as OG-eligible (see `User.ogIneligible`).
+            ogIneligible: data["ogIneligible"] as? Bool ?? false
         )
     }
 }

@@ -56,7 +56,8 @@ final class BookSummaryMoreService {
             input += "\n\nCategories: \(book.genres.joined(separator: ", "))"
         }
         input += "\n\nWrite the three-paragraph summary."
-        let response = try await ClaudeService.shared.sendMessage(system: system, userMessage: input, maxTokens: 1024)
+        // Needs real knowledge of the book's contents (and spoiler judgment) — smarter tier.
+        let response = try await ClaudeService.shared.sendMessage(system: system, userMessage: input, maxTokens: 1024, tier: .complex)
         let summary = response.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !summary.isEmpty else {
             throw NSError(domain: "BookSummaryMoreService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Couldn't read the summary response."])
@@ -76,7 +77,7 @@ final class BookSummaryMoreService {
         """
         var messages = history.map { ClaudeMessageRequest.Message(role: $0.role.rawValue, content: $0.text) }
         messages.append(.init(role: "user", content: question))
-        let response = try await ClaudeService.shared.sendConversation(system: system, messages: messages)
+        let response = try await ClaudeService.shared.sendConversation(system: system, messages: messages, tier: .complex)
         return response.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

@@ -52,7 +52,7 @@ struct WizardReadingStep: View {
                     model.advance()
                 }
             }
-            .wizardReveal(delay: 0.45)
+            .wizardReveal(delay: 0.3)
         }
         .padding(.horizontal, 28)
         .padding(.top, 10)
@@ -96,6 +96,10 @@ struct WizardReadingStep: View {
         .padding()
         .background(Theme.surface)
         .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+        // The bare TextField only claims its own text line; tapping the box
+        // around it has to focus it too, or the field reads as unresponsive.
+        .contentShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+        .onTapGesture { isSearchFocused = true }
     }
 
     @ViewBuilder
@@ -274,7 +278,7 @@ struct WizardGoodreadsStep: View {
                 .font(.system(size: 16))
                 .foregroundStyle(Theme.textSecondary)
                 .padding(.top, 16)
-                .wizardReveal(delay: 0.35)
+                .wizardReveal(delay: 0.3)
 
             Spacer()
 
@@ -310,7 +314,7 @@ struct WizardGoodreadsStep: View {
                     model.finish()
                 }
             }
-            .wizardReveal(delay: 0.45)
+            .wizardReveal(delay: 0.3)
         }
         .padding(.horizontal, 28)
         .padding(.top, 10)

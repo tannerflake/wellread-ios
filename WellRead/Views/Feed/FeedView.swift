@@ -15,27 +15,32 @@ struct FeedView: View {
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var authService: AuthService
     @State private var selectedBookForProfile: Book? = nil
+    /// Author of the post the book was tapped on — their "Read by" row is
+    /// pinned and highlighted on the book profile.
+    @State private var bookProfileSourceUid: String? = nil
     @State private var postForComments: Post? = nil
     @State private var editReviewFromFeed: EditReadReviewSheetPayload? = nil
-    @State private var otherReaders: [(uid: String, user: User)] = []
-    /// Reading-now covers per member uid (floating book fans on the avatars).
+    /// Paged roster behind the people strip. Owned here so pull to refresh can
+    /// reload it, rendered by `PeopleStrip`.
+    @StateObject private var peopleModel = PeopleStripModel()
+    /// Reading-now covers for feed post authors (floating book fans on the
+    /// avatars), fetched for the authors on screen rather than the whole app.
     @State private var readingNowByUid: [String: [Book]] = [:]
-    /// Uids with a follow write in flight (debounces the quick-follow plus button).
-    @State private var followInFlight: Set<String> = []
-    @State private var isLoadingOtherReaders = true
     @State private var showFounderWelcome = false
     /// Post briefly tinted after a push-tap scroll so the review the user tapped is unmistakable.
     @State private var highlightedPostId: String? = nil
     /// Own post awaiting delete confirmation (from the post's ellipsis menu).
     @State private var postPendingDelete: Post? = nil
-    /// Horizontal content offset of the people strip — drives the sticky header.
-    @State private var peopleStripScrollX: CGFloat = 0
-    /// Measured width of the pinned "FOLLOWING" label (for the push-out offset).
-    @State private var followingLabelWidth: CGFloat = 0
+    /// Tracks scroll position so re-tapping the Feed tab knows whether to scroll to
+    /// top or refresh (near the top already).
+    @State private var isScrolledToFeedTop = true
 
     private let userRepo = UserRepository()
     private let userBookRepo = UserBookRepository()
     private let postRepo = PostRepository()
+
+    /// Anchor id on the outermost scroll content, for tab-retap "scroll to top".
+    private static let feedTopAnchorId = "feedTop"
 
     var body: some View {
         NavigationStack {
@@ -44,44 +49,31 @@ struct FeedView: View {
                 ScrollViewReader { scrollProxy in
                     ScrollView {
                         VStack(spacing: 0) {
-                            friendsSection
+                            PeopleStrip(model: peopleModel)
                             feedFriendsDivider
                             feedSectionLabel
                             if appState.isFeedLoading {
                                 feedBodyLoadingView
                             } else {
                                 LazyVStack(spacing: 0) {
-                                    ForEach(appState.feedPosts) { post in
-                                        FeedPostRow(
-                                            post: post,
-                                            currentUserFirebaseUid: authService.firebaseUser?.uid,
-                                            isLiked: appState.likedPostIds.contains(post.id.uuidString),
-                                            onBookTap: { selectedBookForProfile = $0 },
-                                            onCommentTap: { postForComments = post },
-                                            onLikeToggle: { appState.togglePostLike(postId: post.id.uuidString, liked: $0) },
-                                            onEditReviewTap: {
-                                                guard post.type == .finishedBook,
-                                                      let bid = post.bookId,
-                                                      post.userId == authService.firebaseUser?.uid,
-                                                      let ub = appState.userReadBook(forBookId: bid) else { return }
-                                                editReviewFromFeed = EditReadReviewSheetPayload(userBook: ub, feedCaption: post.caption)
-                                            },
-                                            canEditReview: post.bookId.map { appState.userReadBook(forBookId: $0) != nil } ?? false,
-                                            onDeleteTap: { postPendingDelete = post },
-                                            displayTier: effectiveTier(for: post),
-                                            readingNowBooks: readingNowFanBooks(for: post)
-                                        )
-                                        .id(post.id.uuidString)
-                                        .background(Theme.accent.opacity(highlightedPostId == post.id.uuidString ? 0.14 : 0))
+                                    ForEach(feedItems) { item in
+                                        feedItemView(item)
+                                            .id(item.id)
+                                            .background(Theme.accent.opacity(
+                                                highlightedPostId.map { item.postIds.contains($0) } == true ? 0.14 : 0
+                                            ))
                                     }
+                                    feedFooter
                                 }
                                 .animation(.easeInOut(duration: 0.35), value: highlightedPostId)
                                 .padding(.bottom, 100)
                             }
                         }
+                        .id(Self.feedTopAnchorId)
                     }
+                    .modifier(FeedScrollTopTracking(isAtTop: $isScrolledToFeedTop))
                     .refreshable {
-                        await loadOtherReaders()
+                        await refreshFeed()
                     }
                     .onAppear {
                         scrollToPushedPostIfNeeded(proxy: scrollProxy)
@@ -91,6 +83,15 @@ struct FeedView: View {
                     }
                     .onChange(of: appState.feedPosts.count) { _, _ in
                         scrollToPushedPostIfNeeded(proxy: scrollProxy)
+                    }
+                    .onReceive(NotificationCenter.default.publisher(for: .spineFeedTabTappedAgain)) { _ in
+                        if isScrolledToFeedTop {
+                            Task { await refreshFeed() }
+                        } else {
+                            withAnimation(.easeInOut(duration: 0.4)) {
+                                scrollProxy.scrollTo(Self.feedTopAnchorId, anchor: .top)
+                            }
+                        }
                     }
                 }
 
@@ -128,7 +129,8 @@ struct FeedView: View {
                     isInQueue: appState.isBookInQueue(bookId: book.id),
                     onRemoveFromQueue: { appState.removeFromQueue(book: book); selectedBookForProfile = nil },
                     readEntryForReview: appState.userReadBook(forBookId: book.id),
-                    canEditReadReview: true
+                    canEditReadReview: true,
+                    sourceReaderUid: bookProfileSourceUid
                 )
             }
             .sheet(item: $editReviewFromFeed) { payload in
@@ -157,8 +159,8 @@ struct FeedView: View {
             } message: { _ in
                 Text("Its likes and comments will be deleted too. Books on your shelf aren’t affected.")
             }
-            .task {
-                await loadOtherReaders()
+            .task(id: feedAuthorUids) {
+                await loadReadingNowForFeedAuthors(reset: false)
             }
             .task(id: authService.firebaseUser?.uid) {
                 await scheduleFounderWelcomeIfNeeded()
@@ -170,9 +172,59 @@ struct FeedView: View {
                 openDeepLinkedPostIfNeeded()
             }
             .onChange(of: authService.firebaseUser?.uid) { _, _ in
-                Task { await loadOtherReaders() }
+                // The strip reloads itself; drop the previous member's covers.
+                readingNowByUid = [:]
             }
         }
+    }
+
+    /// Feed posts folded into renderable items — same-day posting bursts from
+    /// one author (4+ posts on a calendar day) collapse into a swipeable carousel.
+    private var feedItems: [FeedItem] {
+        FeedItem.makeItems(from: appState.feedPosts)
+    }
+
+    @ViewBuilder
+    private func feedItemView(_ item: FeedItem) -> some View {
+        switch item {
+        case .single(let post):
+            FeedPostRow(
+                post: post,
+                currentUserFirebaseUid: authService.firebaseUser?.uid,
+                isLiked: appState.likedPostIds.contains(post.id.uuidString),
+                onBookTap: { bookProfileSourceUid = post.userId; selectedBookForProfile = $0 },
+                onCommentTap: { postForComments = post },
+                onLikeToggle: { appState.togglePostLike(postId: post.id.uuidString, liked: $0) },
+                onEditReviewTap: { openEditReview(for: post) },
+                canEditReview: post.bookId.map { appState.userReadBook(forBookId: $0) != nil } ?? false,
+                onDeleteTap: { postPendingDelete = post },
+                displayTier: effectiveTier(for: post),
+                readingNowBooks: readingNowFanBooks(for: post)
+            )
+        case .group(let group):
+            FeedDayGroupCarousel(
+                group: group,
+                currentUserFirebaseUid: authService.firebaseUser?.uid,
+                isLiked: { appState.likedPostIds.contains($0.id.uuidString) },
+                onBookTap: { bookProfileSourceUid = group.posts.first?.userId; selectedBookForProfile = $0 },
+                onCommentTap: { postForComments = $0 },
+                onLikeToggle: { post, liked in appState.togglePostLike(postId: post.id.uuidString, liked: liked) },
+                onEditReviewTap: { openEditReview(for: $0) },
+                canEditReview: { $0.bookId.map { appState.userReadBook(forBookId: $0) != nil } ?? false },
+                onDeleteTap: { postPendingDelete = $0 },
+                displayTier: { effectiveTier(for: $0) },
+                readingNowBooks: group.posts.first.map { readingNowFanBooks(for: $0) } ?? []
+            )
+        }
+    }
+
+    /// Opens the edit-review sheet for one of the signed-in user's finished-book posts.
+    private func openEditReview(for post: Post) {
+        guard post.type == .finishedBook,
+              let bid = post.bookId,
+              post.userId == authService.firebaseUser?.uid,
+              let ub = appState.userReadBook(forBookId: bid) else { return }
+        editReviewFromFeed = EditReadReviewSheetPayload(userBook: ub, feedCaption: post.caption)
     }
 
     /// Brand spinner shown inside the feed body while posts load (first load and
@@ -187,6 +239,35 @@ struct FeedView: View {
         .frame(maxWidth: .infinity)
         .padding(.top, 64)
         .padding(.bottom, 120)
+    }
+
+    /// Bottom of the feed: asks AppState for the next page as soon as it scrolls
+    /// into view (LazyVStack only builds it near the end), showing a spinner while
+    /// that page loads and an end cap once there's nothing older left.
+    @ViewBuilder
+    private var feedFooter: some View {
+        if appState.canLoadMoreFeedPosts || appState.isLoadingMoreFeedPosts {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(Theme.chrome)
+                Text("loading more posts")
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundStyle(Theme.textTertiary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 28)
+            .onAppear {
+                appState.loadMoreFeedPosts()
+            }
+        } else if !appState.feedPosts.isEmpty {
+            Text("END OF FEED")
+                .font(.system(size: 11, weight: .bold))
+                .tracking(1)
+                .foregroundStyle(Theme.chrome.opacity(0.6))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 28)
+        }
     }
 
     /// Reading-now covers fanned beside the post author's avatar. Own posts use live
@@ -211,7 +292,9 @@ struct FeedView: View {
     /// feed listener to deliver posts (cold start); gives up once the feed has loaded without the post.
     private func scrollToPushedPostIfNeeded(proxy: ScrollViewProxy) {
         guard let id = appState.scrollToFeedPostId else { return }
-        guard appState.feedPosts.contains(where: { $0.id.uuidString == id }) else {
+        // The post may render standalone or inside a day-group carousel — scroll
+        // to whichever feed item contains it.
+        guard let itemId = feedItems.first(where: { $0.postIds.contains(id) })?.id else {
             if !appState.feedPosts.isEmpty {
                 appState.scrollToFeedPostId = nil
             }
@@ -221,7 +304,7 @@ struct FeedView: View {
         // Small delay so the tab switch settles before animating the scroll.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             withAnimation(.easeInOut(duration: 0.5)) {
-                proxy.scrollTo(id, anchor: .center)
+                proxy.scrollTo(itemId, anchor: .center)
             }
             highlightedPostId = id
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
@@ -283,15 +366,35 @@ struct FeedView: View {
         }
     }
 
-    private func loadOtherReaders() async {
-        let uid = authService.firebaseUser?.uid
-        async let profilesTask = userRepo.fetchAllReaderProfiles(excludingUid: uid, limit: 400)
-        async let readingNowTask = userBookRepo.fetchAllReadingNowBooks()
-        let (list, readingNow) = await (profilesTask, readingNowTask)
+    /// Uids whose posts are currently in the feed — the only authors whose
+    /// reading-now covers this view needs.
+    private var feedAuthorUids: [String] {
+        Array(Set(appState.feedPosts.map(\.userId))).sorted()
+    }
+
+    /// Pull-to-refresh and tab-retap-while-at-top both land here: reload the people
+    /// strip and reading-now covers. Feed posts themselves are already live via the
+    /// Firestore listener, so there's nothing to re-fetch for those.
+    private func refreshFeed() async {
+        await peopleModel.reload(
+            currentUid: authService.firebaseUser?.uid,
+            following: authService.appUser?.following ?? []
+        )
+        await loadReadingNowForFeedAuthors(reset: true)
+    }
+
+    /// Loads reading-now covers for feed post authors, skipping authors already
+    /// resolved so paging the feed only fetches the new ones. `reset` re-reads
+    /// everyone (pull to refresh).
+    private func loadReadingNowForFeedAuthors(reset: Bool) async {
+        let authors = feedAuthorUids
+        let missing = reset ? authors : authors.filter { readingNowByUid[$0] == nil }
+        guard !missing.isEmpty else { return }
+        let covers = await userBookRepo.fetchReadingNowBooks(forUserIds: missing)
         await MainActor.run {
-            otherReaders = list
-            readingNowByUid = readingNow
-            isLoadingOtherReaders = false
+            if reset { readingNowByUid = [:] }
+            // Authors with no covers are recorded as empty so they aren't refetched.
+            for uid in missing { readingNowByUid[uid] = covers[uid] ?? [] }
         }
     }
 
@@ -348,275 +451,6 @@ struct FeedView: View {
         .accessibilityLabel("\(label == "FOLLOWING" ? "Following" : "Everyone") feed")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
-
-    /// Uids the signed-in user follows.
-    private var myFollowingSet: Set<String> {
-        Set(authService.appUser?.following ?? [])
-    }
-
-    /// People you follow — anyone reading a book right now first, then alphabetical.
-    private var followedReaders: [(uid: String, user: User)] {
-        otherReaders
-            .filter { myFollowingSet.contains($0.uid) }
-            .sorted { a, b in
-                let aReading = !(readingNowByUid[a.uid] ?? []).isEmpty
-                let bReading = !(readingNowByUid[b.uid] ?? []).isEmpty
-                if aReading != bReading { return aReading }
-                return a.user.displayName.localizedCaseInsensitiveCompare(b.user.displayName) == .orderedAscending
-            }
-    }
-
-    /// Everyone on Spine you don't follow yet — most mutual connections first, then alphabetical.
-    private var discoverableReaders: [(uid: String, user: User)] {
-        let candidates = otherReaders.filter { !myFollowingSet.contains($0.uid) }
-        var scores: [String: Int] = [:]
-        for c in candidates {
-            scores[c.uid] = mutualConnectionCount(candidateUid: c.uid, candidateFollowing: c.user.following)
-        }
-        return candidates.sorted { a, b in
-            let sa = scores[a.uid] ?? 0
-            let sb = scores[b.uid] ?? 0
-            if sa != sb { return sa > sb }
-            return a.user.displayName.localizedCaseInsensitiveCompare(b.user.displayName) == .orderedAscending
-        }
-    }
-
-    /// Mutual-connection score for the "everyone" ranking: people we both follow,
-    /// plus people I follow who follow the candidate.
-    private func mutualConnectionCount(candidateUid: String, candidateFollowing: [String]) -> Int {
-        let mine = myFollowingSet
-        guard !mine.isEmpty else { return 0 }
-        var count = mine.intersection(candidateFollowing).count
-        for (uid, user) in otherReaders where mine.contains(uid) && user.following.contains(candidateUid) {
-            count += 1
-        }
-        return count
-    }
-
-    private static let morePeopleTitle = "ALL USERS"
-    /// Fixed people-strip metrics — cells are exactly this wide (the name label's
-    /// frame), which lets the sticky header compute the group boundary statically.
-    private static let peopleCellWidth: CGFloat = 72
-    private static let peopleCellSpacing: CGFloat = 14
-
-    /// Content-space x where the not-yet-followed group starts in the strip.
-    private var morePeopleContentX: CGFloat {
-        let n = CGFloat(followedReaders.count)
-        guard n > 0 else { return Theme.horizontalPadding }
-        return Theme.horizontalPadding
-            + n * (Self.peopleCellWidth + Self.peopleCellSpacing)
-            + Theme.chromeHairline + Self.peopleCellSpacing
-    }
-
-    @ViewBuilder
-    private var friendsSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if isLoadingOtherReaders {
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .controlSize(.small)
-                        .tint(Theme.chrome)
-                    Text("loading readers")
-                        .font(.system(size: 13, weight: .regular))
-                        .foregroundStyle(Theme.textTertiary)
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, Theme.horizontalPadding)
-                .frame(height: 88)
-                .padding(.bottom, 8)
-            } else if otherReaders.isEmpty {
-                EmptyView()
-            } else {
-                peopleStickyHeader
-                readerStrip
-            }
-        }
-        .padding(.top, 4)
-        .animation(.easeInOut(duration: 0.25), value: myFollowingSet)
-    }
-
-    /// One label line above the strip, behaving like a horizontal sticky
-    /// section header: "FOLLOWING" pins at the leading edge while its people
-    /// are in view; "MORE ON SPINE" travels with its group and pushes
-    /// "FOLLOWING" out once it reaches the pin.
-    private var peopleStickyHeader: some View {
-        // Boundary relative to the pin point; 0 = the "more" group is at/under it.
-        let moreOffset = followedReaders.isEmpty
-            ? 0
-            : max(0, morePeopleContentX - peopleStripScrollX - Theme.horizontalPadding)
-        let followingOffset = min(0, moreOffset - followingLabelWidth - 12)
-        return ZStack(alignment: .leading) {
-            if !followedReaders.isEmpty {
-                peopleHeaderLabel("FOLLOWING")
-                    .onGeometryChange(for: CGFloat.self) { proxy in
-                        proxy.size.width
-                    } action: { newValue in
-                        followingLabelWidth = newValue
-                    }
-                    .offset(x: followingOffset)
-            }
-            if !discoverableReaders.isEmpty {
-                peopleHeaderLabel(Self.morePeopleTitle)
-                    .offset(x: moreOffset)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: 16)
-        .clipped()
-        .padding(.horizontal, Theme.horizontalPadding)
-        .accessibilityElement(children: .combine)
-    }
-
-    private func peopleHeaderLabel(_ title: String) -> some View {
-        Text(title)
-            .font(.system(size: 12, weight: .bold))
-            .tracking(1)
-            .foregroundStyle(Theme.chrome)
-            .fixedSize()
-    }
-
-    /// Single horizontal strip: followed readers first, a hairline, then
-    /// everyone else. Reports its scroll offset so the sticky header knows
-    /// when the "more" group hits the pin.
-    private var readerStrip: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(alignment: .top, spacing: Self.peopleCellSpacing) {
-                ForEach(followedReaders, id: \.uid) { item in
-                    readerCell(item: item, isFollowed: true)
-                }
-                if !followedReaders.isEmpty && !discoverableReaders.isEmpty {
-                    Rectangle()
-                        .fill(Theme.chrome.opacity(0.35))
-                        .frame(width: Theme.chromeHairline, height: 64)
-                        .accessibilityHidden(true)
-                }
-                ForEach(discoverableReaders, id: \.uid) { item in
-                    readerCell(item: item, isFollowed: false)
-                }
-            }
-            .padding(.horizontal, Theme.horizontalPadding)
-            // Headroom for the quick-follow plus, which overhangs the avatar's
-            // top edge — without it the ScrollView clips it.
-            .padding(.top, 7)
-            .padding(.bottom, 10)
-        }
-        .modifier(PeopleStripScrollTracking(scrollX: $peopleStripScrollX))
-    }
-
-    /// Avatar + name cell. Not-yet-followed readers get a quick-follow plus
-    /// top-right; reading-now covers float on the bottom-left of the avatar.
-    private func readerCell(item: (uid: String, user: User), isFollowed: Bool) -> some View {
-        let readingNow = readingNowByUid[item.uid] ?? []
-        return NavigationLink(value: item.uid) {
-            VStack(spacing: 8) {
-                otherReaderCircleAvatar(user: item.user, size: 64)
-                    .overlay(alignment: .bottomLeading) {
-                        if !readingNow.isEmpty {
-                            ReadingNowFanStack(books: readingNow, coverWidth: 19)
-                                .offset(x: -9, y: 8)
-                        }
-                    }
-                    .overlay(alignment: .topTrailing) {
-                        if !isFollowed {
-                            followPlusButton(targetUid: item.uid)
-                                .offset(x: 5, y: -5)
-                        }
-                    }
-                Text(item.user.displayName)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Theme.textSecondary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
-                    .frame(width: 72)
-            }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("\(item.user.displayName), \(isFollowed ? "following" : "not following"), open library")
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func followPlusButton(targetUid: String) -> some View {
-        Button {
-            followReader(targetUid: targetUid)
-        } label: {
-            Image(systemName: "plus")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(Theme.onChrome)
-                .frame(width: 22, height: 22)
-                .background(Circle().fill(Theme.accentGloss))
-                .overlay(Circle().strokeBorder(Theme.background, lineWidth: 2))
-        }
-        .buttonStyle(.plain)
-        .disabled(followInFlight.contains(targetUid))
-        .accessibilityLabel("Follow")
-    }
-
-    private func followReader(targetUid: String) {
-        guard let uid = authService.firebaseUser?.uid, uid != targetUid else { return }
-        guard !followInFlight.contains(targetUid) else { return }
-        followInFlight.insert(targetUid)
-        Task {
-            do {
-                try await userRepo.setFollowing(currentUid: uid, targetUid: targetUid, follow: true)
-                await authService.refreshAppUser()
-                await MainActor.run {
-                    WidgetDataService.shared.scheduleRefresh(appState: appState, delay: 1.0, forceFriendRefresh: true)
-                }
-            } catch {
-                #if DEBUG
-                print("followReader: \(error)")
-                #endif
-            }
-            await MainActor.run { _ = followInFlight.remove(targetUid) }
-        }
-    }
-
-    private func otherReaderCircleAvatar(user: User, size: CGFloat) -> some View {
-        let initial = String(user.displayName.prefix(1))
-        return Group {
-            if let urlStr = user.profileImageURL, let url = URL(string: urlStr) {
-                CachedProfileImage(url: url, contentMode: .fill) {
-                    otherReaderPlaceholder(initial: initial, size: size)
-                }
-            } else {
-                otherReaderPlaceholder(initial: initial, size: size)
-            }
-        }
-        .frame(width: size, height: size)
-        .clipShape(Circle())
-        .overlay(
-            Circle()
-                .strokeBorder(Theme.chrome.opacity(0.55), lineWidth: 1.5)
-        )
-    }
-
-    private func otherReaderPlaceholder(initial: String, size: CGFloat) -> some View {
-        Circle()
-            .fill(Theme.chrome)
-            .overlay(
-                Text(initial.uppercased())
-                    .font(.system(size: size * 0.42, weight: .bold))
-                    .foregroundStyle(Theme.onChrome)
-            )
-    }
-}
-
-/// Streams the people strip's horizontal content offset into `scrollX`.
-/// Uses `onScrollGeometryChange` where available; on iOS 17 the offset stays 0,
-/// so the header labels sit at their resting positions instead of tracking.
-private struct PeopleStripScrollTracking: ViewModifier {
-    @Binding var scrollX: CGFloat
-    func body(content: Content) -> some View {
-        if #available(iOS 18.0, *) {
-            content.onScrollGeometryChange(for: CGFloat.self) { geo in
-                geo.contentOffset.x + geo.contentInsets.leading
-            } action: { _, newValue in
-                scrollX = newValue
-            }
-        } else {
-            content
-        }
-    }
 }
 
 struct FeedPostRow: View {
@@ -637,6 +471,9 @@ struct FeedPostRow: View {
     /// The author's reading-now covers, fanned beside their avatar (same treatment
     /// as the Following row and the profile header).
     var readingNowBooks: [Book] = []
+    /// Hidden when the row renders inside a day-group carousel card, which draws
+    /// its own border instead of the receipt hairline.
+    var showsBottomDivider: Bool = true
 
     /// Latest comments shown inline under the post (Instagram-style, max 2).
     @State private var previewComments: [Comment] = []
@@ -662,6 +499,8 @@ struct FeedPostRow: View {
                             TierBadge(tier: t)
                         }
                     }
+                    .contentShape(Rectangle())
+                    .onTapGesture { onBookTap?(book) }
                     Spacer()
                 }
                 .padding(.horizontal)
@@ -706,10 +545,12 @@ struct FeedPostRow: View {
             commentPreviewSection
 
             // Receipt-style hairline between posts
-            Rectangle()
-                .fill(Theme.chrome.opacity(0.25))
-                .frame(height: Theme.chromeHairline)
-                .padding(.horizontal, Theme.horizontalPadding)
+            if showsBottomDivider {
+                Rectangle()
+                    .fill(Theme.chrome.opacity(0.25))
+                    .frame(height: Theme.chromeHairline)
+                    .padding(.horizontal, Theme.horizontalPadding)
+            }
         }
         .padding(.top, 14)
         .task(id: "\(post.id.uuidString)-\(post.commentCount)") {
@@ -793,25 +634,7 @@ struct FeedPostRow: View {
     }
 
     private func previewCommentAvatar(_ c: Comment) -> some View {
-        let initial = String((c.displayName ?? "?").prefix(1))
-        let placeholder = Circle()
-            .fill(Theme.chrome)
-            .overlay(
-                Text(initial.uppercased())
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(Theme.onChrome)
-            )
-        return Group {
-            if let urlStr = c.profileImageURL, let url = URL(string: urlStr) {
-                CachedProfileImage(url: url, contentMode: .fill) {
-                    placeholder
-                }
-            } else {
-                placeholder
-            }
-        }
-        .frame(width: 22, height: 22)
-        .clipShape(Circle())
+        UserAvatarView(urlString: c.profileImageURL, displayName: c.displayName, size: 22)
     }
 
     private var isOwnPost: Bool {
@@ -880,33 +703,18 @@ struct FeedPostRow: View {
         }
     }
 
-    @ViewBuilder
     private var feedAvatar: some View {
-        let initial = String((post.user?.displayName ?? "?").prefix(1))
-        if let urlStr = post.user?.profileImageURL, let url = URL(string: urlStr) {
-            CachedProfileImage(url: url, contentMode: .fill) {
-                feedAvatarPlaceholder(initial: initial)
-            }
-            .frame(width: 40, height: 40)
-            .clipShape(Circle())
-            .overlay(
-                Circle()
-                    .strokeBorder(Theme.chrome.opacity(0.55), lineWidth: 1)
-            )
-        } else {
-            feedAvatarPlaceholder(initial: initial)
-        }
-    }
-
-    private func feedAvatarPlaceholder(initial: String) -> some View {
-        Circle()
-            .fill(Theme.chrome)
-            .frame(width: 40, height: 40)
-            .overlay(
-                Text(initial.uppercased())
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(Theme.onChrome)
-            )
+        UserAvatarView(
+            urlString: post.user?.profileImageURL,
+            displayName: post.user?.displayName,
+            firstName: post.user?.firstName,
+            lastName: post.user?.lastName,
+            size: 40
+        )
+        .overlay(
+            Circle()
+                .strokeBorder(Theme.chrome.opacity(0.55), lineWidth: 1)
+        )
     }
 }
 
@@ -927,6 +735,18 @@ struct ExpandableReviewText: View {
                 .foregroundStyle(Theme.textPrimary)
                 .lineSpacing(Theme.bodyLineSpacing)
                 .lineLimit(expanded ? nil : Self.collapsedLineLimit)
+                // Full width so the reported size (which sizes the hidden
+                // measurer below) matches the wrap width — otherwise the
+                // measurer re-wraps at the longest-line width and misreports
+                // truncation in narrow containers like day-group carousel cards.
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.size.height
+                } action: { newValue in
+                    visibleHeight = newValue
+                    updateTruncatable()
+                }
+                .background(measurer)
             if truncatable {
                 Text(expanded ? "show less" : "…read more")
                     .font(.system(size: 13, weight: .bold))
@@ -938,57 +758,51 @@ struct ExpandableReviewText: View {
             guard truncatable else { return }
             withAnimation(.easeInOut(duration: 0.2)) { expanded.toggle() }
         }
-        .background(measurer)
     }
 
-    /// Invisible copies of the text — one clamped to 14 lines, one unclamped —
-    /// measured to decide whether the toggle is needed at the current width.
+    /// Invisible unclamped copy of the text — its height against the visible
+    /// (line-limited) text's height decides whether the toggle is needed.
     private var measurer: some View {
-        ZStack(alignment: .topLeading) {
-            Text(text)
-                .font(Theme.body())
-                .lineSpacing(Theme.bodyLineSpacing)
-                .lineLimit(Self.collapsedLineLimit)
-                .background(
-                    GeometryReader { g in
-                        Color.clear.preference(key: CollapsedHeightKey.self, value: g.size.height)
-                    }
-                )
-            Text(text)
-                .font(Theme.body())
-                .lineSpacing(Theme.bodyLineSpacing)
-                .fixedSize(horizontal: false, vertical: true)
-                .background(
-                    GeometryReader { g in
-                        Color.clear.preference(key: FullHeightKey.self, value: g.size.height)
-                    }
-                )
-        }
-        .hidden()
-        .onPreferenceChange(CollapsedHeightKey.self) { collapsed in
-            collapsedHeight = collapsed
-            updateTruncatable()
-        }
-        .onPreferenceChange(FullHeightKey.self) { full in
-            fullHeight = full
-            updateTruncatable()
-        }
+        Text(text)
+            .font(Theme.body())
+            .lineSpacing(Theme.bodyLineSpacing)
+            .fixedSize(horizontal: false, vertical: true)
+            .hidden()
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.size.height
+            } action: { newValue in
+                fullHeight = newValue
+                updateTruncatable()
+            }
     }
 
-    @State private var collapsedHeight: CGFloat = 0
+    @State private var visibleHeight: CGFloat = 0
     @State private var fullHeight: CGFloat = 0
 
     private func updateTruncatable() {
-        truncatable = fullHeight > collapsedHeight + 1
+        // Only meaningful while collapsed (expanded shows the full text anyway).
+        // Real truncation differs by at least one line (~20pt); the wide margin
+        // absorbs sub-line measurement noise at fractional widths.
+        guard !expanded else { return }
+        truncatable = fullHeight > visibleHeight + 8
     }
+}
 
-    private struct CollapsedHeightKey: PreferenceKey {
-        static var defaultValue: CGFloat = 0
-        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
-    }
-
-    private struct FullHeightKey: PreferenceKey {
-        static var defaultValue: CGFloat = 0
-        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+/// Streams whether the feed scroll view is near the top into `isAtTop`, so
+/// re-tapping the Feed tab knows to scroll to top vs. refresh. Uses
+/// `onScrollGeometryChange` where available; on iOS 17 `isAtTop` just keeps its
+/// default `true`, so a re-tap always refreshes instead of scrolling.
+private struct FeedScrollTopTracking: ViewModifier {
+    @Binding var isAtTop: Bool
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.onScrollGeometryChange(for: Bool.self) { geo in
+                geo.contentOffset.y <= 40
+            } action: { _, atTop in
+                isAtTop = atTop
+            }
+        } else {
+            content
+        }
     }
 }

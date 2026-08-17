@@ -24,11 +24,21 @@ final class AppState: ObservableObject {
     /// merge — the Feed tab shows the brand spinner instead of a partial feed.
     @Published var isFeedLoading = true
     /// Feed scope toggle (friends vs everyone). Defaults to everyone; persisted
-    /// per device once the user switches. Set via `setFeedScope`.
-    @Published private(set) var feedScope: FeedScope =
-        FeedScope(rawValue: UserDefaults.standard.string(forKey: AppState.feedScopeDefaultsKey) ?? "") ?? .everyone
+    /// per account once the user switches. Set via `setFeedScope`.
+    @Published private(set) var feedScope: FeedScope = .everyone
+    /// True while a deeper page of feed posts is loading (footer spinner).
+    @Published private(set) var isLoadingMoreFeedPosts = false
+    /// Whether Firestore still has older posts past what's loaded. Starts false so
+    /// nothing pages until the listener has reported on a full first page.
+    @Published private(set) var canLoadMoreFeedPosts = false
 
-    private static let feedScopeDefaultsKey = "feedScope"
+    /// How deep the feed listener currently reads. Grows a page at a time as the
+    /// reader hits the bottom; resets on a new account or a scope switch.
+    private var feedLimit = feedPageSize
+
+    /// Per-account key: a new sign-in on a device must start on Everyone rather
+    /// than inheriting the previous account's choice.
+    private static func feedScopeDefaultsKey(uid: String) -> String { "feedScope.\(uid)" }
     @Published var dismissedBookIds: Set<String> = []
     @Published var discoverCurrentSuggestion: Book?
     @Published var discoverSuggestionQueue: [Book] = []
@@ -96,6 +106,13 @@ final class AppState: ObservableObject {
         if uid != currentUserId || feedPosts.isEmpty {
             isFeedLoading = true
         }
+        if uid != currentUserId {
+            let saved = UserDefaults.standard.string(forKey: Self.feedScopeDefaultsKey(uid: uid)) ?? ""
+            feedScope = FeedScope(rawValue: saved) ?? .everyone
+            // A follow/unfollow restart keeps the reader's paging depth; only a
+            // different account starts back at page one.
+            feedLimit = feedPageSize
+        }
         currentUserId = uid
         currentFollowing = following
         dismissedBookIdsLoaded = false
@@ -151,26 +168,46 @@ final class AppState: ObservableObject {
     func setFeedScope(_ scope: FeedScope) {
         guard scope != feedScope else { return }
         feedScope = scope
-        UserDefaults.standard.set(scope.rawValue, forKey: Self.feedScopeDefaultsKey)
         guard let uid = currentUserId else { return }
+        UserDefaults.standard.set(scope.rawValue, forKey: Self.feedScopeDefaultsKey(uid: uid))
         feedListener?.remove()
         isFeedLoading = true
         feedPosts = []
+        feedLimit = feedPageSize
+        canLoadMoreFeedPosts = false
+        isLoadingMoreFeedPosts = false
+        feedListener = makeFeedListener(uid: uid)
+    }
+
+    /// Reader reached the bottom of the feed: deepen the listener by one page.
+    /// The current posts stay on screen (and stay live) while the wider query
+    /// loads, so this reads as the list growing rather than reloading.
+    func loadMoreFeedPosts() {
+        guard let uid = currentUserId,
+              canLoadMoreFeedPosts,
+              !isLoadingMoreFeedPosts,
+              !isFeedLoading else { return }
+        isLoadingMoreFeedPosts = true
+        feedLimit += feedPageSize
+        feedListener?.remove()
         feedListener = makeFeedListener(uid: uid)
     }
 
     /// Feed listener for the current scope — friends queries the follow graph,
     /// everyone streams the global posts collection.
     private func makeFeedListener(uid: String) -> FeedListenerHandle {
-        let onUpdate: ([Post]) -> Void = { [weak self] list in
-            self?.feedPosts = list
-            self?.isFeedLoading = false
+        let onUpdate: ([Post], Bool) -> Void = { [weak self] list, hasMore in
+            guard let self = self else { return }
+            self.feedPosts = list
+            self.isFeedLoading = false
+            self.isLoadingMoreFeedPosts = false
+            self.canLoadMoreFeedPosts = hasMore
         }
         switch feedScope {
         case .friends:
-            return postRepo.listenFeed(authorIds: currentFollowing + [uid], onUpdate: onUpdate)
+            return postRepo.listenFeed(authorIds: currentFollowing + [uid], limit: feedLimit, onUpdate: onUpdate)
         case .everyone:
-            return postRepo.listenAllPosts(onUpdate: onUpdate)
+            return postRepo.listenAllPosts(limit: feedLimit, onUpdate: onUpdate)
         }
     }
 
@@ -222,6 +259,9 @@ final class AppState: ObservableObject {
         userBooks = []
         feedPosts = []
         isFeedLoading = true
+        feedLimit = feedPageSize
+        canLoadMoreFeedPosts = false
+        isLoadingMoreFeedPosts = false
         incomingRecommendations = []
         recommenderProfiles = [:]
         dismissedBookIds = []

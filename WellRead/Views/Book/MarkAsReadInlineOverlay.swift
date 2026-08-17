@@ -15,11 +15,14 @@ struct MarkAsReadInlineOverlay: View {
     let onConfirm: (Date, Double?, Bool, String?, String?) -> Void
 
     @FocusState private var isThoughtsFocused: Bool
-    @State private var markAsReadDate = Date()
+    /// Starts empty on purpose: defaulting to today let users save without ever
+    /// noticing the date, so finished-on dates silently became "whenever I tapped".
+    @State private var markAsReadDate: Date? = nil
     @State private var markAsReadPostToFeed = true
     @State private var markAsReadThoughts = ""
     @State private var selectedTier: String? = nil
     @State private var showDatePopover = false
+    @State private var showDateError = false
 
     var body: some View {
         Group {
@@ -47,6 +50,15 @@ struct MarkAsReadInlineOverlay: View {
                                     }
                                 }
                             }
+                            // The confirm button sits at the bottom of the card; the date
+                            // field it complains about is at the top. Bring the error into view.
+                            .onChange(of: showDateError) { _, showing in
+                                if showing {
+                                    withAnimation(.easeOut(duration: 0.2)) {
+                                        proxy.scrollTo("dateFinished", anchor: .top)
+                                    }
+                                }
+                            }
                         }
                         .padding(.horizontal, 20)
                         .padding(.bottom, 12)
@@ -62,56 +74,99 @@ struct MarkAsReadInlineOverlay: View {
         }
         .onChange(of: isPresented) { _, new in
             guard new else { return }
-            markAsReadDate = Date()
+            markAsReadDate = nil
             markAsReadPostToFeed = true
             markAsReadThoughts = ""
             selectedTier = nil
             showDatePopover = false
+            showDateError = false
         }
     }
 
     private var card: some View {
         VStack(alignment: .leading, spacing: 18) {
             sectionLabel("Date Finished")
-            Button {
-                isThoughtsFocused = false
-                showDatePopover = true
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "calendar")
-                        .font(.system(size: 13, weight: .semibold))
-                    Text(markAsReadDate.formatted(date: .abbreviated, time: .omitted))
-                        .font(Theme.callout())
-                }
-                .foregroundStyle(Theme.textPrimary)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Theme.background)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Theme.chrome.opacity(0.4), lineWidth: 1)
-                )
-            }
-            .buttonStyle(.plain)
-            .popover(isPresented: $showDatePopover) {
-                DatePicker("", selection: $markAsReadDate, displayedComponents: .date)
-                    .datePickerStyle(.graphical)
-                    .labelsHidden()
-                    .tint(Theme.accent)
-                    .padding(12)
-                    // The graphical calendar has no usable intrinsic width inside a
-                    // popover — without an explicit frame it collapses to a narrow
-                    // clipped column. Size it to the calendar's natural dimensions.
-                    .frame(width: 320, height: 360)
-                    .presentationCompactAdaptation(.popover)
-                    // Tapping a specific day changes the selection — close the calendar
-                    // immediately instead of waiting for the user to tap outside it.
-                    .onChange(of: markAsReadDate) { _, _ in
-                        showDatePopover = false
+                .id("dateFinished")
+            HStack(spacing: 10) {
+                Button {
+                    isThoughtsFocused = false
+                    showDatePopover = true
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "calendar")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text(markAsReadDate.map { $0.formatted(date: .abbreviated, time: .omitted) } ?? "Select date")
+                            .font(Theme.callout())
                     }
+                    .foregroundStyle(markAsReadDate == nil ? Theme.textTertiary : Theme.textPrimary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Theme.background)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(showDateError ? Theme.danger : Theme.chrome.opacity(0.4), lineWidth: showDateError ? 1.5 : 1)
+                    )
+                }
+                .buttonStyle(.plain)
+                .popover(isPresented: $showDatePopover) {
+                    DatePicker(
+                        "",
+                        selection: Binding(
+                            get: { markAsReadDate ?? Date() },
+                            set: { markAsReadDate = $0 }
+                        ),
+                        displayedComponents: .date
+                    )
+                        .datePickerStyle(.graphical)
+                        .labelsHidden()
+                        .tint(Theme.accent)
+                        .padding(12)
+                        // The graphical calendar has no usable intrinsic width inside a
+                        // popover — without an explicit frame it collapses to a narrow
+                        // clipped column. Size it to the calendar's natural dimensions.
+                        .frame(width: 320, height: 360)
+                        .presentationCompactAdaptation(.popover)
+                        // Tapping a specific day changes the selection — close the calendar
+                        // immediately instead of waiting for the user to tap outside it.
+                        .onChange(of: markAsReadDate) { _, _ in
+                            showDatePopover = false
+                            showDateError = false
+                        }
+                }
+
+                Button {
+                    isThoughtsFocused = false
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        markAsReadDate = Date()
+                        showDateError = false
+                    }
+                } label: {
+                    Text("Today")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(Theme.background)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Theme.chrome.opacity(0.4), lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+            if showDateError {
+                Text("Add the date you finished this book.")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.danger)
+                    .padding(.top, -10)
+                    .transition(.opacity)
             }
 
             sectionLabel("Thoughts")
@@ -151,7 +206,11 @@ struct MarkAsReadInlineOverlay: View {
             .tint(Theme.accent)
 
             Button {
-                let date = markAsReadDate
+                guard let date = markAsReadDate else {
+                    isThoughtsFocused = false
+                    withAnimation(.easeOut(duration: 0.2)) { showDateError = true }
+                    return
+                }
                 let post = markAsReadPostToFeed
                 let thoughts = markAsReadThoughts.trimmingCharacters(in: .whitespacesAndNewlines)
                 let tier = selectedTier

@@ -50,6 +50,8 @@
 	</dict>
 	<key>NSContactsUsageDescription</key>
 	<string>SPINE uses your contacts to find friends who are already members and to invite friends by text. Contacts are matched on your device and never uploaded.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>SPINE saves your library card to your photos so you can keep it or share it.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

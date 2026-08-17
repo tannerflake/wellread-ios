@@ -71,9 +71,8 @@ struct BookBlendEntryButton: View {
             .overlay(
                 Capsule().strokeBorder(Theme.onChrome.opacity(0.35), lineWidth: 1)
             )
-            .shadow(color: Theme.accent.opacity(state == .requestedByMe ? 0 : 0.35), radius: 8, y: 3)
             // Faint breathing pulse — alive without shouting.
-            .scaleEffect(state == .requestedByMe ? 1 : (pulse ? 1.015 : 1))
+            .scaleEffect(state == .requestedByMe ? 1 : (pulse ? 1.01 : 1))
             // Value-scoped: `withAnimation(.repeatForever)` in onAppear leaks into
             // the enclosing sheet's transaction and breaks its drag-to-dismiss.
             .animation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true), value: pulse)
@@ -483,27 +482,9 @@ struct BlendAvatar: View {
     var size: CGFloat = 72
 
     var body: some View {
-        ZStack {
-            if let urlString, let url = URL(string: urlString) {
-                CachedProfileImage(url: url, contentMode: .fill) { initialCircle }
-            } else {
-                initialCircle
-            }
-        }
-        .frame(width: size, height: size)
-        .clipShape(Circle())
-        .overlay(Circle().strokeBorder(Theme.paperFixed.opacity(0.85), lineWidth: 2))
-        .shadow(color: Theme.shadowInk.opacity(0.35), radius: 8, y: 3)
-    }
-
-    private var initialCircle: some View {
-        Circle()
-            .fill(Theme.defaultCoverFill)
-            .overlay(
-                Text(String(name.prefix(1)).uppercased())
-                    .font(.system(size: size * 0.4, weight: .bold))
-                    .foregroundStyle(Theme.paperFixed)
-            )
+        UserAvatarView(urlString: urlString, displayName: name, size: size)
+            .overlay(Circle().strokeBorder(Theme.paperFixed.opacity(0.85), lineWidth: 2))
+            .shadow(color: Theme.shadowInk.opacity(0.35), radius: 8, y: 3)
     }
 }
 

@@ -51,6 +51,13 @@ struct NoSuggestionsTextField: UIViewRepresentable {
     func updateUIView(_ uiView: UITextField, context: Context) {
         context.coordinator.parent = self
         if uiView.text != text { uiView.text = text }
+        // Placeholder is dynamic (the search drawer swaps it per scope), so keep it in sync.
+        if uiView.attributedPlaceholder?.string != placeholder {
+            uiView.attributedPlaceholder = NSAttributedString(
+                string: placeholder,
+                attributes: [.foregroundColor: placeholderColor, .font: font]
+            )
+        }
         // Keep UIKit focus in sync with SwiftUI's `isFocused` (autofocus on open,
         // resign when a search is submitted).
         if isFocused, !uiView.isFirstResponder {

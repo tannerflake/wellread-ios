@@ -1,13 +1,14 @@
 //
-//  AddBookFlowView.swift
+//  SearchView.swift
 //  WellRead
 //
-//  Fast add flow: search → select → status → (if finished) review.
+//  The Search tab: one field over the book catalog or the SPINE roster. Books and
+//  members open as ordinary pushes on the tab's own stack, with a back button.
 //
 
 import SwiftUI
 
-/// Local-only recent activity for the search drawer (per signed-in uid, capped,
+/// Local-only recent activity for search (per signed-in uid, capped,
 /// never synced): submitted queries and book profiles the user opened.
 enum SearchRecents {
     private static let queryCap = 8
@@ -42,141 +43,75 @@ enum SearchRecents {
     }
 }
 
-struct AddBookFlowView: View {
-    @Environment(\.dismiss) private var dismiss
+/// Identifiable wrapper so a Firebase uid can drive `navigationDestination(item:)`.
+private struct SearchedUserSelection: Identifiable, Hashable {
+    let id: String
+}
+
+/// A member row in the "Users" search scope (Firebase uid + profile).
+private struct SearchedReader: Identifiable {
+    let id: String
+    let user: User
+}
+
+struct SearchView: View {
+    /// What the search field is querying: the book catalog or SPINE members.
+    enum SearchScope {
+        case books
+        case users
+    }
+
     @EnvironmentObject var authService: AuthService
     @EnvironmentObject var appState: AppState
-    @State private var isSearchFocused = false
+    /// Starts true so the field is focused in the very first frame. Flipping it in
+    /// `onAppear` instead would land the Cancel button and the keyboard mid-appearance,
+    /// animating the header row into place after the page had already drawn.
+    @State private var isSearchFocused = true
     @State private var query = ""
+    /// Always starts on books; the segment under the field flips it to members.
+    @State private var scope: SearchScope = .books
+    /// All member profiles, fetched once per visit and filtered locally.
+    @State private var readers: [SearchedReader] = []
+    @State private var isLoadingReaders = false
+    @State private var hasLoadedReaders = false
+    @State private var selectedUser: SearchedUserSelection?
     @State private var results: [Book] = []
     @State private var isSearching = false
     @State private var hasSearched = false
     /// True after the user taps "show every edition" — search re-runs without the junk filter and edition dedup.
     @State private var showingAllEditions = false
     @State private var searchError: String?
-    @State private var isSaving = false
-    @State private var saveError: String?
-    @State private var selectedBook: Book?
     @State private var selectedBookForProfile: Book?
-    @State private var status: ReadingStatus = .read
-    @State private var step: Step = .search
     @State private var searchTask: Task<Void, Never>?
     /// Recent search activity shown while the field is empty.
     @State private var recentQueries: [String] = []
     @State private var recentBooks: [Book] = []
-    /// Live offset while the grab handle is being dragged — the drawer follows
-    /// the finger, then either flies off (dismiss) or springs back on release.
-    @State private var dragOffset: CGFloat = 0
     /// When set (opened from a queue shelf's "Add" tile), book profiles show a primary
     /// CTA that adds the book straight onto this shelf.
     var targetShelf: QueueShelf? = nil
-    /// Set when presented as a custom overlay (not a system sheet) — called instead of
-    /// `dismiss()` so the parent can drop the drawer from its view tree.
-    var onDismiss: (() -> Void)? = nil
-
-    /// Closes the drawer regardless of how it was presented.
-    private func close() {
-        // Resign the keyboard in the same frame the drawer starts sliding down —
-        // left to itself it only drops once the field leaves the view hierarchy,
-        // well after the drawer is gone.
-        isSearchFocused = false
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-        if let onDismiss {
-            onDismiss()
-        } else {
-            dismiss()
-        }
-    }
-
-    /// Fraction of the screen left as a see-through tap-out strip above the drawer.
-    /// The drawer is a custom overlay (not a system sheet) because sheet detents
-    /// re-resolve when the keyboard appears, jumping the drawer to full height —
-    /// and iOS 26 ignores `presentationBackground(.clear)`.
-    private static let tapOutStripFraction: CGFloat = 0.12
+    /// Set when the page is presented modally (the shelf "Add" tile) rather than as
+    /// the Search tab: adds a Cancel button and closes after an add.
+    var onClose: (() -> Void)? = nil
 
     /// UIKit equivalent of `Theme.body()` (SF Pro, size 17) for the search field.
     private static var searchFieldUIFont: UIFont {
         UIFont.systemFont(ofSize: 17, weight: .regular)
     }
 
-    enum Step {
-        case search
-        case status
-        case rating
-    }
-    
     var body: some View {
-        GeometryReader { geo in
-            let fullHeight = geo.size.height - max(60, geo.size.height * Self.tapOutStripFraction)
-            VStack(spacing: 0) {
-                // Transparent strip above the drawer — tapping it dismisses the sheet.
-                // Flexible: it absorbs whatever the drawer doesn't use.
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture { close() }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                drawerContent
-                    .frame(height: fullHeight)
-                    .clipShape(UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
-                    .overlay(alignment: .top) {
-                        // Grab handle — dragging it moves the drawer with the finger
-                        // (replaces the system sheet's interactive dismissal). Fixed
-                        // height: down tracks 1:1, up only tugs with heavy resistance.
-                        Capsule()
-                            .fill(Theme.textTertiary.opacity(0.5))
-                            .frame(width: 40, height: 5)
-                            .padding(.top, 9)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 34, alignment: .top)
-                            .contentShape(Rectangle())
-                            .gesture(
-                                DragGesture(minimumDistance: 1)
-                                    .onChanged { value in
-                                        let h = value.translation.height
-                                        dragOffset = h >= 0 ? h : max(h / 10, -14)
-                                    }
-                                    .onEnded { value in
-                                        // Dismiss on a real pull or a flick (projected
-                                        // landing well past the threshold).
-                                        if value.translation.height > 90
-                                            || value.predictedEndTranslation.height > 220 {
-                                            close()
-                                        } else {
-                                            withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
-                                                dragOffset = 0
-                                            }
-                                        }
-                                    }
-                            )
-                    }
-                    .shadow(color: .black.opacity(0.18), radius: 18, y: -4)
-                    .offset(y: dragOffset)
-            }
-        }
-        // Pin the drawer: without this, keyboard avoidance shrinks the geometry and
-        // the drawer rides up under the keyboard.
-        .ignoresSafeArea(.keyboard, edges: .bottom)
-    }
-
-    private var drawerContent: some View {
         NavigationStack {
             ZStack {
                 Theme.background.ignoresSafeArea()
                 VStack(spacing: 0) {
-                    if step == .search {
-                        searchStep
-                    } else if step == .status {
-                        statusStep
-                    } else {
-                        ratingStep
-                    }
+                    searchHeader
+                    searchStep
                 }
             }
-            .navigationTitle(step == .search ? "" : stepTitle)
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Theme.background, for: .navigationBar)
             .toolbar {
-                if step != .search {
+                if onClose != nil {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Cancel") { close() }
                             .foregroundStyle(Theme.accent)
@@ -188,17 +123,16 @@ struct AddBookFlowView: View {
                     book: book,
                     readBooksForSimilar: appState.readBooks,
                     onNotInterested: nil,
-                    // Adding to the queue should land the user on their queue (with the success
-                    // toast), not drop them back on the search bar. Dismiss the whole search sheet.
-                    onWantToRead: { appState.addToWantToRead(book: book); appState.openQueue(); close() },
+                    // Adding to the queue lands the user on their queue (with the success
+                    // toast), so the search stack goes back to its root behind them.
+                    onWantToRead: { appState.addToWantToRead(book: book); appState.openQueue(); finishAfterAction() },
                     // Suppress READING when the shelf CTA above is already "+ READING NOW".
                     onStartReading: targetShelf == .readingNow ? nil : {
-                        appState.addToQueue(book: book, shelf: .readingNow); appState.openQueue(); close()
+                        appState.addToQueue(book: book, shelf: .readingNow); appState.openQueue(); finishAfterAction()
                     },
                     // Marking read fires the tier-highlight flow (switches to Profile → Read and
-                    // scrolls to the book). Dismiss the whole search sheet so that lands in view,
-                    // rather than popping back to the search bar.
-                    onConfirmRead: { date, rating, post, caption, tier in appState.addAsRead(book: book, dateFinished: date, rating: rating, postToFeed: post, caption: caption, tier: tier); close() },
+                    // scrolls to the book), so again: back to the root behind them.
+                    onConfirmRead: { date, rating, post, caption, tier in appState.addAsRead(book: book, dateFinished: date, rating: rating, postToFeed: post, caption: caption, tier: tier); finishAfterAction() },
                     isOnReadList: appState.isBookOnReadList(bookId: book.id),
                     isInQueue: appState.isBookInQueue(bookId: book.id),
                     onRemoveFromQueue: { appState.removeFromQueue(book: book); selectedBookForProfile = nil },
@@ -206,12 +140,45 @@ struct AddBookFlowView: View {
                     canEditReadReview: true,
                     shelfActionTitle: targetShelf.map(Self.shelfCTATitle),
                     onAddToShelf: targetShelf.map { shelf in
-                        // Same landing behavior as Queue: dismiss the search sheet onto the queue.
-                        { appState.addToQueue(book: book, shelf: shelf); appState.openQueue(); close() }
+                        { appState.addToQueue(book: book, shelf: shelf); appState.openQueue(); finishAfterAction() }
                     }
                 )
             }
+            .navigationDestination(item: $selectedUser) { selection in
+                UserLibraryDetailView(userId: selection.id)
+            }
         }
+    }
+
+    /// Closes the page when it was presented modally; a no-op on the Search tab.
+    private func close() {
+        // Resign the keyboard in the same frame the page starts closing — left to
+        // itself it only drops once the field leaves the view hierarchy.
+        isSearchFocused = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        onClose?()
+    }
+
+    /// After an action that sends the user somewhere else (their queue, their tier
+    /// list): unwind the search stack, and close the page if it was presented modally.
+    private func finishAfterAction() {
+        selectedBookForProfile = nil
+        onClose?()
+    }
+
+    /// Banner at the top of the Search tab (matches Discover).
+    private var searchHeader: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("SEARCH")
+                .font(.system(size: 22, weight: .bold))
+                .tracking(2)
+                .foregroundStyle(Theme.textPrimary)
+            BrandRule(width: 48)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, Theme.horizontalPadding)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
     }
 
     private static func shelfCTATitle(_ shelf: QueueShelf) -> String {
@@ -221,15 +188,7 @@ struct AddBookFlowView: View {
         case .backlog: return "+ BACKLOG"
         }
     }
-    
-    private var stepTitle: String {
-        switch step {
-        case .search: return "Add Book"
-        case .status: return "Status"
-        case .rating: return "Review"
-        }
-    }
-    
+
     private var searchStep: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 10) {
@@ -239,14 +198,22 @@ struct AddBookFlowView: View {
                     NoSuggestionsTextField(
                         text: $query,
                         isFocused: $isSearchFocused,
-                        placeholder: "Search by title or author",
+                        placeholder: scope == .books ? "Search by title or author" : "Search by name or username",
                         font: Self.searchFieldUIFont,
                         textColor: UIColor(Theme.textPrimary),
                         placeholderColor: UIColor(Theme.textTertiary),
-                        onSubmit: { runSearch() }
+                        onSubmit: {
+                            if scope == .books {
+                                runSearch()
+                            } else {
+                                isSearchFocused = false
+                            }
+                        }
                     )
                         .frame(height: 24)
                         .onChange(of: query) { _, newValue in
+                            // Member search filters the already-fetched roster locally.
+                            guard scope == .books else { return }
                             scheduleSearch(for: newValue)
                         }
                     if !query.isEmpty {
@@ -267,9 +234,46 @@ struct AddBookFlowView: View {
                 .padding()
                 .background(Theme.surface)
                 .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+
+                // Only while the field is up — its whole job is dropping the keyboard.
+                if isSearchFocused {
+                    Button("Cancel") { isSearchFocused = false }
+                        .font(Theme.callout())
+                        .foregroundStyle(Theme.accent)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
             }
+            .animation(.easeInOut(duration: 0.2), value: isSearchFocused)
             .padding(.horizontal)
 
+            SearchScopeSegmentControl(scope: $scope)
+                .padding(.horizontal)
+
+            if scope == .users {
+                usersStep
+            } else {
+                booksResults
+            }
+        }
+        .padding(.top, 12)
+        // Focus is not restored here: popping back from a book or member page
+        // shouldn't shove the keyboard over the results the user came back to.
+        .onAppear { refreshRecents() }
+        .onChange(of: scope) { _, newScope in
+            searchTask?.cancel()
+            if newScope == .users {
+                Task { await loadReadersIfNeeded() }
+            } else {
+                // Coming back to books: re-run whatever is in the field.
+                scheduleSearch(for: query)
+            }
+        }
+    }
+
+    /// Results, errors, and recents for the books scope.
+    @ViewBuilder
+    private var booksResults: some View {
+        Group {
             if isSearching {
                 HStack {
                     ProgressView().tint(Theme.accent)
@@ -278,7 +282,7 @@ struct AddBookFlowView: View {
                 .frame(maxWidth: .infinity)
                 .padding()
             }
-            
+
             if let err = searchError {
                 VStack(spacing: 12) {
                     Text(err)
@@ -334,15 +338,115 @@ struct AddBookFlowView: View {
                 }
             }
         }
-        .padding(.top, 28)
-        .onAppear {
-            refreshRecents()
-            // Focus immediately so the keyboard rises alongside the drawer's
-            // slide-up instead of trailing it.
-            isSearchFocused = true
+    }
+
+    // MARK: - Users scope
+
+    /// Roster results for the "Users" scope: everyone when the field is empty,
+    /// name/handle matches once the user types.
+    @ViewBuilder
+    private var usersStep: some View {
+        Group {
+            if isLoadingReaders {
+                HStack {
+                    ProgressView().tint(Theme.accent)
+                    Text("Loading readers…").font(Theme.callout()).foregroundStyle(Theme.textSecondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding()
+                Spacer(minLength: 0)
+            } else if filteredReaders.isEmpty {
+                Text(hasLoadedReaders && !readers.isEmpty
+                     ? "No members match \u{201C}\(query.trimmingCharacters(in: .whitespacesAndNewlines))\u{201D}."
+                     : "No other members yet.")
+                    .font(Theme.callout())
+                    .foregroundStyle(Theme.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                Spacer(minLength: 0)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 12) {
+                        ForEach(filteredReaders) { reader in
+                            Button {
+                                isSearchFocused = false
+                                selectedUser = SearchedUserSelection(id: reader.id)
+                            } label: {
+                                readerRow(reader.user)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding()
+                }
+            }
         }
     }
-    
+
+    private func readerRow(_ user: User) -> some View {
+        HStack(spacing: 12) {
+            UserAvatarView(
+                urlString: user.profileImageURL,
+                displayName: user.displayName,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                size: 40
+            )
+            VStack(alignment: .leading, spacing: 2) {
+                Text(user.displayName)
+                    .font(Theme.body())
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1)
+                if !user.username.isEmpty {
+                    Text("@\(user.username)")
+                        .font(Theme.caption())
+                        .foregroundStyle(Theme.textSecondary)
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundStyle(Theme.textTertiary)
+        }
+        .padding()
+        .background(Theme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+        .contentShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
+    }
+
+    /// Name/handle matches, prefix hits first so typing a handle surfaces it immediately.
+    private var filteredReaders: [SearchedReader] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return readers }
+        let matches = readers.filter {
+            $0.user.displayName.localizedCaseInsensitiveContains(trimmed)
+                || $0.user.username.localizedCaseInsensitiveContains(trimmed)
+        }
+        func isPrefix(_ r: SearchedReader) -> Bool {
+            r.user.displayName.lowercased().hasPrefix(trimmed.lowercased())
+                || r.user.username.lowercased().hasPrefix(trimmed.lowercased())
+        }
+        return matches.sorted { a, b in
+            let (pa, pb) = (isPrefix(a), isPrefix(b))
+            if pa != pb { return pa }
+            return a.user.displayName.localizedCaseInsensitiveCompare(b.user.displayName) == .orderedAscending
+        }
+    }
+
+    /// Fetches the member roster once per visit; filtering is local from there.
+    private func loadReadersIfNeeded() async {
+        guard !hasLoadedReaders, !isLoadingReaders else { return }
+        isLoadingReaders = true
+        let rows = await UserRepository().fetchAllReaderProfiles(excludingUid: appState.authUserId, limit: 500)
+        await MainActor.run {
+            readers = rows.map { SearchedReader(id: $0.uid, user: $0.user) }
+            hasLoadedReaders = true
+            isLoadingReaders = false
+        }
+    }
+
     // MARK: - Recents
 
     private var recentsUid: String {
@@ -360,6 +464,7 @@ struct AddBookFlowView: View {
         SearchRecents.addBook(book, uid: recentsUid)
         SearchRecents.addQuery(query, uid: recentsUid)
         refreshRecents()
+        isSearchFocused = false
         selectedBookForProfile = book
     }
 
@@ -486,197 +591,53 @@ struct AddBookFlowView: View {
             }
         }
     }
-    
-    private var statusStep: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            if let book = selectedBook {
-                HStack(spacing: 16) {
-                    BookCoverView(book: book, size: 80)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(book.title).font(Theme.headline()).foregroundStyle(Theme.textPrimary)
-                        Text(book.author).font(Theme.callout()).foregroundStyle(Theme.textSecondary)
-                    }
-                    Spacer()
-                }
-                .padding()
-                .wellReadCard()
-                .padding(.horizontal)
-            }
-            Text("Status").font(Theme.headline()).foregroundStyle(Theme.textSecondary).padding(.horizontal)
-            ForEach(ReadingStatus.allCases.filter { $0 != .currentlyReading }, id: \.self) { s in
-                Button {
-                    status = s
-                    if s == .read {
-                        step = .rating
-                    } else {
-                        saveAndDismiss()
-                    }
-                } label: {
-                    HStack {
-                        Text(s.rawValue).font(Theme.body()).foregroundStyle(Theme.textPrimary)
-                        Spacer()
-                        if status == s { Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.accent) }
-                    }
-                    .padding()
-                    .wellReadCard()
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal)
-            }
-            if selectedBook != nil {
-                Button("Continue") {
-                    if status == .read {
-                        step = .rating
-                    } else {
-                        saveAndDismiss()
-                    }
-                }
-                .font(Theme.headline())
-                .foregroundStyle(Theme.background)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(Theme.accentGloss)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
-                .padding(.horizontal)
-            }
-        }
-        .padding(.top, 24)
-    }
-    
-    private var ratingStep: some View {
-        AddBookRatingStepView(
-            isSaving: isSaving,
-            saveError: saveError,
-            onSave: { review in saveAndDismiss(ratingStepReview: review) }
-        )
-    }
-
-    private func saveAndDismiss(ratingStepReview: String? = nil) {
-        guard let book = selectedBook, let uid = authService.firebaseUser?.uid else { close(); return }
-        let now = Date()
-        let tempId = UUID()
-        let ratingValue: Double? = nil
-        let review: String?
-        if status == .read {
-            let trimmed = ratingStepReview?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            review = trimmed.isEmpty ? nil : trimmed
-        } else {
-            review = nil
-        }
-        let dateFinished = status == .read ? now : nil
-        let dateStarted = status == .currentlyReading ? now : nil
-
-        let optimistic = UserBook(
-            id: tempId,
-            userId: uid,
-            bookId: book.id,
-            book: book,
-            status: status,
-            rating: ratingValue,
-            reviewText: review,
-            dateStarted: dateStarted,
-            dateFinished: dateFinished,
-            createdAt: now,
-            updatedAt: now,
-            recommendedTo: [],
-            tier: nil,
-            tierOrder: nil,
-            queueShelf: status == .wantToRead ? .backlog : nil,
-            queueOrder: status == .wantToRead ? 0 : nil
-        )
-        appState.addUserBook(optimistic)
-        if status == .read {
-            appState.startTierHighlight(forBookId: book.id)
-        }
-        isSaving = true
-        saveError = nil
-        Task {
-            do {
-                let userBookRepo = UserBookRepository()
-                _ = try await userBookRepo.addUserBook(
-                    userId: uid,
-                    book: book,
-                    status: status,
-                    rating: ratingValue,
-                    reviewText: review,
-                    dateStarted: dateStarted,
-                    dateFinished: dateFinished
-                )
-                if status == .read {
-                    let postRepo = PostRepository()
-                    _ = try await postRepo.createPost(
-                        userId: uid,
-                        type: .finishedBook,
-                        bookId: book.id,
-                        caption: review,
-                        rating: ratingValue,
-                        dateFinished: dateFinished
-                    )
-                }
-                await MainActor.run {
-                    switch status {
-                    case .read:
-                        ToastCenter.shared.show(.markedAsRead(bookTitle: book.title, sharedToFeed: true))
-                    case .wantToRead:
-                        ToastCenter.shared.show(.addedToQueue(bookTitle: book.title))
-                    case .currentlyReading:
-                        ToastCenter.shared.show(.startedReading(bookTitle: book.title))
-                    }
-                    close()
-                }
-            } catch {
-                await MainActor.run {
-                    appState.userBooks.removeAll { $0.id == tempId }
-                    saveError = error.localizedDescription
-                    isSaving = false
-                }
-            }
-        }
-    }
 }
 
-private struct AddBookRatingStepView: View {
-    let isSaving: Bool
-    let saveError: String?
-    let onSave: (String?) -> Void
+/// Books | Users selector under the search field. Same sliding-lens language as
+/// the library's Read/Queue control, but deliberately small: it's a scope hint
+/// under the field, not a primary control, so it stays narrow and short.
+private struct SearchScopeSegmentControl: View {
+    @Binding var scope: SearchView.SearchScope
 
-    @State private var reviewText = ""
+    /// Keeps the control off the full width of the search field above it.
+    private static let width: CGFloat = 168
+    private static let lensCornerRadius: CGFloat = 7
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            Text("You'll rank this book in your tier list after saving.")
-                .font(Theme.callout())
-                .foregroundStyle(Theme.textSecondary)
-                .padding(.horizontal)
-            Text("Review (optional)")
-                .font(Theme.headline())
-                .foregroundStyle(Theme.textSecondary)
-                .padding(.horizontal)
-            TextEditor(text: $reviewText)
-                .font(Theme.body())
-                .foregroundStyle(Theme.textPrimary)
-                .scrollContentBackground(.hidden)
-                .frame(minHeight: 100)
-                .padding()
-                .background(Theme.surface)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
-                .padding(.horizontal)
-            Button("Save") {
-                let t = reviewText.trimmingCharacters(in: .whitespacesAndNewlines)
-                onSave(t.isEmpty ? nil : t)
-            }
-            .font(Theme.headline())
-            .foregroundStyle(Theme.background)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .background(Theme.accentGloss)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
-            .padding(.horizontal)
-            .disabled(isSaving)
-            if let err = saveError {
-                Text(err).font(Theme.caption()).foregroundStyle(Theme.danger).padding(.horizontal)
+        HStack(spacing: 0) {
+            pill("Books", value: .books)
+            pill("Users", value: .users)
+        }
+        .padding(2)
+        .background {
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 9).fill(Theme.surface)
+                GeometryReader { geo in
+                    let half = geo.size.width / 2
+                    LibrarySegmentGlassLens(cornerRadius: Self.lensCornerRadius)
+                        .frame(width: max(0, half - 4))
+                        .offset(x: 2 + (scope == .books ? 0 : half))
+                        .animation(LibrarySegmentControlAnimation.selection, value: scope)
+                }
+                .allowsHitTesting(false)
             }
         }
-        .padding(.top, 24)
+        .frame(width: Self.width)
+        .sensoryFeedback(.selection, trigger: scope)
+    }
+
+    private func pill(_ title: String, value: SearchView.SearchScope) -> some View {
+        let isSelected = scope == value
+        return Button {
+            scope = value
+        } label: {
+            Text(title)
+                .font(Theme.caption().weight(isSelected ? .semibold : .regular))
+                .foregroundStyle(isSelected ? Theme.textPrimary : Theme.textSecondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 5)
+        }
+        .buttonStyle(.plain)
+        .contentShape(RoundedRectangle(cornerRadius: Self.lensCornerRadius))
     }
 }

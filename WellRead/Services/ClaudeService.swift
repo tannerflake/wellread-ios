@@ -52,6 +52,26 @@ final class ClaudeService {
     static let shared = ClaudeService()
     private let session: URLSession
 
+    /// Which model a call runs on. Pick the cheapest tier that doesn't meaningfully
+    /// hurt quality; each tier is a fallback chain (404/400 falls through to the next).
+    enum ModelTier {
+        /// Haiku ($1/$5 per MTok): high-volume, well-scoped tasks — condensing a
+        /// provided description, picking tags from a fixed list, matching similar
+        /// titles, short recommendation lists.
+        case simple
+        /// Sonnet ($3/$15 per MTok): tasks that lean on deep knowledge of a book's
+        /// actual contents, where a small model is likelier to fabricate — verbatim
+        /// quotes, spoiler-aware prose and Q&A, refreshers, blend generation.
+        case complex
+
+        fileprivate var modelsToTry: [String] {
+            switch self {
+            case .simple: return ["claude-haiku-4-5", "claude-sonnet-5"]
+            case .complex: return ["claude-sonnet-5", "claude-haiku-4-5"]
+            }
+        }
+    }
+
     private init() {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 60
@@ -61,24 +81,23 @@ final class ClaudeService {
     /// Sends a user message and returns the assistant's text reply. Requires ApiKeys.claude.
     /// `timeout` caps the wait for the (non-streaming) response — callers with a user
     /// staring at a spinner should pass one and fall back when it trips.
-    func sendMessage(system: String? = nil, userMessage: String, maxTokens: Int = 1024, timeout: TimeInterval? = nil) async throws -> String {
+    func sendMessage(system: String? = nil, userMessage: String, maxTokens: Int = 1024, timeout: TimeInterval? = nil, tier: ModelTier = .complex) async throws -> String {
         try await sendConversation(
             system: system,
             messages: [.init(role: "user", content: userMessage)],
             maxTokens: maxTokens,
-            timeout: timeout
+            timeout: timeout,
+            tier: tier
         )
     }
 
     /// Multi-turn variant: sends alternating user/assistant turns (e.g. refresher Q&A follow-ups).
-    func sendConversation(system: String? = nil, messages: [ClaudeMessageRequest.Message], maxTokens: Int = 1024, timeout: TimeInterval? = nil) async throws -> String {
+    func sendConversation(system: String? = nil, messages: [ClaudeMessageRequest.Message], maxTokens: Int = 1024, timeout: TimeInterval? = nil, tier: ModelTier = .complex) async throws -> String {
         guard let key = ApiKeys.claude, !key.isEmpty else {
             throw NSError(domain: "ClaudeService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Claude API key not configured. Add CLAUDE_API_KEY to Secrets.plist."])
         }
-        // Fallback chain: 404/400 falls through to the next. Older Sonnet 3.5 IDs were retired Oct 2025.
-        let modelsToTry = ["claude-opus-4-8", "claude-sonnet-4-5"]
         var lastError: Error?
-        for model in modelsToTry {
+        for model in tier.modelsToTry {
             do {
                 return try await send(model: model, key: key, system: system, messages: messages, maxTokens: maxTokens, timeout: timeout)
             } catch {

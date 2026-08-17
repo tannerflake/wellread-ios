@@ -30,6 +30,7 @@ struct UserLibraryDetailView: View {
     @State private var selectedBookForProfile: Book? = nil
     @State private var iFollowThem: Bool = false
     @State private var followActionInFlight = false
+    @State private var showProfileCard = false
 
     // Book Blend: live pair-doc state drives the entry button; the landing
     // screen handles invite / waiting / story routing.
@@ -82,11 +83,6 @@ struct UserLibraryDetailView: View {
         return years.sorted(by: >)
     }
 
-    private var libraryTitle: String {
-        guard let u = profileUser else { return "Library" }
-        return Theme.possessiveLibraryTitleFirstNameOnly(user: u)
-    }
-
     private var calendarYear: Int {
         Calendar.current.component(.year, from: Date())
     }
@@ -114,45 +110,46 @@ struct UserLibraryDetailView: View {
                 loadingView
             } else {
                 VStack(spacing: 0) {
-                    // Small follow pill tucked under the toolbar avatar (top right),
-                    // kept compact so it barely pushes the content down.
-                    if authService.firebaseUser?.uid != nil, authService.firebaseUser?.uid != userId {
-                        HStack {
-                            Spacer()
-                            followToggleButton
-                        }
-                        .padding(.trailing, 10)
-                        .padding(.top, 2)
-                    }
-
-                    HStack(alignment: .center, spacing: 12) {
-                        otherUserSegmentControl
-                            .frame(maxWidth: .infinity)
-
-                        if !availableYears.isEmpty {
-                            yearFilterInline
-                        }
-                    }
-                    .padding(.top, 4)
-                    .padding(.bottom, 10)
-
+                    // Follow and Book Blend ride together: both are actions on this
+                    // person rather than their library. Blend keeps the filled hero
+                    // treatment; Follow is the quiet outlined pill beside it.
                     if let me = authService.firebaseUser?.uid, me != userId {
-                        BookBlendEntryButton(
-                            state: blendEntryState(myUid: me),
-                            otherFirstName: profileUser?.firstName ?? "They",
-                            action: { handleBlendButtonTap(myUid: me) }
-                        )
+                        HStack(spacing: 8) {
+                            followToggleButton
+                            BookBlendEntryButton(
+                                state: blendEntryState(myUid: me),
+                                otherFirstName: profileUser?.firstName ?? "They",
+                                action: { handleBlendButtonTap(myUid: me) }
+                            )
+                        }
                         .padding(.horizontal, 8)
+                        .padding(.top, 4)
                         .padding(.bottom, 8)
                     }
 
-                    if let goal = activeReadingGoal {
-                        LibraryReadingGoalProgressStrip(
-                            calendarYear: calendarYear,
-                            booksRead: booksFinishedThisCalendarYear,
-                            goal: goal,
-                            copy: .other(displayFirstName: profileUser?.firstName)
-                        )
+                    otherUserSegmentControl
+                        .padding(.bottom, 10)
+
+                    // Year filter rides to the right of the goal bar, same as your
+                    // own library. With no goal to show it keeps that slot alone.
+                    if activeReadingGoal != nil || !availableYears.isEmpty {
+                        HStack(alignment: .center, spacing: 12) {
+                            if let goal = activeReadingGoal {
+                                LibraryReadingGoalProgressStrip(
+                                    calendarYear: calendarYear,
+                                    booksRead: booksFinishedThisCalendarYear,
+                                    goal: goal,
+                                    copy: .other(displayFirstName: profileUser?.firstName)
+                                )
+                            } else {
+                                Spacer(minLength: 0)
+                            }
+
+                            if !availableYears.isEmpty {
+                                yearFilterInline
+                            }
+                        }
+                        .padding(.horizontal, 4)
                         .padding(.bottom, 4)
                     }
 
@@ -164,6 +161,14 @@ struct UserLibraryDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Theme.background, for: .navigationBar)
         .toolbar { libraryToolbar }
+        .sheet(isPresented: $showProfileCard, onDismiss: {
+            // Following someone from the roster can include this profile's owner.
+            Task { await refreshIFollowState() }
+        }) {
+            if let u = profileUser {
+                UserProfileCardSheet(userId: userId, user: u)
+            }
+        }
         .navigationDestination(item: $selectedBookForProfile) { book in
             BookProfileView(
                 book: book,
@@ -178,8 +183,14 @@ struct UserLibraryDetailView: View {
                 isOnReadList: appState.isBookOnReadList(bookId: book.id),
                 isInQueue: appState.isBookInQueue(bookId: book.id),
                 onRemoveFromQueue: { appState.removeFromQueue(book: book); selectedBookForProfile = nil },
-                readEntryForReview: books.first(where: { $0.bookId == book.id && $0.status == .read }),
-                reviewSectionHeading: "Review"
+                // On someone else's library their review lives in "Read by"
+                // (pinned + highlighted via sourceReaderUid) instead of a
+                // duplicate top card; own library keeps the review card.
+                readEntryForReview: authService.firebaseUser?.uid == userId
+                    ? books.first(where: { $0.bookId == book.id && $0.status == .read })
+                    : nil,
+                reviewSectionHeading: "Review",
+                sourceReaderUid: authService.firebaseUser?.uid == userId ? nil : userId
             )
         }
         .onAppear {
@@ -288,76 +299,78 @@ struct UserLibraryDetailView: View {
 
     @ToolbarContentBuilder
     private var libraryToolbar: some ToolbarContent {
+        // Full name + handle take the title slot. Text-only: the avatar is too big
+        // for the inline bar (stacked avatar+name clipped there before), so it
+        // lives on the segment row instead.
         ToolbarItem(placement: .principal) {
-            Text(libraryTitle)
-                .font(Theme.title())
-                .foregroundStyle(Theme.textPrimary)
-                .lineLimit(1)
+            if let u = profileUser {
+                VStack(spacing: 1) {
+                    Text(fullName(for: u))
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                        .lineLimit(1)
+                    if !u.username.isEmpty {
+                        Text("@\(u.username)")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Theme.textSecondary)
+                            .lineLimit(1)
+                    }
+                }
+            }
         }
-        // Bare covers + avatar like the own-library header — no glass capsule behind
-        // them on iOS 26+ (`sharedBackgroundVisibility` doesn't exist pre-26).
+        // Fan + avatar in the top-right corner, level with the name. Oversized for
+        // the inline bar on purpose; verified it renders unclipped on iOS 26.
+        // sharedBackgroundVisibility kills the liquid-glass capsule the bar would
+        // otherwise draw behind the cluster.
         if #available(iOS 26.0, *) {
             ToolbarItem(placement: .topBarTrailing) {
-                fanAndAvatarToolbarContent
+                fanAndAvatarHeader
             }
             .sharedBackgroundVisibility(.hidden)
         } else {
             ToolbarItem(placement: .topBarTrailing) {
-                fanAndAvatarToolbarContent
+                fanAndAvatarHeader
             }
         }
     }
 
-    private var fanAndAvatarToolbarContent: some View {
-        HStack(spacing: 8) {
+    private var fanAndAvatarHeader: some View {
+        HStack(alignment: .center, spacing: 6) {
             ReadingNowFanStack(
                 books: wantToReadReadingNow.compactMap(\.book),
-                coverWidth: 20,
+                coverWidth: 28,
                 onTap: { selectedBookForProfile = $0 },
                 floats: true
             )
             otherUserAvatar
         }
+        .padding(.trailing, 4)
     }
 
+    /// Tapping the avatar opens their card. Follow lives in the actions row with
+    /// Book Blend, so the avatar is free to be the way into the profile sheet.
     private var otherUserAvatar: some View {
         Group {
             if let u = profileUser {
-                if let me = authService.firebaseUser?.uid, me != userId {
-                    Menu {
-                        Button {
-                            Task { await toggleFollow() }
-                        } label: {
-                            Label(
-                                iFollowThem ? "Unfollow \(avatarMenuName(for: u))" : "Follow \(avatarMenuName(for: u))",
-                                systemImage: iFollowThem ? "person.badge.minus" : "person.badge.plus"
-                            )
-                        }
-                        .disabled(followActionInFlight)
-                    } label: {
-                        avatarCircle(for: u)
-                    }
-                    .buttonStyle(.plain)
-                } else {
+                Button {
+                    showProfileCard = true
+                } label: {
                     avatarCircle(for: u)
-                        .allowsHitTesting(false)
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("View \(avatarMenuName(for: u))'s card")
             }
         }
     }
 
     private func avatarCircle(for u: User) -> some View {
-        ZStack {
-            if let urlString = u.profileImageURL, let url = URL(string: urlString) {
-                CachedProfileImage(url: url, contentMode: .fill) {
-                    avatarPlaceholder(initial: avatarInitial(for: u))
-                }
-            } else {
-                avatarPlaceholder(initial: avatarInitial(for: u))
-            }
-        }
-        .frame(width: 36, height: 36)
-        .clipShape(Circle())
+        UserAvatarView(
+            urlString: u.profileImageURL,
+            displayName: u.displayName,
+            firstName: u.firstName,
+            lastName: u.lastName,
+            size: 54
+        )
     }
 
     private func avatarMenuName(for user: User) -> String {
@@ -367,25 +380,12 @@ struct UserLibraryDetailView: View {
         return user.displayName
     }
 
-    private func avatarInitial(for user: User) -> String {
-        if let fn = user.firstName?.trimmingCharacters(in: .whitespacesAndNewlines), let c = fn.first {
-            return String(c).uppercased()
-        }
-        let parts = user.displayName.split(separator: " ")
-        if let first = parts.first?.first {
-            return String(first).uppercased()
-        }
-        return String(user.displayName.prefix(1)).uppercased()
-    }
-
-    private func avatarPlaceholder(initial: String) -> some View {
-        Circle()
-            .fill(Theme.surface)
-            .overlay(
-                Text(initial)
-                    .font(Theme.headline())
-                    .foregroundStyle(Theme.textSecondary)
-            )
+    /// "First Last" when both are set; falls back to whichever half exists, then displayName.
+    private func fullName(for user: User) -> String {
+        let parts = [user.firstName, user.lastName]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        return parts.isEmpty ? user.displayName : parts.joined(separator: " ")
     }
 
     @ViewBuilder
@@ -394,16 +394,17 @@ struct UserLibraryDetailView: View {
             Button {
                 Task { await toggleFollow() }
             } label: {
+                // Outlined so the blend button beside it stays the row's only
+                // filled CTA. Padding matches BookBlendEntryButton for equal height.
                 Text(iFollowThem ? "Following" : "Follow")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(iFollowThem ? Theme.textPrimary : Theme.background)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(iFollowThem ? Theme.surface : Theme.accent)
-                    .clipShape(Capsule())
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(iFollowThem ? Theme.textSecondary : Theme.textPrimary)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                    .background(Capsule().fill(Theme.surface))
                     .overlay(
                         Capsule()
-                            .strokeBorder(Theme.textTertiary.opacity(iFollowThem ? 0.35 : 0), lineWidth: 1)
+                            .strokeBorder(Theme.textTertiary.opacity(iFollowThem ? 0.25 : 0.5), lineWidth: 1)
                     )
             }
             .buttonStyle(.plain)

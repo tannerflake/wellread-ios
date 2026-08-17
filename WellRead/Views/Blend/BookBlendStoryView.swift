@@ -443,20 +443,36 @@ struct BookBlendStoryView: View {
     }
 
     private func verdictChip(name: String, uid: String, book: BookBlend.SharedBook) -> some View {
-        let text: String
-        if let r = book.ratings[uid] {
-            text = "\(name) \(Theme.formatRatingOutOfTen(r))"
-        } else if let t = book.tiers[uid] {
-            text = "\(name) \(t)-tier"
-        } else {
-            text = "\(name) read it"
+        let rating = book.ratings[uid]
+        let tier = book.tiers[uid]
+        return HStack(spacing: 5) {
+            Text(name)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Theme.paperFixed.opacity(0.85))
+            if let tier {
+                Text(tier)
+                    .font(.system(size: 10, weight: .heavy))
+                    .foregroundStyle(Color.black.opacity(0.78))
+                    .frame(width: 17, height: 17)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(spineTierColor(for: tier))
+                    )
+            }
+            if let rating {
+                Text(Theme.formatRatingOutOfTen(rating))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.paperFixed.opacity(0.85))
+            }
+            if tier == nil && rating == nil {
+                Text("read it")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.paperFixed.opacity(0.85))
+            }
         }
-        return Text(text)
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(Theme.paperFixed.opacity(0.85))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(Capsule().fill(.white.opacity(0.14)))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(Capsule().fill(.white.opacity(0.14)))
     }
 
     private var genresPage: some View {

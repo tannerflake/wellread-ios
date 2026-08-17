@@ -464,7 +464,7 @@ final class BookBlendService {
         """
         // Time-boxed: the accepter is staring at the "Blending" screen. Past 30s
         // the deterministic fallback content ships instead.
-        guard let text = try? await ClaudeService.shared.sendMessage(system: system, userMessage: user, maxTokens: 1600, timeout: 30) else {
+        guard let text = try? await ClaudeService.shared.sendMessage(system: system, userMessage: user, maxTokens: 1600, timeout: 30, tier: .complex) else {
             return nil
         }
         return parseAIContent(text, uidA: uidA, uidB: uidB)

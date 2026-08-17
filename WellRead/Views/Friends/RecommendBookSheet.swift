@@ -201,29 +201,14 @@ struct RecommendBookSheet: View {
         .padding(.top, 12)
     }
 
-    @ViewBuilder
     private func avatar(user: User) -> some View {
-        ZStack {
-            if let urlString = user.profileImageURL, let url = URL(string: urlString) {
-                CachedProfileImage(url: url, contentMode: .fill) {
-                    initialCircle(user.displayName)
-                }
-            } else {
-                initialCircle(user.displayName)
-            }
-        }
-        .frame(width: 40, height: 40)
-        .clipShape(Circle())
-    }
-
-    private func initialCircle(_ name: String) -> some View {
-        Circle()
-            .fill(Theme.chrome)
-            .overlay(
-                Text(String(name.prefix(1)).uppercased())
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Theme.onChrome)
-            )
+        UserAvatarView(
+            urlString: user.profileImageURL,
+            displayName: user.displayName,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            size: 40
+        )
     }
 
     private var filteredReaders: [Reader] {

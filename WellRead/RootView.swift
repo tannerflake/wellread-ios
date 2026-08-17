@@ -72,7 +72,25 @@ struct RootView: View {
             entry(book("r4", "Misbelief", "Dan Ariely"), status: .read, tier: "B", finishedDaysAgo: 80),
             entry(book("r5", "Outrage Machine", "Tobias Rose-Stockwell"), status: .read, tier: "B", finishedDaysAgo: 100)
         ]
-        appState.feedPosts = [
+        // A same-day posting burst from a second demo reader (6 posts today) so
+        // the day-group carousel renders in preview, plus a normal standalone post.
+        var burstAuthor = User.demo
+        burstAuthor.id = UUID()
+        burstAuthor.username = "june"
+        burstAuthor.displayName = "June"
+        let burstBooks: [(String, String, String, String)] = [
+            ("g1", "Project Hail Mary", "Andy Weir", "S"),
+            ("g2", "Tomorrow, and Tomorrow, and Tomorrow", "Gabrielle Zevin", "A"),
+            ("g3", "The Midnight Library", "Matt Haig", "B"),
+            ("g4", "Circe", "Madeline Miller", "S"),
+            ("g5", "Lessons in Chemistry", "Bonnie Garmus", "A"),
+            ("g6", "The Song of Achilles", "Madeline Miller", "A")
+        ]
+        let longCaption = Array(repeating: "A sentence long enough to wrap across the card and prove the read-more toggle still fires on genuinely long reviews.", count: 6).joined(separator: " ")
+        let burstPosts = burstBooks.enumerated().map { i, item in
+            Post(id: UUID(), userId: "ui-preview-burst", type: .finishedBook, bookId: item.0, book: book(item.0, item.1, item.2), caption: i == 0 ? "Backfilling my library. Loved this one." : (i == 1 ? longCaption : nil), createdAt: now.addingTimeInterval(Double(-60 * (i + 1))), likeCount: i == 0 ? 3 : 0, commentCount: 0, user: burstAuthor, rating: nil, dateFinished: now, tier: item.3)
+        }
+        appState.feedPosts = burstPosts + [
             Post(id: UUID(), userId: uid, type: .finishedBook, bookId: "r1", book: book("r1", "Build", "Tony Fadell"), caption: "An unorthodox guide to making things worth making.", createdAt: now.addingTimeInterval(-86400 * 2), likeCount: 4, commentCount: 0, user: .demo, rating: nil, dateFinished: now, tier: "A")
         ]
         appState.isFeedLoading = false

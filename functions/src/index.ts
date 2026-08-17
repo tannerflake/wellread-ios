@@ -1,6 +1,6 @@
 import { initializeApp, getApps } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
 import { onDocumentCreated, onDocumentUpdated, onDocumentWritten } from "firebase-functions/v2/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
@@ -139,6 +139,48 @@ async function sendToUser(
     });
   }
   logger.info("push sendToUser", { uid, tokenCount: tokens.length, successCount: resp.successCount, failureCount: resp.failureCount });
+}
+
+/**
+ * Persists an in-app notification at `users/{uid}/notifications/{autoId}` — the
+ * feed behind the bell on the profile page. Written alongside every real push
+ * (never for diagnostics pushes) so the feed mirrors what the user was alerted
+ * about, including alerts they missed without push permission.
+ */
+async function writeNotification(
+  uid: string,
+  title: string,
+  body: string,
+  data: Record<string, string>,
+  actorId: string | null,
+  coverURL?: string | null
+): Promise<void> {
+  try {
+    await db.collection("users").doc(uid).collection("notifications").add({
+      ...data,
+      title,
+      body,
+      ...(actorId ? { actorId } : {}),
+      ...(coverURL ? { coverURL } : {}),
+      read: false,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+  } catch (e) {
+    logger.error("writeNotification failed", { uid, type: data.type, error: (e as Error).message });
+  }
+}
+
+/** In-app notification doc + push alert in one call — the standard path for real events. */
+async function notifyUser(
+  uid: string,
+  title: string,
+  body: string,
+  data: Record<string, string>,
+  actorId: string | null,
+  imageUrl?: string | null
+): Promise<void> {
+  await writeNotification(uid, title, body, data, actorId, imageUrl);
+  await sendToUser(uid, title, body, data, imageUrl);
 }
 
 /** Fixed post id for diagnostics-only pushes (deep link may not resolve to a real post). */
@@ -343,11 +385,12 @@ export const onUserCreated = onDocumentCreated(
     } catch (e) {
       logger.error("founder auto-follow failed", { uid, error: (e as Error).message });
     }
-    await sendToUser(
+    await notifyUser(
       FOUNDER_UID,
       `${first} joined SPINE`,
-      "They follow you — and you now follow them back.",
-      { type: "new_follower", followerId: uid }
+      "They follow you, and you now follow them back.",
+      { type: "new_follower", followerId: uid },
+      uid
     );
   }
 );
@@ -380,11 +423,12 @@ export const onUserFollowingChanged = onDocumentUpdated(
     const follower = (await db.collection("users").doc(followerUid).get()).data();
     const first = firstNameFromUser(follower);
     for (const target of added.filter((t) => hiddenAccountCanNotify(followerUid, t))) {
-      await sendToUser(
+      await notifyUser(
         target,
         `${first} started following you`,
         "See what they're reading on SPINE.",
-        { type: "new_follower", followerId: followerUid }
+        { type: "new_follower", followerId: followerUid },
+        followerUid
       );
     }
   }
@@ -394,6 +438,47 @@ export const onUserFollowingChanged = onDocumentUpdated(
 async function recipientUidsWhoFollow(authorUid: string): Promise<string[]> {
   const q = await db.collection("users").where("following", "array-contains", authorUid).get();
   return q.docs.map((d) => d.id).filter((id) => id !== authorUid);
+}
+
+/**
+ * Push cap for rating sprees, mirroring the feed's day-group carousel
+ * (FeedItem.groupingThreshold = 4): an author's first three finished-book
+ * posts on a calendar day push normally; from the fourth onward, followers
+ * still get the in-app bell entry but no push. The server can't know each
+ * viewer's timezone, so "day" uses the app's home timezone — the exact
+ * midnight boundary matters far less than capping the burst.
+ */
+const MAX_FINISHED_BOOK_PUSHES_PER_DAY = 3;
+const APP_DAY_TIMEZONE = "America/Chicago";
+
+/** Calendar-day key (YYYY-MM-DD) in the app's home timezone. */
+function appDayKey(date: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: APP_DAY_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+/**
+ * How many finished-book posts the author created earlier on the same
+ * (app-timezone) calendar day as `createdAt`. Any same-day earlier post is
+ * within the trailing 24h, so one indexed range query covers all candidates.
+ */
+async function earlierFinishedBooksSameDay(authorId: string, createdAt: Timestamp): Promise<number> {
+  const windowStart = Timestamp.fromMillis(createdAt.toMillis() - 24 * 60 * 60 * 1000);
+  const q = await db.collection("posts")
+    .where("userId", "==", authorId)
+    .where("createdAt", ">=", windowStart)
+    .where("createdAt", "<", createdAt)
+    .get();
+  const dayKey = appDayKey(createdAt.toDate());
+  return q.docs.filter((d) => {
+    const p = d.data();
+    const ts = p.createdAt as Timestamp | undefined;
+    return p.type === "finishedBook" && ts !== undefined && appDayKey(ts.toDate()) === dayKey;
+  }).length;
 }
 
 export const onFriendReviewPosted = onDocumentCreated(
@@ -444,6 +529,18 @@ export const onFriendReviewPosted = onDocumentCreated(
       body = caption || "See what they're reading on SPINE.";
     }
 
+    // Rating-spree cap: past three finished books today, skip the push (the
+    // feed collapses the burst into a carousel; followers keep the bell entry).
+    let pushCapped = false;
+    const postCreatedAt = data.createdAt as Timestamp | undefined;
+    if (postCreatedAt) {
+      const earlierToday = await earlierFinishedBooksSameDay(authorId, postCreatedAt);
+      pushCapped = earlierToday >= MAX_FINISHED_BOOK_PUSHES_PER_DAY;
+      if (pushCapped) {
+        logger.info("rating-spree push cap hit", { postId, authorId, earlierToday });
+      }
+    }
+
     const recipients = (await recipientUidsWhoFollow(authorId))
       .filter((uid) => hiddenAccountCanNotify(authorId, uid));
     const payload = {
@@ -451,7 +548,11 @@ export const onFriendReviewPosted = onDocumentCreated(
       postId,
     };
     for (const uid of recipients) {
-      await sendToUser(uid, title, body, payload, coverURL);
+      if (pushCapped) {
+        await writeNotification(uid, title, body, payload, authorId, coverURL);
+      } else {
+        await notifyUser(uid, title, body, payload, authorId, coverURL);
+      }
     }
   }
 );
@@ -479,6 +580,12 @@ export const onBookBlendWritten = onDocumentWritten(
       // defer or drop background pushes, in which case the alert just stays.
       const priorRecipient = before?.recipientId as string | undefined;
       if (before?.status === "pending" && priorRecipient) {
+        // The invite row in the recipient's in-app notification feed is stale too.
+        await deleteByQuery(
+          db.collection("users").doc(priorRecipient).collection("notifications")
+            .where("type", "==", "blend_request")
+            .where("blendId", "==", blendId)
+        );
         await sendSilentToUser(priorRecipient, {
           type: "blend_request_withdrawn",
           blendId,
@@ -505,11 +612,12 @@ export const onBookBlendWritten = onDocumentWritten(
     if (afterStatus === "pending" && (beforeStatus === null || beforeStatus === "declined")) {
       if (!hiddenAccountCanNotify(requesterId, recipientId)) return;
       const requesterName = await nameOf(requesterId);
-      await sendToUser(
+      await notifyUser(
         recipientId,
         `${requesterName} wants to make a Book Blend with you`,
-        "Merge your libraries into one taste match — tap to accept.",
-        { type: "blend_request", blendId, otherUserId: requesterId }
+        "Merge your libraries into one taste match. Tap to accept.",
+        { type: "blend_request", blendId, otherUserId: requesterId },
+        requesterId
       );
       return;
     }
@@ -518,13 +626,14 @@ export const onBookBlendWritten = onDocumentWritten(
       if (!hiddenAccountCanNotify(recipientId, requesterId)) return;
       const recipientName = await nameOf(recipientId);
       const score = (after.result as { score?: number } | undefined)?.score;
-      await sendToUser(
+      await notifyUser(
         requesterId,
         `Your Book Blend with ${recipientName} is ready`,
         typeof score === "number"
           ? `You two scored ${score}%. Tap to watch it.`
           : "Tap to watch it.",
-        { type: "blend_ready", blendId, otherUserId: recipientId }
+        { type: "blend_ready", blendId, otherUserId: recipientId },
+        recipientId
       );
     }
   }
@@ -557,11 +666,14 @@ export const onPostLiked = onDocumentCreated(
       ? `${first} liked your review of ${book}`
       : `${first} liked your review`;
 
-    await sendToUser(
+    // Empty body: the push falls back to "Tap to open SPINE", while the in-app
+    // notification row shows just the title (a like needs no second line).
+    await notifyUser(
       authorId,
       title,
-      "Tap to open SPINE",
+      "",
       { type: "review_liked", postId },
+      likerId,
       coverURL
     );
   }
@@ -603,11 +715,12 @@ export const onCommentCreated = onDocumentCreated(
           ? `${first} replied to your comment on ${book}`
           : `${first} replied to your comment`;
         const replyBody = teaser8Words(commentText);
-        await sendToUser(
+        await notifyUser(
           replyTargetUid,
           replyTitle,
           replyBody,
           { type: "comment_replied", postId },
+          commenterId,
           coverURL
         );
       }
@@ -620,11 +733,12 @@ export const onCommentCreated = onDocumentCreated(
         : `${first} replied to your review`;
       const preview = teaser8Words(commentText);
       const body = preview.length > 0 ? preview : "";
-      await sendToUser(
+      await notifyUser(
         authorId,
         title,
         body,
         { type: "review_commented", postId },
+        commenterId,
         coverURL
       );
     }
@@ -647,11 +761,12 @@ export const onCommentCreated = onDocumentCreated(
     const threadBody = teaser8Words(commentText);
 
     for (const uid of participantIds) {
-      await sendToUser(
+      await notifyUser(
         uid,
         threadTitle,
         threadBody,
         { type: "thread_commented", postId },
+        commenterId,
         coverURL
       );
     }

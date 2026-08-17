@@ -22,7 +22,8 @@ final class OnboardingWizardModel: ObservableObject {
 
     enum WizardStep: Int, CaseIterable {
         case intro, name, greet, handle, photo, goal, characteristics, taste,
-             reading, roster, invite, notifications, stamping, card, founderNote, goodreads
+             reading, roster, invite, notifications, appearance, stamping, card,
+             founderNote, goodreads
 
         /// Book spines filled on the shelf meter while this step is showing.
         var spineCount: Int {
@@ -38,8 +39,8 @@ final class OnboardingWizardModel: ObservableObject {
             case .roster: return 8
             case .invite: return 9
             case .notifications: return 10
-            case .stamping: return 11
-            case .card, .founderNote, .goodreads: return 12
+            case .appearance: return 11
+            case .stamping, .card, .founderNote, .goodreads: return 12
             }
         }
 
@@ -114,10 +115,13 @@ final class OnboardingWizardModel: ObservableObject {
     private var handleCheckTask: Task<Void, Never>?
     private var didFollowSomeone = false
     /// Navigation debounce: catches a same-gesture double-fire (two taps landing
-    /// in the same frame) so one press can't skip a step. Outgoing views are
-    /// already non-hit-testable during removal (see AnyTransition.wizardStep),
-    /// so this window can stay short; a long window swallows legitimate taps.
+    /// in the same frame) so one press can't skip a step. Scoped to the step it
+    /// fired from, not to wall-clock alone: a plain time window also swallowed
+    /// the user's first real tap on the step that had just appeared, which read
+    /// as "every button needs two taps". A second tap from a *different* step is
+    /// always a new intent and is never rejected.
     private var lastNavigationAt = Date.distantPast
+    private var lastNavigationFrom: WizardStep?
     /// True once completeProfileSetup has been requested (set before the await
     /// so the appUser refresh it triggers can't be mistaken for a stale gate).
     @Published private(set) var hasCommittedProfile = false
@@ -137,6 +141,10 @@ final class OnboardingWizardModel: ObservableObject {
             handle = "tanner"
             readingGoal = 27
             step = .card
+        }
+        // -uiPreviewWizardAppearance jumps to the light/dark/system step.
+        if previewMode, ProcessInfo.processInfo.arguments.contains("-uiPreviewWizardAppearance") {
+            step = .appearance
         }
     }
 
@@ -204,7 +212,14 @@ final class OnboardingWizardModel: ObservableObject {
     // MARK: Navigation
 
     private func navigationDebounced() -> Bool {
-        guard Date().timeIntervalSince(lastNavigationAt) > 0.35 else { return false }
+        // Reject only a repeat fire from the step we just left: that is the
+        // same-gesture double-fire. Once `step` has moved on, any tap is a
+        // fresh intent from a screen the user is actually looking at, so it
+        // must go through no matter how fast it arrived.
+        if lastNavigationFrom == step, Date().timeIntervalSince(lastNavigationAt) < 0.3 {
+            return false
+        }
+        lastNavigationFrom = step
         lastNavigationAt = Date()
         return true
     }
@@ -581,6 +596,15 @@ final class OnboardingWizardModel: ObservableObject {
         memberNumber ?? max(1, roster.count + 1)
     }
 
+    /// Whether the account being stamped right now gets the OG badge. Reads the
+    /// flag `ensureUserDocument` already wrote at account creation (before the
+    /// wizard runs), NOT a live `cardNumber` comparison, so it can never
+    /// disagree with what the card looks like later in Settings. Defaults to
+    /// eligible in preview mode and before `appUser` loads.
+    var isOGEligible: Bool {
+        !(authService?.appUser?.ogIneligible ?? false)
+    }
+
     var memberSinceText: String {
         let date = authService?.appUser?.joinedAt ?? Date()
         let formatter = DateFormatter()
@@ -780,9 +804,11 @@ struct OnboardingWizardView: View {
                 WizardInviteStep(model: model)
             case .notifications:
                 WizardNotificationsStep(model: model)
+            case .appearance:
+                WizardAppearanceStep(model: model)
             case .stamping:
                 WizardInterstitialView(
-                    headline: "Hold still. Stamping your card…",
+                    headline: "Hold still. We're stamping your card…",
                     autoAdvanceAfter: 0.9,
                     onContinue: { model.advance() }
                 )
@@ -989,6 +1015,10 @@ struct WizardCTAButton: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
+            // Without this the button only answers taps that land on the
+            // glyphs themselves: the padding around the label is transparent,
+            // and a transparent label region does not hit test.
+            .contentShape(Rectangle())
         }
         .glossyProminent(Theme.accent, cornerRadius: 16)
         .buttonStyle(.springPress)
@@ -1014,6 +1044,9 @@ struct WizardSecondaryButton: View {
                     RoundedRectangle(cornerRadius: 16)
                         .stroke(Theme.textPrimary.opacity(0.22), lineWidth: 1.5)
                 )
+                // A stroked outline is not a fill, so the inside of the pill
+                // is transparent and would not hit test on its own.
+                .contentShape(Rectangle())
         }
         .buttonStyle(.springPress)
     }
@@ -1030,7 +1063,12 @@ struct WizardGhostButton: View {
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(Theme.textSecondary)
                 .frame(maxWidth: .infinity)
+                // 13 keeps the target at the 44pt minimum (18pt of text).
                 .padding(.vertical, 13)
+                // The label is bare text. Without a content shape only the
+                // glyph run is tappable, so a tap a few points off the words
+                // silently did nothing and read as an unresponsive button.
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }

@@ -322,15 +322,16 @@ enum Theme {
 // MARK: - Appearance preference (Light / Dark / System)
 
 /// User-selected appearance, persisted via `@AppStorage(AppearancePreference.storageKey)`
-/// and applied at the app root with `.preferredColorScheme`. Defaults to `.light`
-/// while dark mode is being vetted; the plan is to flip the default to `.system`.
+/// and applied at the app root with `.preferredColorScheme`. Defaults to
+/// `.system`: new accounts pick explicitly on the onboarding wizard's appearance
+/// step, and anyone who never picked follows their phone.
 enum AppearancePreference: String, CaseIterable, Identifiable {
     case light
     case dark
     case system
 
     static let storageKey = "appearancePreference"
-    static let defaultValue: AppearancePreference = .light
+    static let defaultValue: AppearancePreference = .system
 
     var id: String { rawValue }
 

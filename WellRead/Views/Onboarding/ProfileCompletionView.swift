@@ -402,16 +402,16 @@ struct ProfileCompletionView: View {
                 .foregroundStyle(Theme.textSecondary)
             HStack(alignment: .center, spacing: 16) {
                 ZStack {
-                    if let user = profileUserForAvatar,
-                       let urlString = user.profileImageURL,
-                       let url = URL(string: urlString) {
-                        CachedProfileImage(url: url, contentMode: .fill) {
-                            avatarPlaceholder(initial: String(user.displayName.prefix(1)), size: 80)
-                        }
-                    } else if let user = profileUserForAvatar {
-                        avatarPlaceholder(initial: String(user.displayName.prefix(1)), size: 80)
+                    if let user = profileUserForAvatar {
+                        UserAvatarView(
+                            urlString: user.profileImageURL,
+                            displayName: user.displayName,
+                            firstName: user.firstName,
+                            lastName: user.lastName,
+                            size: 80
+                        )
                     } else {
-                        avatarPlaceholder(initial: "?", size: 80)
+                        InitialsAvatarView(displayName: nil, size: 80)
                     }
                     if isUploadingPhoto {
                         Color.black.opacity(0.4)
@@ -433,17 +433,6 @@ struct ProfileCompletionView: View {
                 .disabled(isUploadingPhoto)
             }
         }
-    }
-
-    private func avatarPlaceholder(initial: String, size: CGFloat) -> some View {
-        Circle()
-            .fill(Theme.surface)
-            .frame(width: size, height: size)
-            .overlay(
-                Text(initial)
-                    .font(.system(size: size * 0.38, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Theme.textSecondary)
-            )
     }
 
     private static func loadUIImage(from item: PhotosPickerItem) async -> UIImage? {

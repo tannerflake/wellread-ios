@@ -89,7 +89,8 @@ final class BookRefresherService {
             input += "\n\nCategories: \(book.genres.joined(separator: ", "))"
         }
         input += "\n\nWrite the refresher JSON."
-        let response = try await ClaudeService.shared.sendMessage(system: system, userMessage: input, maxTokens: 2048)
+        // Plot/character recall with full spoilers — fabrication risk is high on small models.
+        let response = try await ClaudeService.shared.sendMessage(system: system, userMessage: input, maxTokens: 2048, tier: .complex)
         guard let refresher = Self.parseRefresher(from: response) else {
             throw NSError(domain: "BookRefresherService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Couldn't read the refresher response."])
         }
@@ -107,7 +108,7 @@ final class BookRefresherService {
         """
         var messages = history.map { ClaudeMessageRequest.Message(role: $0.role.rawValue, content: $0.text) }
         messages.append(.init(role: "user", content: question))
-        let response = try await ClaudeService.shared.sendConversation(system: system, messages: messages)
+        let response = try await ClaudeService.shared.sendConversation(system: system, messages: messages, tier: .complex)
         return response.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 

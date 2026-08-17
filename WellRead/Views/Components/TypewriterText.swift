@@ -169,11 +169,20 @@ struct TypewriterText: View {
 
 /// Staged entrance for non-typed elements: fade in and rise after a delay.
 /// The wizard uses this for form fields and buttons beneath a typed headline.
-/// Hit testing stays off until the element is actually visible: an invisible
-/// but tappable CTA could otherwise be triggered blind (and, on the
-/// notifications step, fire the OS permission dialog unseen).
+///
+/// Interactivity is deliberately NOT tied to the visual stagger. Gating hit
+/// testing on the full reveal delay made every step feel broken: a CTA staged
+/// at 0.45s silently ate the first tap, and the user learned to tap everything
+/// twice. `interactiveGuard` is the only dead window, and it is short enough
+/// (well under the ~300ms it takes a person to notice and re-tap) that the
+/// first tap always lands. It exists purely so a CTA that has not started
+/// fading in yet cannot be triggered completely blind.
 struct WizardRevealModifier: ViewModifier {
     let delay: Double
+
+    /// Longest the element may stay untappable, whatever its visual delay.
+    private static let interactiveGuard: Double = 0.15
+
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var shown = false
     @State private var hittable = false
@@ -187,10 +196,11 @@ struct WizardRevealModifier: ViewModifier {
                 withAnimation(.easeOut(duration: 0.35).delay(reduceMotion ? 0 : delay)) {
                     shown = true
                 }
-                if reduceMotion {
+                let guardDelay = reduceMotion ? 0 : min(delay, Self.interactiveGuard)
+                if guardDelay <= 0 {
                     hittable = true
                 } else {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + guardDelay) {
                         hittable = true
                     }
                 }

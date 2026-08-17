@@ -26,16 +26,20 @@ struct ProfileLibraryView: View {
     @State private var readTabDropTargeted = false
     @State private var queueTabDropTargeted = false
     @State private var showEditProfile = false
-    @State private var showDeleteAccountConfirm = false
-    /// Second confirmation step: the user must type DELETE before the account is removed.
-    @State private var showDeleteAccountTypeConfirm = false
-    @State private var deleteAccountConfirmText = ""
-    @State private var isDeletingAccount = false
-    @State private var deleteAccountError: String?
     /// Set when the edit-profile sheet was opened by tapping the goal strip —
     /// the sheet scrolls to the book-goal field and focuses it.
     @State private var editProfileFocusesBookGoal = false
-    @State private var showFindFriends = false
+    /// Tapping your avatar opens your own profile card page: card, rosters,
+    /// and the settings gear (which took over the old avatar menu's actions).
+    @State private var showMyCard = false
+    /// Feature flag: the notifications bell is built but not launched yet —
+    /// flip to true to unhide it. `-uiPreviewNotifications` overrides in DEBUG.
+    private static let notificationsBellEnabled = false
+    /// Bell beside the avatar: pushes the notifications feed.
+    @State private var showNotifications = false
+    /// Unread rows exist — the bell shows a badge dot until the feed is opened.
+    @State private var hasUnreadNotifications = false
+    private let notificationsRepo = NotificationsRepository()
     @AppStorage(AppearancePreference.storageKey) private var appearanceRaw = AppearancePreference.defaultValue.rawValue
     #if DEBUG
     #endif
@@ -114,6 +118,11 @@ struct ProfileLibraryView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Theme.background, for: .navigationBar)
             .onAppear { appState.refreshGoodreadsWizardResumeState() }
+            .navigationDestination(isPresented: $showNotifications) {
+                NotificationsView()
+                    .environmentObject(authService)
+                    .environmentObject(appState)
+            }
             .navigationDestination(item: $selectedBookForProfile) { book in
                 BookProfileView(
                     book: book,
@@ -146,25 +155,21 @@ struct ProfileLibraryView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
             }
-            .sheet(isPresented: $showFindFriends) {
-                FindFriendsView()
-                    .environmentObject(appState)
-            }
-            // Custom overlay drawer (not a .sheet) — see MainTabView's add-book overlay.
-            .overlay {
-                ZStack(alignment: .bottom) {
-                    if let target = addToShelfTarget {
-                        Color.black.opacity(0.25)
-                            .ignoresSafeArea()
-                            .onTapGesture { addToShelfTarget = nil }
-                            .transition(.opacity)
-                        AddBookFlowView(targetShelf: target.shelf, onDismiss: { addToShelfTarget = nil })
-                            .environment(\.mainTabBarOverlapExtraHeight, 0)
-                            .transition(.move(edge: .bottom))
-                    }
+            .sheet(isPresented: $showMyCard) {
+                if let me = authService.firebaseUser?.uid, let user = appState.currentUser {
+                    UserProfileCardSheet(userId: me, user: user)
+                        .environmentObject(authService)
+                        .environmentObject(appState)
                 }
-                .animation(.spring(response: 0.38, dampingFraction: 0.86), value: addToShelfTarget != nil)
-                .ignoresSafeArea(.keyboard, edges: .bottom)
+            }
+            // Same full page as the Search tab, presented over the library and scoped
+            // to the shelf whose "Add" tile was tapped (hence the Cancel button).
+            .fullScreenCover(item: $addToShelfTarget) { target in
+                SearchView(targetShelf: target.shelf, onClose: { addToShelfTarget = nil })
+                    .environmentObject(authService)
+                    .environmentObject(appState)
+                    // No tab bar over a full-screen cover, so nothing to clear.
+                    .environment(\.mainTabBarOverlapExtraHeight, 0)
             }
             .sheet(isPresented: $showGoodreadsImport, onDismiss: {
                 appState.refreshGoodreadsWizardResumeState()
@@ -214,52 +219,6 @@ struct ProfileLibraryView: View {
             } message: {
                 if let msg = appState.pendingGoodreadsImportError {
                     Text(msg)
-                }
-            }
-            .alert("Delete your account?", isPresented: $showDeleteAccountConfirm) {
-                Button("Cancel", role: .cancel) {}
-                Button("Delete account", role: .destructive) {
-                    deleteAccountConfirmText = ""
-                    showDeleteAccountTypeConfirm = true
-                }
-            } message: {
-                Text("This permanently deletes your account and all of your data: library, reviews, comments, likes, and follows. This can't be undone.")
-            }
-            .alert("Are you sure?", isPresented: $showDeleteAccountTypeConfirm) {
-                TextField("Type DELETE to confirm", text: $deleteAccountConfirmText)
-                    .textInputAutocapitalization(.characters)
-                    .autocorrectionDisabled()
-                Button("Cancel", role: .cancel) { deleteAccountConfirmText = "" }
-                Button("Delete forever", role: .destructive) {
-                    guard deleteAccountTextMatches else { return }
-                    Task { await performAccountDeletion() }
-                }
-                .disabled(!deleteAccountTextMatches)
-            } message: {
-                Text("This cannot be undone. Type DELETE to permanently delete your account.")
-            }
-            .alert("Couldn't delete account", isPresented: Binding(
-                get: { deleteAccountError != nil },
-                set: { if !$0 { deleteAccountError = nil } }
-            )) {
-                Button("OK", role: .cancel) { deleteAccountError = nil }
-            } message: {
-                Text(deleteAccountError ?? "")
-            }
-            .overlay {
-                if isDeletingAccount {
-                    ZStack {
-                        Color.black.opacity(0.45).ignoresSafeArea()
-                        VStack(spacing: 12) {
-                            ProgressView()
-                                .tint(.white)
-                            Text("Deleting account…")
-                                .font(Theme.callout())
-                                .foregroundStyle(.white)
-                        }
-                        .padding(24)
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-                    }
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .spineHighlightTierBook)) { _ in
@@ -315,6 +274,10 @@ struct ProfileLibraryView: View {
                     floats: true
                 )
                 toolbarProfilePhoto
+                if Self.isNotificationsBellVisible {
+                    notificationsBell
+                        .padding(.leading, 8)
+                }
             }
         }
         .padding(.horizontal, Theme.horizontalPadding)
@@ -549,66 +512,92 @@ struct ProfileLibraryView: View {
         return true
     }
 
+    /// Flag plus the DEBUG preview override — keeps the bell verifiable in the
+    /// simulator while it stays hidden from users.
+    private static var isNotificationsBellVisible: Bool {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-uiPreviewNotifications") { return true }
+        #endif
+        return notificationsBellEnabled
+    }
+
+    /// Bell to the right of your avatar: opens the notifications feed. Shows a
+    /// badge dot while unread rows exist; opening the feed marks them read.
+    private var notificationsBell: some View {
+        Button {
+            showNotifications = true
+            hasUnreadNotifications = false
+        } label: {
+            Circle()
+                .fill(Theme.surface)
+                .frame(width: 40, height: 40)
+                .overlay(
+                    Image(systemName: "bell")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                )
+                .overlay(
+                    Circle()
+                        .strokeBorder(Theme.chrome.opacity(0.55), lineWidth: 1.5)
+                )
+                .overlay(alignment: .topTrailing) {
+                    if hasUnreadNotifications {
+                        Circle()
+                            .fill(Theme.danger)
+                            .frame(width: 10, height: 10)
+                            .overlay(Circle().strokeBorder(Theme.background, lineWidth: 1.5))
+                            .offset(x: 1, y: -1)
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(hasUnreadNotifications ? "Notifications, new activity" : "Notifications")
+        .task(id: authService.firebaseUser?.uid) {
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-uiPreviewNotifications") {
+                hasUnreadNotifications = true
+                return
+            }
+            #endif
+            guard let uid = authService.firebaseUser?.uid else {
+                hasUnreadNotifications = false
+                return
+            }
+            hasUnreadNotifications = await notificationsRepo.hasUnread(uid: uid)
+        }
+    }
+
+    /// Your avatar in the header: opens your own profile card page (card front
+    /// and back, followers, following, and the settings gear). The old action
+    /// menu that lived here moved to that page's settings screen.
     @ViewBuilder
     private var toolbarProfilePhoto: some View {
         if let user = appState.currentUser, authService.firebaseUser?.uid != nil {
-            Menu {
-                Button {
-                    showEditProfile = true
-                } label: {
-                    Label("Edit profile", systemImage: "person.crop.circle")
-                }
-                Button {
-                    showFindFriends = true
-                } label: {
-                    Label("Find friends", systemImage: "person.2.badge.plus")
-                }
-                Button {
-                    showGoodreadsImport = true
-                } label: {
-                    Label("Import from Goodreads", systemImage: "square.and.arrow.down")
-                }
-                appearanceMenu
-                Divider()
-                Button("Sign out", role: .destructive) {
-                    authService.signOut()
-                }
-                Button("Delete account", role: .destructive) {
-                    showDeleteAccountConfirm = true
-                }
+            Button {
+                showMyCard = true
             } label: {
-                ZStack {
-                    if let urlString = user.profileImageURL, let url = URL(string: urlString) {
-                        CachedProfileImage(url: url, contentMode: .fill) {
-                            avatarPlaceholder(initial: String(user.displayName.prefix(1)), compact: true)
-                        }
-                    } else {
-                        avatarPlaceholder(initial: String(user.displayName.prefix(1)), compact: true)
-                    }
-                }
-                .frame(width: 40, height: 40)
-                .clipShape(Circle())
+                UserAvatarView(
+                    urlString: user.profileImageURL,
+                    displayName: user.displayName,
+                    firstName: user.firstName,
+                    lastName: user.lastName,
+                    size: 40
+                )
                 .overlay(
                     Circle()
                         .strokeBorder(Theme.chrome.opacity(0.55), lineWidth: 1.5)
                 )
             }
             .buttonStyle(.plain)
-            .menuStyle(.button)
+            .accessibilityLabel("Your profile")
         } else {
+            // User doc not loaded yet: the card page has nothing to show, so
+            // keep the bare essentials reachable.
             Menu {
-                Button {
-                    showEditProfile = true
-                } label: {
-                    Label("Edit profile", systemImage: "person.crop.circle")
-                }
                 appearanceMenu
                 Divider()
                 Button("Sign out", role: .destructive) {
                     authService.signOut()
-                }
-                Button("Delete account", role: .destructive) {
-                    showDeleteAccountConfirm = true
                 }
             } label: {
                 Image(systemName: "ellipsis.circle")
@@ -617,27 +606,7 @@ struct ProfileLibraryView: View {
         }
     }
 
-    /// True when the type-to-confirm field contains DELETE (case-insensitive,
-    /// whitespace-trimmed) — the destructive button stays disabled until then.
-    private var deleteAccountTextMatches: Bool {
-        deleteAccountConfirmText
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .caseInsensitiveCompare("DELETE") == .orderedSame
-    }
-
-    /// Runs the full deletion (Firestore data + Auth user via the `deleteAccount`
-    /// callable); on success the auth listener returns the app to the welcome screen.
-    private func performAccountDeletion() async {
-        isDeletingAccount = true
-        defer { isDeletingAccount = false }
-        do {
-            try await authService.deleteAccount()
-        } catch {
-            deleteAccountError = error.localizedDescription
-        }
-    }
-
-    /// Light / Dark / System picker in the profile menu — persisted app-wide
+    /// Light / Dark / System picker in the fallback menu — persisted app-wide
     /// via `AppearancePreference` and applied at the root `preferredColorScheme`.
     private var appearanceMenu: some View {
         Menu {
@@ -651,16 +620,6 @@ struct ProfileLibraryView: View {
             let current = AppearancePreference(rawValue: appearanceRaw) ?? .defaultValue
             Label("Appearance: \(current.label)", systemImage: current.iconName)
         }
-    }
-
-    private func avatarPlaceholder(initial: String, compact: Bool = false) -> some View {
-        Circle()
-            .fill(Theme.chrome)
-            .overlay(
-                Text(initial.uppercased())
-                    .font(.system(size: compact ? 18 : 28, weight: .bold))
-                    .foregroundStyle(Theme.onChrome)
-            )
     }
 
     /// Year filter to the right of the Read/Queue segment control (stays visible when switching segments; applies to Read list).

@@ -24,6 +24,16 @@ private func tierColor(for tier: String?) -> Color {
     spineTierColor(for: tier)
 }
 
+/// Faint hint copy shown in an empty S/F tier row while the viewer hasn't ranked
+/// anything yet, so the tier list doesn't read as just blank on first arrival.
+private func tierEmptyHint(for tier: String) -> String? {
+    switch tier {
+    case "S": return "the best of the best"
+    case "F": return "the worst of the worst"
+    default: return nil
+    }
+}
+
 // MARK: - Post-review tier prompt (scroll anchor + callout)
 
 /// ScrollViewReader anchor attached to the just-reviewed book so we can bring it
@@ -199,7 +209,8 @@ struct TierListView: View {
                                 onBookTap: onBookTap,
                                 readOnly: readOnly,
                                 highlightedBookId: highlightedBookId,
-                                selectedBookIds: selectedBookIds
+                                selectedBookIds: selectedBookIds,
+                                emptyHint: (!readOnly && hasNoRankedBooks) ? tierEmptyHint(for: tier) : nil
                             )
                         }
                         TierRowView(
@@ -279,6 +290,12 @@ struct TierListView: View {
         return rankedCount >= 50 ? 8 : 4
     }
 
+    /// True when this person hasn't put a single book into a tier yet (everything
+    /// sits in Unranked) — gates the faint S/F placeholder hints.
+    private var hasNoRankedBooks: Bool {
+        !userBooks.contains { $0.normalizedTier != nil }
+    }
+
     /// Whether the highlighted book has actually arrived in `userBooks` (Firestore echo).
     private var highlightedBookIsPresent: Bool {
         guard let highlightedBookId else { return false }
@@ -325,6 +342,10 @@ struct TierListView: View {
 private let tierBookSizeMin: CGFloat = 48
 private let tierBookSizeMax: CGFloat = 80
 private let tierRowPadding: CGFloat = 1
+/// Horizontal inset of the "Top N" favorites box within the S-tier row.
+private let topGroupInset: CGFloat = 5
+/// Extra trailing inset so the box's right edge doesn't run as far as the row's.
+private let topGroupTrailingExtra: CGFloat = 3
 
 struct TierRowView: View {
     let tier: String?
@@ -339,6 +360,8 @@ struct TierRowView: View {
     var readOnly: Bool = false
     var highlightedBookId: String? = nil
     var selectedBookIds: Set<String> = []
+    /// Faint copy shown in this row when it's empty (own S/F tier, nothing ranked yet).
+    var emptyHint: String? = nil
 
     var header: String {
         tier ?? "Unranked"
@@ -393,13 +416,21 @@ struct TierRowView: View {
     @ViewBuilder
     private func tierContent(contentWidth: CGFloat, readOnly: Bool) -> some View {
         let w = contentWidth > 0 ? contentWidth : 280
-        let available = w - tierRowPadding * 2
+        // The top-group callout only appears once the S tier is full enough for the
+        // first `topCount` slots to actually mean "your absolute favorites".
+        let activeTopCount: Int? = topCount.flatMap { books.count >= $0 ? $0 : nil }
+        // When the top-favorites box is present, its horizontal inset eats into the
+        // row width — size books to fit inside it or the box overflows the row's
+        // rounded clip on the right.
+        let available = w - tierRowPadding * 2 - (activeTopCount != nil ? topGroupInset * 2 + topGroupTrailingExtra : 0)
         let booksPerRow = 4
-        // One narrow slot before each cover; trailing slot is flexible — don’t reserve an extra slot width from book size.
+        // One narrow slot before each cover, plus the trailing slot: it's flexible
+        // upward but can't compress below its minWidth, so full rows (and the Top N
+        // box hugging them) overflow the row's right edge unless it's reserved too.
         // Read-only slots render at 6pt (see TierRowDropSlot), so size books off the
         // real slot width or read-only rows end up with dead space on the right.
         let slotWidth: CGFloat = readOnly ? 6 : tierDropSlotWidth
-        let slotSpace = CGFloat(booksPerRow) * slotWidth
+        let slotSpace = CGFloat(booksPerRow + 1) * slotWidth
         let bookSize = min(tierBookSizeMax, max(tierBookSizeMin, (available - slotSpace) / CGFloat(booksPerRow)))
         let slotHeight = max(64, bookSize * 1.15)
         let rows: [[UserBook]] = books.isEmpty
@@ -407,13 +438,19 @@ struct TierRowView: View {
             : stride(from: 0, to: books.count, by: booksPerRow).map { start in
                 Array(books[start..<min(start + booksPerRow, books.count)])
             }
-        // The top-group callout only appears once the S tier is full enough for the
-        // first `topCount` slots to actually mean "your absolute favorites".
-        let activeTopCount: Int? = topCount.flatMap { books.count >= $0 ? $0 : nil }
         LazyVStack(alignment: .leading, spacing: 2) {
             if rows.isEmpty {
-                HStack(spacing: 0) {
-                    TierRowDropSlot(tier: tier, insertionIndex: 0, onUpdateTierAndOrder: onUpdateTierAndOrder, fillsRow: true, minHeight: slotHeight, readOnly: readOnly)
+                ZStack(alignment: .leading) {
+                    HStack(spacing: 0) {
+                        TierRowDropSlot(tier: tier, insertionIndex: 0, onUpdateTierAndOrder: onUpdateTierAndOrder, fillsRow: true, minHeight: slotHeight, readOnly: readOnly)
+                    }
+                    if let emptyHint {
+                        Text(emptyHint)
+                            .font(Theme.caption())
+                            .foregroundStyle(Theme.textSecondary.opacity(0.5))
+                            .padding(.leading, 8)
+                            .allowsHitTesting(false)
+                    }
                 }
                 .padding(.horizontal, 1)
             } else {
@@ -431,10 +468,21 @@ struct TierRowView: View {
                     }
                     .padding(.bottom, 4)
                     .background(
+                        // Trait-aware blend, not a flat chrome opacity: an ink wash
+                        // reads on paper, but the same wash in paper-on-ink barely
+                        // moves. Dark gets a heavier lift plus a firmer border.
                         RoundedRectangle(cornerRadius: 8)
-                            .fill(Theme.chrome.opacity(0.08))
+                            .fill(Theme.blend(Theme.background, toward: Theme.chrome, light: 0.14, dark: 0.24))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .strokeBorder(Theme.blend(Theme.background, toward: Theme.chrome, light: 0.3, dark: 0.5), lineWidth: 1)
+                            )
                     )
-                    .padding(.horizontal, 2)
+                    // Inset far enough that the row's 14pt corner clip can't slice the
+                    // box's rounded right edge square.
+                    .padding(.top, 3)
+                    .padding(.leading, topGroupInset)
+                    .padding(.trailing, topGroupInset + topGroupTrailingExtra)
                     .padding(.bottom, 2)
                 }
                 ForEach(allRows.dropFirst(topRowCount), id: \.offset) { rowIndex, rowBooks in
@@ -461,18 +509,22 @@ struct TierRowView: View {
         .padding(.horizontal, 1)
     }
 
-    /// "♛ TOP 4" caps label above the first row(s) of the S tier.
+    /// "♛ TOP 4" chrome chip above the first row(s) of the S tier.
     private func topGroupHeader(count: Int) -> some View {
         HStack(spacing: 4) {
             Image(systemName: "crown.fill")
-                .font(.system(size: 9, weight: .bold))
+                .font(.system(size: 8, weight: .bold))
             Text(SpinesGlyphs.caps("Top \(count)"))
-                .font(.system(size: 11, weight: .bold))
-                .tracking(0.5)
+                .font(.system(size: 10, weight: .bold))
+                .tracking(0.6)
         }
-        .foregroundStyle(Theme.chrome)
-        .padding(.leading, 8)
-        .padding(.top, 4)
+        .foregroundStyle(Theme.onChrome)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(Capsule().fill(Theme.chrome))
+        .padding(.leading, 6)
+        .padding(.top, 6)
+        .padding(.bottom, 4)
         .accessibilityLabel("Top \(count) books")
     }
 }

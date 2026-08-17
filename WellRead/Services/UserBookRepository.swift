@@ -136,7 +136,44 @@ final class UserBookRepository {
         }
     }
 
-    /// Every member's "Reading now" covers in one query (Feed following strip): uid → books in shelf order.
+    /// "Reading now" covers for a specific set of readers: uid → books in shelf
+    /// order. Scoped version of `fetchAllReadingNowBooks` for surfaces that only
+    /// need the people currently on screen (the feed people strip loads these a
+    /// page at a time; the feed loads them for post authors).
+    func fetchReadingNowBooks(forUserIds uids: [String]) async -> [String: [Book]] {
+        let wanted = Array(Set(uids))
+        guard !wanted.isEmpty else { return [:] }
+        let chunks = stride(from: 0, to: wanted.count, by: 30).map {
+            Array(wanted[$0..<min($0 + 30, wanted.count)])
+        }
+        let rows = await withTaskGroup(of: [UserBook].self) { group in
+            for chunk in chunks {
+                group.addTask { [self] in
+                    do {
+                        let snapshot = try await db.collection(userBooks)
+                            .whereField("userId", in: chunk)
+                            .whereField("queueShelf", isEqualTo: QueueShelf.readingNow.rawValue)
+                            .getDocuments()
+                        return snapshot.documents.compactMap { doc -> UserBook? in
+                            guard let ub = userBook(from: doc.data(), docId: doc.documentID),
+                                  ub.status == .wantToRead, ub.queueShelf == .readingNow else { return nil }
+                            return ub
+                        }
+                    } catch {
+                        return []
+                    }
+                }
+            }
+            var all: [UserBook] = []
+            for await chunkRows in group { all.append(contentsOf: chunkRows) }
+            return all
+        }
+        var rowsByUid: [String: [UserBook]] = [:]
+        for ub in rows { rowsByUid[ub.userId, default: []].append(ub) }
+        return await resolveReadingNowBooks(rowsByUid: rowsByUid)
+    }
+
+    /// Every member's "Reading now" covers in one query (widget snapshot): uid → books in shelf order.
     func fetchAllReadingNowBooks() async -> [String: [Book]] {
         do {
             let snapshot = try await db.collection(userBooks)
@@ -148,17 +185,24 @@ final class UserBookRepository {
                       ub.status == .wantToRead, ub.queueShelf == .readingNow else { continue }
                 rowsByUid[ub.userId, default: []].append(ub)
             }
-            let allBooks = await bookRepo.getBooks(ids: rowsByUid.values.flatMap { $0.map(\.bookId) })
-            var result: [String: [Book]] = [:]
-            for (uid, rows) in rowsByUid {
-                let ordered = rows.sorted { ($0.queueOrder ?? 999) < ($1.queueOrder ?? 999) }
-                let books = ordered.compactMap { allBooks[$0.bookId] }
-                if !books.isEmpty { result[uid] = books }
-            }
-            return result
+            return await resolveReadingNowBooks(rowsByUid: rowsByUid)
         } catch {
             return [:]
         }
+    }
+
+    /// Shared tail of the reading-now fetches: resolve book documents and put
+    /// each reader's covers in shelf order, dropping readers with no covers.
+    private func resolveReadingNowBooks(rowsByUid: [String: [UserBook]]) async -> [String: [Book]] {
+        guard !rowsByUid.isEmpty else { return [:] }
+        let allBooks = await bookRepo.getBooks(ids: rowsByUid.values.flatMap { $0.map(\.bookId) })
+        var result: [String: [Book]] = [:]
+        for (uid, rows) in rowsByUid {
+            let ordered = rows.sorted { ($0.queueOrder ?? 999) < ($1.queueOrder ?? 999) }
+            let books = ordered.compactMap { allBooks[$0.bookId] }
+            if !books.isEmpty { result[uid] = books }
+        }
+        return result
     }
 
     /// Adds a userBook (and ensures the book exists). Returns the created UserBook with its id.

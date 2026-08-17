@@ -14,7 +14,6 @@ struct MainTabView: View {
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var authService: AuthService
     @State private var selectedTab: Tab = .profile
-    @State private var showAddBook = false
     @State private var showCompleteProfileSheet = false
     @State private var showWelcomeGoodreadsModal = false
     @State private var showGoodreadsImportFromWelcome = false
@@ -42,21 +41,26 @@ struct MainTabView: View {
     enum Tab: String, CaseIterable {
         case feed
         case discover
-        case add
+        case search
         case profile
     }
-    
-    /// Tab switch + tab bar + search drawer (split out of `body`: the full
-    /// modifier chain became too much for the type-checker in one expression).
+
+    /// Tab switch + tab bar (split out of `body`: the full modifier chain became
+    /// too much for the type-checker in one expression).
     private var tabContent: some View {
         Group {
             switch selectedTab {
             case .feed: FeedView()
             case .discover: DiscoverView()
-            case .add: Color.clear
+            case .search: SearchView()
             case .profile: ProfileLibraryView()
             }
         }
+        // The tab switch runs inside a `withAnimation`, which the incoming page's
+        // layout would otherwise ride in on — subviews sliding up from the origin
+        // as they take their positions. The lens (outside this scope) still slides;
+        // the page itself just appears, fully formed.
+        .animation(nil, value: selectedTab)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // Reserve space for the tab bar in layout (avoids full-screen content drawing under it).
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -78,30 +82,6 @@ struct MainTabView: View {
         // the action bar a clean breathing-room gap above the tab bar.
         .environment(\.mainTabBarOverlapExtraHeight, Theme.mainTabBarChromeHeight)
         .toastHost()
-        // Custom overlay drawer (not a .sheet): sheet detents re-resolve when the
-        // keyboard appears and jump to full height; this stays at its height, period.
-        .overlay {
-            ZStack(alignment: .bottom) {
-                if showAddBook {
-                    Color.black.opacity(0.25)
-                        .ignoresSafeArea()
-                        .onTapGesture {
-                            // Drop the keyboard with the drawer, not after it.
-                            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                            showAddBook = false
-                        }
-                        .transition(.opacity)
-                    AddBookFlowView(onDismiss: { showAddBook = false })
-                        .environment(\.mainTabBarOverlapExtraHeight, 0)
-                        .transition(.move(edge: .bottom))
-                }
-            }
-            .animation(.spring(response: 0.38, dampingFraction: 0.86), value: showAddBook)
-            // `.all` = container + keyboard: the drawer must reach the physical
-            // bottom edge (past the home-indicator inset, where the tab bar shows
-            // through) and stay pinned when the keyboard rises.
-            .ignoresSafeArea(.all, edges: .bottom)
-        }
     }
 
     /// Onboarding/nudge sheets attached to the tab content.
@@ -291,12 +271,10 @@ struct MainTabView: View {
         .bookBlendPushPresenter()
         .onAppear {
             #if DEBUG
-            // `-uiPreviewTab feed|discover|profile|search` (with `-uiPreview`) starts on a
-            // given tab — or with the search drawer open — for simulator UI verification.
+            // `-uiPreviewTab feed|discover|search|profile` (with `-uiPreview`) starts on a
+            // given tab for simulator UI verification.
             if let raw = UserDefaults.standard.string(forKey: "uiPreviewTab") {
-                if raw == "search" {
-                    showAddBook = true
-                } else if raw == "discoverLoading" {
+                if raw == "discoverLoading" {
                     // Discover pinned to its loading state (spinner verification).
                     selectedTab = .discover
                     appState.isLoadingDiscoverSuggestions = true
@@ -452,7 +430,7 @@ struct MainTabView: View {
     /// True while any launch/onboarding sheet is up — new modals must not stack on top.
     private var isAnyLaunchModalUp: Bool {
         showCompleteProfileSheet || showPushNotificationPromptSheet || showWelcomeGoodreadsModal
-            || showGoodreadsImportFromWelcome || showAddBook || showPushNudgeModal
+            || showGoodreadsImportFromWelcome || showPushNudgeModal
             || showProfilePhotoNudgeModal || showCurrentlyReadingPrompt || deepLinkProfile != nil
             || incomingBlendInvite != nil
     }
@@ -551,7 +529,7 @@ struct MainTabView: View {
         HStack(spacing: 0) {
             tabButton(.feed, icon: "person.2.fill", label: "Social")
             tabButton(.discover, icon: "sparkles", label: "Discover")
-            searchButton
+            tabButton(.search, icon: "magnifyingglass", label: "Search")
             tabButton(.profile, icon: "books.vertical.fill", label: "Profile")
         }
         .padding(5)
@@ -573,12 +551,13 @@ struct MainTabView: View {
 
     private func tabButton(_ tab: Tab, icon: String, label: String) -> some View {
         Button {
-            if tab == .add {
-                showAddBook = true
-            } else if selectedTab != tab {
+            if selectedTab != tab {
                 withAnimation(.snappy(duration: 0.3, extraBounce: 0.12)) {
                     selectedTab = tab
                 }
+            } else if tab == .feed {
+                // Already on Feed: FeedView decides whether to scroll to top or refresh.
+                NotificationCenter.default.post(name: .spineFeedTabTappedAgain, object: nil)
             }
         } label: {
             tabItemLabel(icon: icon, label: label, isSelected: selectedTab == tab)
@@ -607,16 +586,6 @@ struct MainTabView: View {
                 .overlay(Capsule().strokeBorder(Theme.chrome.opacity(0.35), lineWidth: 1))
                 .shadow(color: Theme.shadowInk.opacity(0.12), radius: 4, y: 1)
         }
-    }
-
-    private var searchButton: some View {
-        Button {
-            showAddBook = true
-        } label: {
-            tabItemLabel(icon: "magnifyingglass", label: "Search", isSelected: false)
-                .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
     }
 
     private func tabItemLabel(icon: String, label: String, isSelected: Bool) -> some View {

@@ -40,6 +40,45 @@ enum SpinePalette {
         light: UIColor(red: 237/255, green: 238/255, blue: 227/255, alpha: 1),
         dark: UIColor(red: 20/255, green: 16/255, blue: 24/255, alpha: 1)
     )
+
+    /// Echo of the app's `Theme.coverPalette` + `coverPaletteColor(for:)` (see
+    /// UserAvatarView.swift): 12 deep hues, white text, FNV-1a seeded by the
+    /// normalized display name so a friend's fallback avatar color matches the app.
+    static let avatarPalette: [Color] = [
+        Color(red: 74/255, green: 61/255, blue: 140/255),
+        Color(red: 49/255, green: 46/255, blue: 129/255),
+        Color(red: 30/255, green: 58/255, blue: 110/255),
+        Color(red: 37/255, green: 78/255, blue: 112/255),
+        Color(red: 13/255, green: 92/255, blue: 99/255),
+        Color(red: 28/255, green: 92/255, blue: 58/255),
+        Color(red: 82/255, green: 78/255, blue: 26/255),
+        Color(red: 146/255, green: 60/255, blue: 18/255),
+        Color(red: 121/255, green: 68/255, blue: 34/255),
+        Color(red: 146/255, green: 34/255, blue: 30/255),
+        Color(red: 122/255, green: 28/255, blue: 56/255),
+        Color(red: 108/255, green: 40/255, blue: 96/255)
+    ]
+
+    static func avatarColor(for name: String) -> Color {
+        let seed = name.split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
+            .lowercased()
+        var hash: UInt64 = 0xcbf29ce484222325
+        for byte in seed.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x100000001b3
+        }
+        return avatarPalette[Int(hash % UInt64(avatarPalette.count))]
+    }
+
+    static func avatarInitials(for name: String) -> String {
+        let words = name.split(whereSeparator: { $0.isWhitespace })
+        guard let first = words.first?.first else { return "?" }
+        if words.count >= 2, let last = words.last?.first {
+            return String(first).uppercased() + String(last).uppercased()
+        }
+        return String(first).uppercased()
+    }
 }
 
 enum WidgetImageLoader {
@@ -220,11 +259,12 @@ struct FriendCoverCell: View {
                     .resizable()
                     .scaledToFill()
             } else {
-                SpinePalette.chrome
+                SpinePalette.avatarColor(for: friend.displayName)
                     .overlay {
-                        Text(friend.displayName.prefix(1).uppercased())
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(SpinePalette.onChrome)
+                        Text(SpinePalette.avatarInitials(for: friend.displayName))
+                            .font(.system(size: 7.5, weight: .bold))
+                            .foregroundStyle(.white)
+                            .minimumScaleFactor(0.7)
                     }
             }
         }

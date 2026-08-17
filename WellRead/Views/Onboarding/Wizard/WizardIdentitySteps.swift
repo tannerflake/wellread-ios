@@ -51,7 +51,12 @@ struct WizardNameStep: View {
         .padding(.top, 10)
         .padding(.bottom, 24)
         .onAppear {
+            // Deferred so the keyboard doesn't race the step transition, but it
+            // must never overwrite a field the user already tapped: landing on
+            // Last Name and being yanked back to First Name reads as the tap
+            // having been ignored.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                guard focusedField == nil else { return }
                 focusedField = .first
             }
         }
@@ -104,8 +109,8 @@ struct WizardHandleStep: View {
 
             VStack(alignment: .leading, spacing: 12) {
                 Text("Most handles are still free.")
-                Text("Your first name, a nickname, a word we won't repeat.")
-                Text("Claim an OG one while you can.")
+                Text("Your first name, a nickname, etc.")
+                Text("Claim a rare one while you can.")
             }
             .font(.system(size: 16))
             .foregroundStyle(Theme.textSecondary)
@@ -130,7 +135,7 @@ struct WizardHandleStep: View {
                     model.advance()
                 }
             }
-            .wizardReveal(delay: 0.45)
+            .wizardReveal(delay: 0.3)
         }
         .padding(.horizontal, 28)
         .padding(.top, 10)
@@ -292,7 +297,7 @@ struct WizardPhotoStep: View {
                     }
                 }
             }
-            .wizardReveal(delay: 0.45)
+            .wizardReveal(delay: 0.3)
         }
         .padding(.horizontal, 28)
         .padding(.top, 10)
@@ -333,11 +338,12 @@ struct WizardPhotoStep: View {
                     .frame(width: 150, height: 150)
                     .clipped()
             } else {
-                Circle()
-                    .fill(Theme.surfaceElevated)
-                Text(String(model.displayFirstName.prefix(1)))
-                    .font(.system(size: 52, weight: .bold))
-                    .foregroundStyle(Theme.textPrimary)
+                InitialsAvatarView(
+                    displayName: nil,
+                    firstName: model.displayFirstName,
+                    lastName: model.lastName,
+                    size: 150
+                )
             }
             if model.isUploadingPhoto {
                 Color.black.opacity(0.4)
@@ -401,7 +407,7 @@ struct WizardGoalStep: View {
                 quipLine
                     .wizardReveal(delay: 0.3)
                 presetPills
-                    .wizardReveal(delay: 0.4)
+                    .wizardReveal(delay: 0.3)
             }
             .frame(maxWidth: .infinity)
 
@@ -412,7 +418,7 @@ struct WizardGoalStep: View {
                     model.advance()
                 }
             }
-            .wizardReveal(delay: 0.45)
+            .wizardReveal(delay: 0.3)
         }
         .padding(.horizontal, 28)
         .padding(.top, 10)

@@ -210,21 +210,12 @@ private struct ToastView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.leading, 10)
+        .padding(.leading, 12)
         .padding(.trailing, 14)
         .padding(.vertical, 10)
         .background(
-            ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
-                    .fill(Theme.surfaceElevated)
-                // Leading accent stripe — the "status line" cue.
-                Rectangle()
-                    .fill(toast.style.chrome)
-                    .frame(width: 4)
-                    .clipShape(
-                        .rect(topLeadingRadius: Theme.cardCornerRadius, bottomLeadingRadius: Theme.cardCornerRadius)
-                    )
-            }
+            RoundedRectangle(cornerRadius: Theme.cardCornerRadius)
+                .fill(Theme.surfaceElevated)
         )
         .overlay(
             RoundedRectangle(cornerRadius: Theme.cardCornerRadius)

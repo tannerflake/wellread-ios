@@ -30,22 +30,26 @@ final class FeedListenerHandle {
 /// data then flows through as normal in-place updates.
 private actor FeedChunkMerger {
     private var postsByChunk: [Int: [Post]] = [:]
+    /// Pre-filter document counts, used to decide whether a deeper page exists —
+    /// `posts` can be short of the limit purely because hidden accounts dropped out.
+    private var rawCountByChunk: [Int: Int] = [:]
     private var appliedGeneration: [Int: Int] = [:]
     private var hasEmitted = false
     private let totalChunks: Int
     private let limit: Int
-    private let onUpdate: ([Post]) -> Void
+    private let onUpdate: ([Post], Bool) -> Void
 
-    init(totalChunks: Int, limit: Int, onUpdate: @escaping ([Post]) -> Void) {
+    init(totalChunks: Int, limit: Int, onUpdate: @escaping ([Post], Bool) -> Void) {
         self.totalChunks = totalChunks
         self.limit = limit
         self.onUpdate = onUpdate
     }
 
-    func update(chunk: Int, generation: Int, posts: [Post]) async {
+    func update(chunk: Int, generation: Int, posts: [Post], rawCount: Int) async {
         guard generation > appliedGeneration[chunk, default: 0] else { return }
         appliedGeneration[chunk] = generation
         postsByChunk[chunk] = posts
+        rawCountByChunk[chunk] = rawCount
         guard hasEmitted || postsByChunk.count == totalChunks else { return }
         hasEmitted = true
         await emit()
@@ -66,8 +70,21 @@ private actor FeedChunkMerger {
                 .sorted { $0.createdAt > $1.createdAt }
                 .prefix(limit)
         )
-        await MainActor.run { onUpdate(merged) }
+        // Any chunk that came back full means Firestore had more to give at this
+        // depth, so a larger limit would surface older posts.
+        let hasMore = rawCountByChunk.values.contains { $0 >= limit }
+        await MainActor.run { onUpdate(merged, hasMore) }
     }
+}
+
+/// Posts fetched per feed page — the initial load, and each step the feed grows
+/// by when the reader reaches the bottom. `-uiPreviewFeedPaging` shrinks it so
+/// bottom-of-feed paging is reachable in a few swipes during verification.
+var feedPageSize: Int {
+    #if DEBUG
+    if ProcessInfo.processInfo.arguments.contains("-uiPreviewFeedPaging") { return 3 }
+    #endif
+    return 50
 }
 
 final class PostRepository {
@@ -79,11 +96,15 @@ final class PostRepository {
     /// Listens to feed: posts authored by `authorIds` (the viewer + everyone they
     /// follow), newest first. Query-time rather than fan-out, so following someone
     /// retroactively surfaces their whole post history.
-    func listenFeed(authorIds: [String], onUpdate: @escaping ([Post]) -> Void) -> FeedListenerHandle {
+    ///
+    /// `limit` is the paging depth: scrolling to the bottom restarts the listener
+    /// with a larger limit rather than stitching one-shot pages under a live
+    /// query, so every loaded post keeps streaming like/comment updates.
+    func listenFeed(authorIds: [String], limit: Int = feedPageSize, onUpdate: @escaping ([Post], Bool) -> Void) -> FeedListenerHandle {
         let ids = Array(Set(authorIds))
         guard !ids.isEmpty else {
             let handle = FeedListenerHandle()
-            DispatchQueue.main.async { onUpdate([]) }
+            DispatchQueue.main.async { onUpdate([], false) }
             return handle
         }
         let chunks = stride(from: 0, to: ids.count, by: 30).map { Array(ids[$0..<min($0 + 30, ids.count)]) }
@@ -91,26 +112,26 @@ final class PostRepository {
             db.collection(posts)
                 .whereField("userId", in: $0)
                 .order(by: "createdAt", descending: true)
-                .limit(to: 50) as Query
+                .limit(to: limit) as Query
         }
-        return listen(queries: queries, onUpdate: onUpdate)
+        return listen(queries: queries, limit: limit, onUpdate: onUpdate)
     }
 
     /// Listens to every post on Spine (the feed's "everyone" scope), newest
     /// first. One global query — hidden accounts are still filtered per doc.
-    func listenAllPosts(onUpdate: @escaping ([Post]) -> Void) -> FeedListenerHandle {
+    func listenAllPosts(limit: Int = feedPageSize, onUpdate: @escaping ([Post], Bool) -> Void) -> FeedListenerHandle {
         let query = db.collection(posts)
             .order(by: "createdAt", descending: true)
-            .limit(to: 50) as Query
-        return listen(queries: [query], onUpdate: onUpdate)
+            .limit(to: limit) as Query
+        return listen(queries: [query], limit: limit, onUpdate: onUpdate)
     }
 
     /// Shared listener plumbing: one snapshot registration per query, merged
     /// newest-first through `FeedChunkMerger` (first emit waits for every
     /// chunk's first snapshot so the initial paint is one shot).
-    private func listen(queries: [Query], onUpdate: @escaping ([Post]) -> Void) -> FeedListenerHandle {
+    private func listen(queries: [Query], limit: Int, onUpdate: @escaping ([Post], Bool) -> Void) -> FeedListenerHandle {
         let handle = FeedListenerHandle()
-        let merger = FeedChunkMerger(totalChunks: queries.count, limit: 50, onUpdate: onUpdate)
+        let merger = FeedChunkMerger(totalChunks: queries.count, limit: limit, onUpdate: onUpdate)
         for (chunkIndex, query) in queries.enumerated() {
             // Snapshot handlers for one query run serially on the main queue, so
             // this counter assigns generations in snapshot order.
@@ -122,7 +143,7 @@ final class PostRepository {
                     let generation = latestGeneration
                     Task {
                         let list = await self.hydratedPosts(from: snapshot.documents)
-                        await merger.update(chunk: chunkIndex, generation: generation, posts: list)
+                        await merger.update(chunk: chunkIndex, generation: generation, posts: list, rawCount: snapshot.documents.count)
                     }
                 }
             handle.registrations.append(registration)

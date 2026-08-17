@@ -65,7 +65,7 @@ struct WizardCharacteristicsStep: View {
                 }
             }
             .padding(.top, 12)
-            .wizardReveal(delay: 0.45)
+            .wizardReveal(delay: 0.3)
         }
         .padding(.horizontal, 28)
         .padding(.top, 10)
@@ -193,7 +193,7 @@ struct WizardTasteStep: View {
                 }
             }
             .padding(.top, 12)
-            .wizardReveal(delay: 0.45)
+            .wizardReveal(delay: 0.3)
         }
         .padding(.horizontal, 28)
         .padding(.top, 10)
