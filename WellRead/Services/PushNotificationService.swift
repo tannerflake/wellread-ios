@@ -30,6 +30,15 @@ enum WellreadDeepLink {
         return nil
     }
 
+    /// Reads `commentId` from FCM `data` — set on comment_liked pushes so the tap
+    /// can scroll the thread to the exact comment.
+    static func commentId(fromNotificationUserInfo userInfo: [AnyHashable: Any]) -> String? {
+        for key in ["commentId", "comment_id"] {
+            if let s = userInfo[AnyHashable(key)] as? String, !s.isEmpty { return s }
+        }
+        return nil
+    }
+
     /// `data.type` from FCM (e.g. `friend_review_posted`); used to tune tap behavior.
     static func pushNotificationType(from userInfo: [AnyHashable: Any]) -> String? {
         for key in ["type", "notification_type"] {
@@ -57,6 +66,9 @@ enum PushNotificationService {
     /// Warm taps are handled by the observers, which also consume the stash.
     private static var pendingScrollToFeedPostId: String?
     private static var pendingOpenPostCommentsId: String?
+    /// Set alongside `pendingOpenPostCommentsId` when the push targets one comment
+    /// (comment_liked): the thread scrolls to and flashes it.
+    private static var pendingOpenPostCommentsCommentId: String?
     private static var pendingProfileUserId: String?
 
     static func consumePendingScrollToFeedPostTap() -> String? {
@@ -67,6 +79,11 @@ enum PushNotificationService {
     static func consumePendingOpenPostCommentsTap() -> String? {
         defer { pendingOpenPostCommentsId = nil }
         return pendingOpenPostCommentsId
+    }
+
+    static func consumePendingOpenPostCommentsCommentTap() -> String? {
+        defer { pendingOpenPostCommentsCommentId = nil }
+        return pendingOpenPostCommentsCommentId
     }
 
     static func consumePendingProfileUserTap() -> String? {
@@ -207,9 +224,9 @@ enum PushNotificationService {
             }
             return
         }
-        /// Friend-review and review-liked pushes land on the feed scrolled to that
-        /// review (highlighted, no comment thread).
-        if type == "friend_review_posted" || type == "review_liked" {
+        /// Friend-review, review-liked, and review-mention pushes land on the feed
+        /// scrolled to that review (highlighted, no comment thread).
+        if type == "friend_review_posted" || type == "review_liked" || type == "review_mentioned" {
             if let postId = WellreadDeepLink.postId(fromNotificationUserInfo: userInfo) {
                 pendingScrollToFeedPostId = postId
                 NotificationCenter.default.post(
@@ -237,14 +254,19 @@ enum PushNotificationService {
             }
             return
         }
-        /// Everything else (review_commented, comment_replied, thread_commented)
-        /// opens the post's comment thread.
+        /// Everything else (review_commented, comment_replied, thread_commented,
+        /// comment_liked) opens the post's comment thread. comment_liked also
+        /// carries `commentId` so the thread scrolls to the liked comment.
         guard let postId = WellreadDeepLink.postId(fromNotificationUserInfo: userInfo) else { return }
+        let commentId = WellreadDeepLink.commentId(fromNotificationUserInfo: userInfo)
         pendingOpenPostCommentsId = postId
+        pendingOpenPostCommentsCommentId = commentId
+        var info: [AnyHashable: Any] = ["postId": postId]
+        if let commentId { info["commentId"] = commentId }
         NotificationCenter.default.post(
             name: .wellreadOpenFeedPost,
             object: nil,
-            userInfo: ["postId": postId]
+            userInfo: info
         )
     }
 }

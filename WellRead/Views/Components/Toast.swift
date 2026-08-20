@@ -104,6 +104,10 @@ extension Toast {
         Toast(style: .success, status: "Deleted", message: "Post removed from your feed")
     }
 
+    static func commentDeleted() -> Toast {
+        Toast(style: .success, status: "Deleted", message: "Your comment was removed")
+    }
+
     static func importedBooks(count: Int) -> Toast {
         let noun = count == 1 ? "book" : "books"
         return Toast(

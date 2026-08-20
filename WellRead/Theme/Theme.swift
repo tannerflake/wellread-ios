@@ -108,6 +108,14 @@ enum Theme {
         dark: Color(red: 226/255, green: 104/255, blue: 95/255)
     )
 
+    /// Functional on-state for toggles — like `danger`, allowed to break
+    /// monochrome because an ink/paper switch is unreadable against dark
+    /// chrome fills. Muted green. Light #2B7A4A / dark #58B27D.
+    static let toggleOn = dynamic(
+        light: Color(red: 43/255, green: 122/255, blue: 74/255),
+        dark: Color(red: 88/255, green: 178/255, blue: 125/255)
+    )
+
     // MARK: - Colors — Semantic aliases (stable API for existing views)
 
     /// Brand chrome.

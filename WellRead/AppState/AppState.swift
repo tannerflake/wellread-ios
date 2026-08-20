@@ -56,6 +56,8 @@ final class AppState: ObservableObject {
     @Published var isFetchingGoodreadsFromURL = false
     /// Set when opening a feed post from a push or `wellread://` URL; Feed opens comments when resolved.
     @Published var deepLinkFeedPostId: String?
+    /// Set alongside `deepLinkFeedPostId` for comment-liked pushes; the comments sheet scrolls to and flashes this comment.
+    @Published var deepLinkFeedCommentId: String?
     /// Set when a friend-review push is tapped; Feed scrolls to the post (with a brief highlight) once it's loaded, then clears this.
     @Published var scrollToFeedPostId: String?
     /// `Book.id` of a freshly-reviewed book the tier list should pulse-glow until the user tiers it. Cleared automatically once the corresponding `UserBook.tier` becomes non-nil.
@@ -272,6 +274,7 @@ final class AppState: ObservableObject {
         discoverFetchGeneration += 1
         likedPostIds = []
         deepLinkFeedPostId = nil
+        deepLinkFeedCommentId = nil
         scrollToFeedPostId = nil
         pendingTierHighlightBookId = nil
         BookRepository.shared.clearCache()
@@ -838,6 +841,15 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Keeps the in-memory feed's comment count honest after comments are added or
+    /// deleted from the comments sheet, so the inline preview reloads instead of
+    /// showing a comment that is already gone.
+    @MainActor
+    func adjustFeedCommentCount(postId: String, delta: Int) {
+        guard delta != 0, let idx = feedPosts.firstIndex(where: { $0.id.uuidString == postId }) else { return }
+        feedPosts[idx].commentCount = max(0, feedPosts[idx].commentCount + delta)
+    }
+
     /// Deletes one of the current user's feed posts (with its likes and comments), independent of
     /// library state — the post may be orphaned (its book was removed from the read shelf) and must
     /// still be deletable. Leaves any `UserBook` untouched. Returns an error message on failure.
@@ -923,6 +935,44 @@ final class AppState: ObservableObject {
         existing.updatedAt = Date()
         updateUserBook(existing)
         try? await userBookRepo.updateUserBook(existing)
+    }
+
+    /// Move the read date(s) a book has in `fromYear` into `toYear`, keeping month and day.
+    /// `fromYear == nil` means the book has no recorded read date: it gets Jan 1 of `toYear`.
+    /// Re-read dates in other years stay put, so a book read in 2022 and 2025 only moves
+    /// the year the user selected it under.
+    func moveReadYear(userBookId: UUID, fromYear: Int?, toYear: Int) {
+        guard let i = userBooks.firstIndex(where: { $0.id == userBookId }),
+              userBooks[i].status == .read else { return }
+        var ub = userBooks[i]
+        let cal = Calendar.current
+        var dates = ub.allReadDates
+        if let fromYear {
+            guard fromYear != toYear else { return }
+            dates = dates.map { d in
+                guard cal.component(.year, from: d) == fromYear else { return d }
+                var comps = cal.dateComponents([.year, .month, .day, .hour, .minute], from: d)
+                comps.year = toYear
+                return cal.date(from: comps) ?? d
+            }
+        } else if dates.isEmpty {
+            var comps = DateComponents()
+            comps.year = toYear
+            comps.month = 1
+            comps.day = 1
+            comps.hour = 12
+            if let d = cal.date(from: comps) { dates = [d] }
+        }
+        var unique: [Date] = []
+        for d in dates.sorted(by: >) where !unique.contains(where: { cal.isDate($0, inSameDayAs: d) }) {
+            unique.append(d)
+        }
+        ub.dateFinished = unique.first
+        ub.additionalReadDates = unique.count > 1 ? Array(unique.dropFirst()) : nil
+        ub.updatedAt = Date()
+        updateUserBook(ub)
+        let toSave = ub
+        Task { try? await userBookRepo.updateUserBook(toSave) }
     }
 
     /// Import one Goodreads not-yet-read book into the queue.

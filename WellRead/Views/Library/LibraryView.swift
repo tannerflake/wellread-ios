@@ -10,6 +10,7 @@ import SwiftUI
 // MARK: - Library (Profile tab content)
 
 struct ProfileLibraryView: View {
+    @Environment(\.mainTabBarOverlapExtraHeight) private var mainTabBarOverlapExtraHeight
     @EnvironmentObject var authService: AuthService
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var queueDragCoordinator: QueueBookDragCoordinator
@@ -23,6 +24,8 @@ struct ProfileLibraryView: View {
     @State private var pendingMarkReadFromQueue: UserBook?
     /// Shelf whose "Add" tile was tapped — presents the search sheet scoped to that shelf.
     @State private var addToShelfTarget: ShelfAddTarget? = nil
+    /// Floating + button in the bottom-right corner — opens the full search page.
+    @State private var showAddBookSearch = false
     @State private var readTabDropTargeted = false
     @State private var queueTabDropTargeted = false
     @State private var showEditProfile = false
@@ -34,9 +37,13 @@ struct ProfileLibraryView: View {
     @State private var showMyCard = false
     /// Feature flag: the notifications bell is built but not launched yet —
     /// flip to true to unhide it. `-uiPreviewNotifications` overrides in DEBUG.
-    private static let notificationsBellEnabled = false
+    private static let notificationsBellEnabled = true
     /// Bell beside the avatar: pushes the notifications feed.
     @State private var showNotifications = false
+    /// List button in the header row: pushes the by-year list with multi-select year moves.
+    @State private var showYearList = false
+    /// Feed button beside the list button: pushes your own post history.
+    @State private var showUserFeed = false
     /// Unread rows exist — the bell shows a badge dot until the feed is opened.
     @State private var hasUnreadNotifications = false
     private let notificationsRepo = NotificationsRepository()
@@ -79,7 +86,7 @@ struct ProfileLibraryView: View {
                 VStack(spacing: 0) {
                     spineProfileHeader
 
-                    if activeReadingGoal != nil || !availableYears.isEmpty {
+                    if activeReadingGoal != nil || !appState.readBooks.isEmpty {
                         HStack(alignment: .center, spacing: 12) {
                             if let goal = activeReadingGoal {
                                 Button {
@@ -99,9 +106,10 @@ struct ProfileLibraryView: View {
                                 Spacer(minLength: 0)
                             }
 
-                            if !availableYears.isEmpty {
-                                yearFilterInline
+                            if !appState.readBooks.isEmpty {
+                                yearListButton
                             }
+                            userFeedButton
                         }
                         .padding(.horizontal, Theme.horizontalPadding)
                         .padding(.vertical, 6)
@@ -115,6 +123,9 @@ struct ProfileLibraryView: View {
                 }
                 .padding(.horizontal, 4)
             }
+            .overlay(alignment: .bottomTrailing) {
+                floatingAddBookButton
+            }
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Theme.background, for: .navigationBar)
             .onAppear { appState.refreshGoodreadsWizardResumeState() }
@@ -122,6 +133,18 @@ struct ProfileLibraryView: View {
                 NotificationsView()
                     .environmentObject(authService)
                     .environmentObject(appState)
+            }
+            .navigationDestination(isPresented: $showYearList) {
+                ReadingYearListView(readBooks: appState.readBooks)
+                    .environmentObject(authService)
+                    .environmentObject(appState)
+            }
+            .navigationDestination(isPresented: $showUserFeed) {
+                if let uid = authService.firebaseUser?.uid {
+                    UserFeedView(userId: uid, onBookTap: { selectedBookForProfile = $0 })
+                        .environmentObject(appState)
+                        .environmentObject(authService)
+                }
             }
             .navigationDestination(item: $selectedBookForProfile) { book in
                 BookProfileView(
@@ -169,6 +192,13 @@ struct ProfileLibraryView: View {
                     .environmentObject(authService)
                     .environmentObject(appState)
                     // No tab bar over a full-screen cover, so nothing to clear.
+                    .environment(\.mainTabBarOverlapExtraHeight, 0)
+            }
+            // Same full search page, unscoped — opened by the floating + button.
+            .fullScreenCover(isPresented: $showAddBookSearch) {
+                SearchView(onClose: { showAddBookSearch = false })
+                    .environmentObject(authService)
+                    .environmentObject(appState)
                     .environment(\.mainTabBarOverlapExtraHeight, 0)
             }
             .sheet(isPresented: $showGoodreadsImport, onDismiss: {
@@ -251,6 +281,29 @@ struct ProfileLibraryView: View {
                 )
             }
         }
+    }
+
+    /// Fixed floating + in the bottom-right corner of the Profile page — pulls up
+    /// the same full search page as the Search tab (with a Cancel button).
+    private var floatingAddBookButton: some View {
+        Button {
+            showAddBookSearch = true
+        } label: {
+            Circle()
+                .fill(Theme.accentGloss)
+                .frame(width: 56, height: 56)
+                .overlay(
+                    Image(systemName: "plus")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(Theme.onChrome.opacity(0.5))
+                )
+                .shadow(color: Theme.shadowInk.opacity(0.25), radius: 8, y: 3)
+        }
+        .buttonStyle(.plain)
+        .padding(.trailing, 20)
+        // Clear the floating tab bar pill, same as BookProfileView's action bar.
+        .padding(.bottom, mainTabBarOverlapExtraHeight + 12)
+        .accessibilityLabel("Add a book")
     }
 
     /// True while a library drag is active — sliding selection pill is hidden; selected tab uses a static gray fill when that tab has no green/red chrome.
@@ -622,27 +675,46 @@ struct ProfileLibraryView: View {
         }
     }
 
-    /// Year filter to the right of the Read/Queue segment control (stays visible when switching segments; applies to Read list).
-    private var yearFilterInline: some View {
-        Menu {
-            Button("All") { selectedYear = nil }
-            ForEach(availableYears, id: \.self) { year in
-                Button(String(year)) { selectedYear = year }
-            }
+    /// Book count for the S-tier year dropdown rows; nil year = all read books.
+    private func readBookCount(forYear year: Int?) -> Int {
+        guard let year else { return appState.readBooks.count }
+        return appState.readBooks.filter { $0.wasRead(inYear: year) }.count
+    }
+
+    /// List icon beside the reading goal strip: opens "Reading by year", where books can
+    /// be multi-selected and moved into another year.
+    private var yearListButton: some View {
+        Button {
+            showYearList = true
         } label: {
-            HStack(spacing: 4) {
-                Text(selectedYear.map { String($0) } ?? "All")
-                    .font(Theme.callout())
-                    .foregroundStyle(Theme.textPrimary)
-                Image(systemName: "chevron.down.circle.fill")
-                    .font(.caption)
-                    .foregroundStyle(Theme.textTertiary)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 6)
-            .background(Theme.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            Image(systemName: "list.bullet")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Theme.textPrimary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Theme.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel("List view")
+    }
+
+    /// Feed icon beside the list button: opens your post history, every feed
+    /// post you've made, newest first.
+    private var userFeedButton: some View {
+        Button {
+            showUserFeed = true
+        } label: {
+            Image(systemName: "newspaper")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Theme.textPrimary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Theme.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("My feed")
     }
 
     /// "Finish importing" callout above the tier list when a Goodreads wizard
@@ -710,9 +782,20 @@ struct ProfileLibraryView: View {
     @ViewBuilder
     private var libraryContent: some View {
         if segment == .read {
-            TierListView(userBooks: readBooksFilteredByYear, onUpdateTierAndOrder: { id, tier, order in
-                appState.setTierAndOrder(for: id, tier: tier, order: fullTierInsertionIndex(tier: tier, visibleIndex: order))
-            }, onBookTap: { selectedBookForProfile = $0 }, highlightedBookId: appState.pendingTierHighlightBookId)
+            TierListView(
+                userBooks: readBooksFilteredByYear,
+                onUpdateTierAndOrder: { id, tier, order in
+                    appState.setTierAndOrder(for: id, tier: tier, order: fullTierInsertionIndex(tier: tier, visibleIndex: order))
+                },
+                onBookTap: { selectedBookForProfile = $0 },
+                highlightedBookId: appState.pendingTierHighlightBookId,
+                yearFilter: availableYears.isEmpty ? nil : TierYearFilter(
+                    availableYears: availableYears,
+                    selectedYear: selectedYear,
+                    countForYear: { readBookCount(forYear: $0) },
+                    onSelect: { selectedYear = $0 }
+                )
+            )
         } else {
             QueueLibraryView(
                 readingNow: appState.wantToReadReadingNow,
@@ -811,7 +894,7 @@ private struct MarkAsReadQueueSheet: View {
                                     .font(Theme.callout())
                                     .foregroundStyle(Theme.textPrimary)
                             }
-                            .tint(Theme.accent)
+                            .tint(Theme.toggleOn)
 
                             Button {
                                 let date = markAsReadDate

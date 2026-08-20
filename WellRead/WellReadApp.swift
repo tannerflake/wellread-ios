@@ -6,11 +6,28 @@
 //
 
 import SwiftUI
+import AmplitudeSwift
 import FirebaseCore
 import GoogleSignIn
 import FirebaseFirestore
 import FirebaseMessaging
 import UserNotifications
+
+/// Product analytics (Amplitude). Initialized exactly once, at app launch.
+/// `nil` when no key is configured — call sites use optional chaining, so
+/// analytics silently no-op instead of crashing.
+enum Analytics {
+    static let amplitude: Amplitude? = {
+        guard let key = ApiKeys.amplitude else {
+            print("Amplitude API key missing — analytics disabled")
+            return nil
+        }
+        return Amplitude(configuration: Configuration(
+            apiKey: key,
+            autocapture: [.sessions, .appLifecycles, .screenViews]
+        ))
+    }()
+}
 
 /// Use the same Firestore database everywhere.
 /// - `Info.plist` key `FirestoreDatabaseID`: **empty** or omit → `(default)` database (Firebase Console “default” rules apply).
@@ -53,6 +70,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, MessagingDelegate, UNUserNot
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         FirebaseApp.configure()
+        _ = Analytics.amplitude
         let db = FirestoreDatabase.firestore
         db.settings.cacheSettings = PersistentCacheSettings(sizeBytes: 50 * 1024 * 1024 as NSNumber)
         Messaging.messaging().delegate = self

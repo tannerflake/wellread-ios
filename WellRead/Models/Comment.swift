@@ -16,4 +16,6 @@ struct Comment: Identifiable, Codable {
     var profileImageURL: String?
     /// Comment doc id (UUID string) this comment replies to. `nil` = top-level comment.
     var parentCommentId: String?
+    /// Maintained by like/unlike increments (legacy comments have no field = 0).
+    var likeCount: Int = 0
 }

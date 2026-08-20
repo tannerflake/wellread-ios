@@ -141,8 +141,9 @@ struct NotificationsView: View {
     private static func glyph(for type: String) -> String {
         switch type {
         case "new_follower": return "person.badge.plus"
-        case "review_liked": return "heart.fill"
+        case "review_liked", "comment_liked": return "heart.fill"
         case "review_commented", "comment_replied", "thread_commented": return "bubble.left.fill"
+        case "review_mentioned", "comment_mentioned": return "at"
         case "blend_request", "blend_ready": return "sparkles"
         case "friend_review_posted": return "book.fill"
         default: return "bell.fill"
@@ -168,6 +169,7 @@ struct NotificationsView: View {
     private func open(_ item: UserNotification) {
         var info: [AnyHashable: Any] = ["type": item.type]
         if let postId = item.postId { info["postId"] = postId }
+        if let commentId = item.commentId { info["commentId"] = commentId }
         if let blendId = item.blendId { info["blendId"] = blendId }
         if let actorId = item.actorId { info["followerId"] = actorId }
         dismiss()
@@ -199,11 +201,11 @@ struct NotificationsView: View {
     private static var uiPreviewDemo: [UserNotification] {
         let now = Date()
         return [
-            UserNotification(id: "1", type: "new_follower", title: "Alex started following you", body: "See what they're reading on SPINE.", postId: nil, blendId: nil, actorId: "demo", coverURL: nil, createdAt: now.addingTimeInterval(-300), read: false),
-            UserNotification(id: "2", type: "review_liked", title: "Maya liked your review of Sapiens", body: "", postId: "demo", blendId: nil, actorId: "demo", coverURL: "https://covers.openlibrary.org/b/isbn/9780062316097-L.jpg", createdAt: now.addingTimeInterval(-7200), read: false),
-            UserNotification(id: "3", type: "blend_request", title: "Jordan wants to make a Book Blend with you", body: "Merge your libraries into one taste match. Tap to accept.", postId: nil, blendId: "demo", actorId: "demo", coverURL: nil, createdAt: now.addingTimeInterval(-86400), read: true),
-            UserNotification(id: "4", type: "review_commented", title: "Sam commented on your review of The Overstory", body: "Great take on chapter three...", postId: "demo", blendId: nil, actorId: "demo", coverURL: nil, createdAt: now.addingTimeInterval(-3 * 86400), read: true),
-            UserNotification(id: "5", type: "friend_review_posted", title: "Riley gave Project Hail Mary a 9.0", body: "Smart, ambitious, and way more readable than...", postId: "demo", blendId: nil, actorId: "demo", coverURL: nil, createdAt: now.addingTimeInterval(-9 * 86400), read: true),
+            UserNotification(id: "1", type: "new_follower", title: "Alex started following you", body: "See what they're reading on SPINE.", postId: nil, commentId: nil, blendId: nil, actorId: "demo", coverURL: nil, createdAt: now.addingTimeInterval(-300), read: false),
+            UserNotification(id: "2", type: "review_liked", title: "Maya liked your review of Sapiens", body: "", postId: "demo", commentId: nil, blendId: nil, actorId: "demo", coverURL: "https://covers.openlibrary.org/b/isbn/9780062316097-L.jpg", createdAt: now.addingTimeInterval(-7200), read: false),
+            UserNotification(id: "3", type: "blend_request", title: "Jordan wants to make a Book Blend with you", body: "Merge your libraries into one taste match. Tap to accept.", postId: nil, commentId: nil, blendId: "demo", actorId: "demo", coverURL: nil, createdAt: now.addingTimeInterval(-86400), read: true),
+            UserNotification(id: "4", type: "review_commented", title: "Sam commented on your review of The Overstory", body: "Great take on chapter three...", postId: "demo", commentId: nil, blendId: nil, actorId: "demo", coverURL: nil, createdAt: now.addingTimeInterval(-3 * 86400), read: true),
+            UserNotification(id: "5", type: "friend_review_posted", title: "Riley gave Project Hail Mary a 9.0", body: "Smart, ambitious, and way more readable than...", postId: "demo", commentId: nil, blendId: nil, actorId: "demo", coverURL: nil, createdAt: now.addingTimeInterval(-9 * 86400), read: true),
         ]
     }
     #endif

@@ -21,6 +21,8 @@ struct UserNotification: Identifiable, Equatable {
     let title: String
     let body: String
     let postId: String?
+    /// Set on comment_liked rows: the exact comment the tap scrolls to.
+    let commentId: String?
     let blendId: String?
     /// The user who triggered the notification (follower, liker, commenter, blend partner).
     let actorId: String?
@@ -98,6 +100,7 @@ final class NotificationsRepository {
             title: title,
             body: (d["body"] as? String) ?? "",
             postId: d["postId"] as? String,
+            commentId: d["commentId"] as? String,
             blendId: d["blendId"] as? String,
             actorId: actor,
             coverURL: d["coverURL"] as? String,

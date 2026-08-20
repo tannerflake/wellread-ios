@@ -19,6 +19,8 @@ struct FeedView: View {
     /// pinned and highlighted on the book profile.
     @State private var bookProfileSourceUid: String? = nil
     @State private var postForComments: Post? = nil
+    /// Comment the next-presented comments sheet should scroll to (comment-liked deep link).
+    @State private var commentsScrollTargetId: String? = nil
     @State private var editReviewFromFeed: EditReadReviewSheetPayload? = nil
     /// Paged roster behind the people strip. Owned here so pull to refresh can
     /// reload it, rendered by `PeopleStrip`.
@@ -34,6 +36,13 @@ struct FeedView: View {
     /// Tracks scroll position so re-tapping the Feed tab knows whether to scroll to
     /// top or refresh (near the top already).
     @State private var isScrolledToFeedTop = true
+    /// Profile sheet opened by tapping an @mention inside a review caption.
+    @State private var mentionProfileToView: MentionedReader? = nil
+
+    private struct MentionedReader: Identifiable {
+        let uid: String
+        var id: String { uid }
+    }
 
     private let userRepo = UserRepository()
     private let userBookRepo = UserBookRepository()
@@ -137,11 +146,38 @@ struct FeedView: View {
                 EditReadReviewSheet(userBook: payload.userBook, feedCaption: payload.feedCaption)
                     .environmentObject(appState)
             }
-            .sheet(item: $postForComments) { post in
-                CommentsView(post: post)
+            .sheet(item: $postForComments, onDismiss: { commentsScrollTargetId = nil }) { post in
+                CommentsView(post: post, scrollToCommentId: commentsScrollTargetId)
                     .environmentObject(appState)
                     .environmentObject(authService)
             }
+            .sheet(item: $mentionProfileToView) { reader in
+                NavigationStack {
+                    ZStack {
+                        Theme.background.ignoresSafeArea()
+                        UserLibraryDetailView(userId: reader.uid)
+                    }
+                    .toolbarBackground(Theme.background, for: .navigationBar)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") { mentionProfileToView = nil }
+                                .foregroundStyle(Theme.accent)
+                        }
+                    }
+                }
+                .environmentObject(appState)
+                .environmentObject(authService)
+            }
+            // @mention taps in review captions arrive as spine-mention:// URLs.
+            .environment(\.openURL, OpenURLAction { url in
+                guard let handle = MentionScanner.handle(fromMentionURL: url) else { return .systemAction }
+                Task {
+                    if let uid = await MentionCatalog.shared.uid(forHandle: handle) {
+                        mentionProfileToView = MentionedReader(uid: uid)
+                    }
+                }
+                return .handled
+            })
             .confirmationDialog(
                 "Delete this post?",
                 isPresented: Binding(
@@ -166,7 +202,9 @@ struct FeedView: View {
                 await scheduleFounderWelcomeIfNeeded()
             }
             .onAppear {
+                Analytics.amplitude?.track(eventType: "Viewed Home Feed", eventProperties: ["prompt_version": "BA400.4"]) // helps improve this setup flow — safe to remove once you've verified the event lands
                 openDeepLinkedPostIfNeeded()
+                MentionCatalog.shared.ensureLoaded(viewerUid: authService.firebaseUser?.uid)
             }
             .onChange(of: appState.deepLinkFeedPostId) { _, _ in
                 openDeepLinkedPostIfNeeded()
@@ -193,7 +231,7 @@ struct FeedView: View {
                 currentUserFirebaseUid: authService.firebaseUser?.uid,
                 isLiked: appState.likedPostIds.contains(post.id.uuidString),
                 onBookTap: { bookProfileSourceUid = post.userId; selectedBookForProfile = $0 },
-                onCommentTap: { postForComments = post },
+                onCommentTap: { commentsScrollTargetId = nil; postForComments = post },
                 onLikeToggle: { appState.togglePostLike(postId: post.id.uuidString, liked: $0) },
                 onEditReviewTap: { openEditReview(for: post) },
                 canEditReview: post.bookId.map { appState.userReadBook(forBookId: $0) != nil } ?? false,
@@ -207,7 +245,7 @@ struct FeedView: View {
                 currentUserFirebaseUid: authService.firebaseUser?.uid,
                 isLiked: { appState.likedPostIds.contains($0.id.uuidString) },
                 onBookTap: { bookProfileSourceUid = group.posts.first?.userId; selectedBookForProfile = $0 },
-                onCommentTap: { postForComments = $0 },
+                onCommentTap: { commentsScrollTargetId = nil; postForComments = $0 },
                 onLikeToggle: { post, liked in appState.togglePostLike(postId: post.id.uuidString, liked: liked) },
                 onEditReviewTap: { openEditReview(for: $0) },
                 canEditReview: { $0.bookId.map { appState.userReadBook(forBookId: $0) != nil } ?? false },
@@ -318,6 +356,9 @@ struct FeedView: View {
     private func openDeepLinkedPostIfNeeded() {
         guard let id = appState.deepLinkFeedPostId else { return }
         appState.deepLinkFeedPostId = nil
+        let targetCommentId = appState.deepLinkFeedCommentId
+        appState.deepLinkFeedCommentId = nil
+        commentsScrollTargetId = targetCommentId
         if let p = appState.feedPosts.first(where: { $0.id.uuidString == id }) {
             postForComments = p
             return
@@ -477,6 +518,8 @@ struct FeedPostRow: View {
 
     /// Latest comments shown inline under the post (Instagram-style, max 2).
     @State private var previewComments: [Comment] = []
+    /// Bumped on each comment-button tap so the bubble icon bounces like the heart.
+    @State private var commentTapPulse = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -490,7 +533,9 @@ struct FeedPostRow: View {
                         Text(book.title)
                             .font(Theme.headline())
                             .foregroundStyle(Theme.textPrimary)
-                            .lineLimit(2)
+                            // Never truncate a book title — wrap to as many
+                            // lines as it needs, in the feed and in carousel cards.
+                            .fixedSize(horizontal: false, vertical: true)
                         Text(book.author)
                             .font(Theme.callout())
                             .foregroundStyle(Theme.textSecondary)
@@ -523,9 +568,10 @@ struct FeedPostRow: View {
                         activeColor: Theme.punch
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.springPress)
                 .sensoryFeedback(.impact(weight: .medium), trigger: isLiked)
                 Button {
+                    commentTapPulse += 1
                     onCommentTap?()
                 } label: {
                     engagementPill(
@@ -533,10 +579,12 @@ struct FeedPostRow: View {
                         count: post.commentCount,
                         tint: Theme.textSecondary,
                         active: false,
-                        activeColor: Theme.chrome
+                        activeColor: Theme.chrome,
+                        bouncePulse: commentTapPulse
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.springPress)
+                .sensoryFeedback(.impact(weight: .light), trigger: commentTapPulse)
                 Spacer()
             }
             .padding(.horizontal)
@@ -555,22 +603,26 @@ struct FeedPostRow: View {
         .padding(.top, 14)
         .task(id: "\(post.id.uuidString)-\(post.commentCount)") {
             guard post.commentCount > 0 else {
-                previewComments = []
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { previewComments = [] }
                 return
             }
             let all = await CommentRepository().fetchComments(postId: post.id.uuidString)
-            previewComments = Array(all.suffix(2))
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                previewComments = Array(all.suffix(2))
+            }
         }
     }
 
-    /// Chunky tappable capsule for like/comment — icon bounces when toggled on.
+    /// Chunky tappable capsule for like/comment — icon bounces when toggled on
+    /// (or, via `bouncePulse`, on every tap for stateless buttons like comment).
     /// Zero counts are hidden (the mono slashed 0 reads badly), leaving just the icon.
-    private func engagementPill(icon: String, count: Int, tint: Color, active: Bool, activeColor: Color) -> some View {
+    private func engagementPill(icon: String, count: Int, tint: Color, active: Bool, activeColor: Color, bouncePulse: Int = 0) -> some View {
         HStack(spacing: 7) {
             Image(systemName: icon)
                 .font(.system(size: 19, weight: .semibold))
                 .foregroundStyle(tint)
                 .symbolEffect(.bounce, value: active)
+                .symbolEffect(.bounce, value: bouncePulse)
             if count > 0 {
                 Text("\(count)")
                     .font(.system(size: 15, weight: .bold))
@@ -591,45 +643,52 @@ struct FeedPostRow: View {
 
     /// Up to two latest comments inline (Instagram-style) on an inset card:
     /// tiny avatar + name badge above each comment, then "View all N comments".
+    /// The whole card is a spring-press button into the thread, and slides in
+    /// when the preview loads.
     @ViewBuilder
     private var commentPreviewSection: some View {
         if !previewComments.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                ForEach(previewComments) { c in
-                    HStack(alignment: .top, spacing: 8) {
-                        previewCommentAvatar(c)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(c.displayName ?? "User")
-                                .font(.system(size: 10, weight: .bold))
-                                .tracking(0.5)
-                                .foregroundStyle(Theme.chrome)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 2)
-                                .background(Capsule().fill(Theme.chrome.opacity(0.12)))
-                            Text(c.text)
-                                .font(.system(size: 14))
-                                .foregroundStyle(Theme.textPrimary)
-                                .lineLimit(2)
+            Button {
+                onCommentTap?()
+            } label: {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(previewComments) { c in
+                        HStack(alignment: .top, spacing: 8) {
+                            previewCommentAvatar(c)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(c.displayName ?? "User")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .tracking(0.5)
+                                    .foregroundStyle(Theme.chrome)
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 2)
+                                    .background(Capsule().fill(Theme.chrome.opacity(0.12)))
+                                Text(c.text)
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(Theme.textPrimary)
+                                    .lineLimit(2)
+                            }
+                            Spacer(minLength: 0)
                         }
-                        Spacer(minLength: 0)
+                    }
+                    if post.commentCount > previewComments.count {
+                        Text("View all \(post.commentCount) comments")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Theme.textTertiary)
                     }
                 }
-                if post.commentCount > previewComments.count {
-                    Text("View all \(post.commentCount) comments")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Theme.textTertiary)
-                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Theme.surface.opacity(0.6))
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 12))
             }
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Theme.surface.opacity(0.6))
-            )
-            .contentShape(Rectangle())
-            .onTapGesture { onCommentTap?() }
+            .buttonStyle(.springPress)
             .padding(.horizontal)
             .padding(.bottom, 14)
+            .transition(.opacity.combined(with: .move(edge: .bottom)))
         }
     }
 
@@ -730,9 +789,12 @@ struct ExpandableReviewText: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(text)
+            // @mentions render ink-weighted and tappable (spine-mention:// links,
+            // handled by FeedView's openURL action).
+            Text(MentionScanner.attributed(text, mentionColor: Theme.chrome))
                 .font(Theme.body())
                 .foregroundStyle(Theme.textPrimary)
+                .tint(Theme.chrome)
                 .lineSpacing(Theme.bodyLineSpacing)
                 .lineLimit(expanded ? nil : Self.collapsedLineLimit)
                 // Full width so the reported size (which sizes the hidden

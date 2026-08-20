@@ -42,6 +42,39 @@ function teaser8Words(text: string): string {
   return `${head}...`;
 }
 
+/** "@handle" tokens in text (lowercased, deduped) — each preceded by start-of-text
+ * or whitespace so email addresses don't register as mentions. */
+function mentionHandles(text: string): string[] {
+  const out = new Set<string>();
+  const re = /(^|\s)@([A-Za-z0-9._-]+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    out.add(m[2]!.toLowerCase());
+  }
+  return [...out];
+}
+
+/**
+ * Resolves @handles in `text` to uids: `handleClaims/{handle}` first (doc id =
+ * lowercase handle), then a username query for accounts predating claims.
+ * Unknown handles are dropped — plain "@aside" text never notifies anyone.
+ * Capped at 10 mentions per text.
+ */
+async function resolveMentionUids(text: string): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  for (const handle of mentionHandles(text).slice(0, 10)) {
+    const claim = await db.collection("handleClaims").doc(handle).get();
+    const claimUid = claim.data()?.uid as string | undefined;
+    if (claimUid) {
+      result.set(handle, claimUid);
+      continue;
+    }
+    const q = await db.collection("users").where("username", "==", handle).limit(1).get();
+    if (!q.empty) result.set(handle, q.docs[0]!.id);
+  }
+  return result;
+}
+
 /** APNs attachments require https; Google Books covers are often stored as http. */
 function httpsUpgraded(url: string | null): string | null {
   if (!url) return null;
@@ -541,8 +574,12 @@ export const onFriendReviewPosted = onDocumentCreated(
       }
     }
 
+    // Users @mentioned in the review already got an immediate, more specific
+    // review_mentioned alert (see onPostCaptionMentions) — don't alert them twice.
+    const mentionedUids = new Set((await resolveMentionUids(caption)).values());
     const recipients = (await recipientUidsWhoFollow(authorId))
-      .filter((uid) => hiddenAccountCanNotify(authorId, uid));
+      .filter((uid) => hiddenAccountCanNotify(authorId, uid))
+      .filter((uid) => !mentionedUids.has(uid));
     const payload = {
       type: "friend_review_posted",
       postId,
@@ -553,6 +590,60 @@ export const onFriendReviewPosted = onDocumentCreated(
       } else {
         await notifyUser(uid, title, body, payload, authorId, coverURL);
       }
+    }
+  }
+);
+
+/**
+ * @mentions in review captions: review_mentioned to each newly-tagged user when
+ * a post is created or its caption edited to add them. Fires on every post
+ * write, so it bails immediately when the caption didn't change (tier updates,
+ * commentCount bumps). Editing a caption never re-notifies existing mentions.
+ */
+export const onPostCaptionMentions = onDocumentWritten(
+  {
+    document: "posts/{postId}",
+    database: DATABASE_ID,
+  },
+  async (event) => {
+    const postId = event.params.postId as string;
+    const before = event.data?.before.exists ? event.data.before.data() : undefined;
+    const after = event.data?.after.exists ? event.data.after.data() : undefined;
+    if (!after) return;
+    const beforeCaption = ((before?.caption as string | undefined) ?? "").trim();
+    const afterCaption = ((after.caption as string | undefined) ?? "").trim();
+    if (afterCaption.length === 0 || beforeCaption === afterCaption) return;
+    const authorId = after.userId as string | undefined;
+    if (!authorId) return;
+
+    const beforeHandles = new Set(mentionHandles(beforeCaption));
+    const newHandles = mentionHandles(afterCaption).filter((h) => !beforeHandles.has(h));
+    if (newHandles.length === 0) return;
+    const resolved = await resolveMentionUids(afterCaption);
+    const newUids = new Set(
+      newHandles
+        .map((h) => resolved.get(h))
+        .filter((u): u is string => typeof u === "string" && u !== authorId)
+    );
+    if (newUids.size === 0) return;
+
+    const author = (await db.collection("users").doc(authorId).get()).data();
+    const first = firstNameFromUser(author);
+    const { title: book, coverURL } = await bookInfo(after.bookId as string | undefined);
+    const title = book
+      ? `${first} mentioned you in their review of ${book}`
+      : `${first} mentioned you in a review`;
+    const body = teaser8Words(afterCaption);
+    for (const uid of newUids) {
+      if (!hiddenAccountCanNotify(authorId, uid)) continue;
+      await notifyUser(
+        uid,
+        title,
+        body,
+        { type: "review_mentioned", postId },
+        authorId,
+        coverURL
+      );
     }
   }
 );
@@ -679,6 +770,49 @@ export const onPostLiked = onDocumentCreated(
   }
 );
 
+export const onCommentLiked = onDocumentCreated(
+  {
+    document: "commentLikes/{likeId}",
+    database: DATABASE_ID,
+  },
+  async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+    const d = snap.data();
+    const likerId = d.userId as string;
+    const commentId = d.commentId as string;
+    const postId = d.postId as string;
+    if (!likerId || !commentId || !postId) return;
+
+    const comment = await db.collection("comments").doc(commentId).get();
+    const commentData = comment.data();
+    if (!commentData) return;
+    const authorId = commentData.userId as string;
+    if (!authorId || likerId === authorId) return;
+    if (!hiddenAccountCanNotify(likerId, authorId)) return;
+
+    const liker = (await db.collection("users").doc(likerId).get()).data();
+    const first = firstNameFromUser(liker);
+    const postData = (await db.collection("posts").doc(postId).get()).data();
+    const { title: book, coverURL } = await bookInfo(postData?.bookId as string | undefined);
+    const title = book
+      ? `${first} liked your comment on ${book}`
+      : `${first} liked your comment`;
+    // Body echoes the liked comment so the alert reads on its own; the tap
+    // deep-links to the thread scrolled to this exact comment.
+    const body = teaser8Words((commentData.text as string | undefined) ?? "");
+
+    await notifyUser(
+      authorId,
+      title,
+      body,
+      { type: "comment_liked", postId, commentId },
+      likerId,
+      coverURL
+    );
+  }
+);
+
 export const onCommentCreated = onDocumentCreated(
   {
     document: "comments/{commentId}",
@@ -743,8 +877,30 @@ export const onCommentCreated = onDocumentCreated(
       );
     }
 
-    // Thread participants (exclude new commenter, post author, and the replied-to
-    // commenter — each already notified above)
+    // @mentions: comment_mentioned to each tagged user — but one alert per person:
+    // the replied-to commenter keeps their comment_replied (replies auto-tag them,
+    // so without this exclusion every reply would double-notify), and the post
+    // author keeps their review_commented.
+    const mentionUids = new Set((await resolveMentionUids(commentText)).values());
+    const mentionTitle = book
+      ? `${first} mentioned you in a comment on ${book}`
+      : `${first} mentioned you in a comment`;
+    const mentionBody = teaser8Words(commentText);
+    for (const uid of mentionUids) {
+      if (uid === commenterId || uid === authorId || uid === replyTargetUid) continue;
+      if (!hiddenAccountCanNotify(commenterId, uid)) continue;
+      await notifyUser(
+        uid,
+        mentionTitle,
+        mentionBody,
+        { type: "comment_mentioned", postId },
+        commenterId,
+        coverURL
+      );
+    }
+
+    // Thread participants (exclude new commenter, post author, the replied-to
+    // commenter, and mentioned users — each already notified above)
     const commentsSnap = await db.collection("comments").where("postId", "==", postId).get();
     const participantIds = new Set<string>();
     commentsSnap.forEach((doc) => {
@@ -754,6 +910,7 @@ export const onCommentCreated = onDocumentCreated(
     participantIds.delete(commenterId);
     participantIds.delete(authorId);
     if (replyTargetUid) participantIds.delete(replyTargetUid);
+    for (const uid of mentionUids) participantIds.delete(uid);
 
     const threadTitle = book
       ? `${first} also commented on the ${book} review you joined`

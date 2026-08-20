@@ -139,7 +139,7 @@ struct FeedDayGroupCarousel: View {
     @State private var currentSlideId: String? = nil
 
     /// Trailing sliver of the next card left visible so the swipe is discoverable.
-    private static let nextCardPeek: CGFloat = 44
+    private static let nextCardPeek: CGFloat = 16
     private static let cardSpacing: CGFloat = 10
 
     var body: some View {

@@ -31,6 +31,10 @@ struct UserLibraryDetailView: View {
     @State private var iFollowThem: Bool = false
     @State private var followActionInFlight = false
     @State private var showProfileCard = false
+    /// Feed button beside the year filter: pushes this person's post history.
+    @State private var showUserFeed = false
+    /// List button beside the feed button: pushes their read shelf grouped by year.
+    @State private var showYearList = false
 
     // Book Blend: live pair-doc state drives the entry button; the landing
     // screen handles invite / waiting / story routing.
@@ -42,6 +46,12 @@ struct UserLibraryDetailView: View {
 
     private var readBooks: [UserBook] {
         books.filter { $0.status == .read }
+    }
+
+    /// This page also renders your own library (e.g. opened from a roster), where
+    /// the list view stays editable.
+    private var isViewingOwnLibrary: Bool {
+        authService.firebaseUser?.uid == userId
     }
 
     private var wantToReadList: [UserBook] {
@@ -130,9 +140,9 @@ struct UserLibraryDetailView: View {
                     otherUserSegmentControl
                         .padding(.bottom, 10)
 
-                    // Year filter rides to the right of the goal bar, same as your
-                    // own library. With no goal to show it keeps that slot alone.
-                    if activeReadingGoal != nil || !availableYears.isEmpty {
+                    // Goal bar and feed button; the year filter lives on the S tier
+                    // box as a folder tab, same as your own library.
+                    if activeReadingGoal != nil || !availableYears.isEmpty || !readBooks.isEmpty {
                         HStack(alignment: .center, spacing: 12) {
                             if let goal = activeReadingGoal {
                                 LibraryReadingGoalProgressStrip(
@@ -145,9 +155,10 @@ struct UserLibraryDetailView: View {
                                 Spacer(minLength: 0)
                             }
 
-                            if !availableYears.isEmpty {
-                                yearFilterInline
+                            if !readBooks.isEmpty {
+                                yearListButton
                             }
+                            userFeedButton
                         }
                         .padding(.horizontal, 4)
                         .padding(.bottom, 4)
@@ -192,6 +203,24 @@ struct UserLibraryDetailView: View {
                 reviewSectionHeading: "Review",
                 sourceReaderUid: authService.firebaseUser?.uid == userId ? nil : userId
             )
+        }
+        .navigationDestination(isPresented: $showYearList) {
+            ReadingYearListView(
+                readBooks: readBooks,
+                isEditable: isViewingOwnLibrary,
+                sourceReaderUid: isViewingOwnLibrary ? nil : userId
+            )
+            .environmentObject(appState)
+            .environmentObject(authService)
+        }
+        .navigationDestination(isPresented: $showUserFeed) {
+            UserFeedView(
+                userId: userId,
+                displayFirstName: profileUser?.firstName,
+                onBookTap: { selectedBookForProfile = $0 }
+            )
+            .environmentObject(appState)
+            .environmentObject(authService)
         }
         .onAppear {
             Task {
@@ -441,26 +470,45 @@ struct UserLibraryDetailView: View {
         LibraryReadQueueSegmentControlReadOnly(segment: $segment)
     }
 
-    private var yearFilterInline: some View {
-        Menu {
-            Button("All") { selectedYear = nil }
-            ForEach(availableYears, id: \.self) { year in
-                Button(String(year)) { selectedYear = year }
-            }
+    /// Book count for the S-tier year tab rows; nil year = all their read books.
+    private func readBookCount(forYear year: Int?) -> Int {
+        guard let year else { return readBooks.count }
+        return readBooks.filter { $0.wasRead(inYear: year) }.count
+    }
+
+    /// Feed icon beside the goal bar: opens this person's post history,
+    /// every feed post they've made, newest first.
+    /// Opens their read shelf as a by-year list. Read-only: no Select or year moves.
+    private var yearListButton: some View {
+        Button {
+            showYearList = true
         } label: {
-            HStack(spacing: 4) {
-                Text(selectedYear.map { String($0) } ?? "All")
-                    .font(Theme.callout())
-                    .foregroundStyle(Theme.textPrimary)
-                Image(systemName: "chevron.down.circle.fill")
-                    .font(.caption)
-                    .foregroundStyle(Theme.textTertiary)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 6)
-            .background(Theme.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            Image(systemName: "list.bullet")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Theme.textPrimary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Theme.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(profileUser?.firstName ?? "Their") books by year")
+    }
+
+    private var userFeedButton: some View {
+        Button {
+            showUserFeed = true
+        } label: {
+            Image(systemName: "newspaper")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Theme.textPrimary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Theme.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(profileUser?.firstName ?? "Their") feed")
     }
 
     @ViewBuilder
@@ -470,7 +518,13 @@ struct UserLibraryDetailView: View {
                 userBooks: readBooksFilteredByYear,
                 onUpdateTierAndOrder: { _, _, _ in },
                 onBookTap: { selectedBookForProfile = $0 },
-                readOnly: true
+                readOnly: true,
+                yearFilter: availableYears.isEmpty ? nil : TierYearFilter(
+                    availableYears: availableYears,
+                    selectedYear: selectedYear,
+                    countForYear: { readBookCount(forYear: $0) },
+                    onSelect: { selectedYear = $0 }
+                )
             )
         } else {
             QueueLibraryView(

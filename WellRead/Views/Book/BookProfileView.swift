@@ -86,6 +86,7 @@ struct BookProfileView: View {
         let entry: UserBook
     }
     @State private var readByReaders: [ReadByReader] = []
+    @State private var readByProfileToView: ReadByReader?
 
     @State private var recommendReaders: [RecommendReader] = []
     @State private var recommendLoading = false
@@ -239,6 +240,21 @@ struct BookProfileView: View {
                 }
             }
         }
+        .sheet(item: $readByProfileToView) { reader in
+            NavigationStack {
+                ZStack {
+                    Theme.background.ignoresSafeArea()
+                    UserLibraryDetailView(userId: reader.uid)
+                }
+                .toolbarBackground(Theme.background, for: .navigationBar)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done") { readByProfileToView = nil }
+                            .foregroundStyle(Theme.accent)
+                    }
+                }
+            }
+        }
         .confirmationDialog("You've read this book", isPresented: $showRereadPrompt, titleVisibility: .visible) {
             Button("Log Another Read") { logReread() }
             Button("Remove from Read", role: .destructive) { showRemoveFromReadConfirm = true }
@@ -352,7 +368,7 @@ struct BookProfileView: View {
         guard let ub = appState.userBooks.first(where: { $0.bookId == book.id }) else { return nil }
         switch ub.status {
         case .read:
-            return ("READ", Theme.chrome)
+            return ("READ", Color(red: 0.65, green: 0.85, blue: 0.60))
         case .currentlyReading:
             return ("READING NOW", Theme.punch)
         case .wantToRead:
@@ -370,17 +386,37 @@ struct BookProfileView: View {
                 .shadow(color: Theme.shadowInk.opacity(0.18), radius: 14, x: 0, y: 6)
                 .overlay(alignment: .topTrailing) {
                     if let badge = statusBadge {
-                        Text(badge.label)
-                            .font(.system(size: 11, weight: .bold))
-                            .tracking(0.8)
-                            .foregroundStyle(Theme.onChrome)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(Capsule().fill(badge.color))
-                            .overlay(Capsule().stroke(Theme.onChrome.opacity(0.85), lineWidth: 1.5))
-                            .rotationEffect(.degrees(6))
-                            .shadow(color: Theme.shadowInk.opacity(0.25), radius: 4, x: 0, y: 2)
-                            .offset(x: 14, y: -10)
+                        if badge.label == "READ" {
+                            Button {
+                                if let ub = currentUserReadEntry { userBookToEdit = ub }
+                            } label: {
+                                Text(badge.label)
+                                    .font(.system(size: 16, weight: .bold))
+                                    .tracking(1.2)
+                                    .foregroundStyle(Theme.inkFixed)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 7)
+                                    .background(Capsule().fill(badge.color))
+                                    .overlay(Capsule().stroke(Theme.paperFixed.opacity(0.85), lineWidth: 2))
+                                    .rotationEffect(.degrees(6))
+                                    .shadow(color: Theme.shadowInk.opacity(0.25), radius: 5, x: 0, y: 2)
+                                    // Hang off the corner so it only clips the very top of the cover.
+                                    .offset(x: 18, y: -18)
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            Text(badge.label)
+                                .font(.system(size: 11, weight: .bold))
+                                .tracking(0.8)
+                                .foregroundStyle(Theme.onChrome)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(Capsule().fill(badge.color))
+                                .overlay(Capsule().stroke(Theme.onChrome.opacity(0.85), lineWidth: 1.5))
+                                .rotationEffect(.degrees(6))
+                                .shadow(color: Theme.shadowInk.opacity(0.25), radius: 4, x: 0, y: 2)
+                                .offset(x: 14, y: -10)
+                        }
                     }
                 }
                 .overlay(alignment: .bottomLeading) {
@@ -402,8 +438,8 @@ struct BookProfileView: View {
                     .foregroundStyle(Theme.textSecondary)
                     .multilineTextAlignment(.center)
 
-                if let published = book.publishedDate {
-                    Text(Self.publishedYearFormatter.string(from: published))
+                if let metaLine = publishedMetaLine {
+                    Text(metaLine)
                         .font(.system(size: 12, weight: .regular))
                         .foregroundStyle(Theme.textTertiary)
                 }
@@ -611,6 +647,18 @@ struct BookProfileView: View {
         return f
     }()
 
+    /// "2018 • 322 pages" — either half stands alone when the other is missing.
+    private var publishedMetaLine: String? {
+        var parts: [String] = []
+        if let published = book.publishedDate {
+            parts.append(Self.publishedYearFormatter.string(from: published))
+        }
+        if let pages = book.pageCount, pages > 0 {
+            parts.append("\(pages) pages")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " \u{2022} ")
+    }
+
     // MARK: - Refresher window
 
     /// Read-books-only card: one tap opens the AI refresher sheet (recap + Q&A).
@@ -797,10 +845,15 @@ struct BookProfileView: View {
         let overflow = readByReaders.count - shown.count
         return HStack(spacing: -12) {
             ForEach(Array(shown.enumerated()), id: \.element.id) { index, reader in
-                readerAvatar(user: reader.user, size: 34)
-                    .overlay(Circle().stroke(Theme.background, lineWidth: 2))
-                    .shadow(color: Theme.shadowInk.opacity(0.25), radius: 3, x: 0, y: 2)
-                    .zIndex(Double(shown.count - index))
+                Button {
+                    readByProfileToView = reader
+                } label: {
+                    readerAvatar(user: reader.user, size: 34)
+                        .overlay(Circle().stroke(Theme.background, lineWidth: 2))
+                        .shadow(color: Theme.shadowInk.opacity(0.25), radius: 3, x: 0, y: 2)
+                }
+                .buttonStyle(.plain)
+                .zIndex(Double(shown.count - index))
             }
             if overflow > 0 {
                 Text("+\(overflow)")
@@ -844,18 +897,25 @@ struct BookProfileView: View {
     private func readByRow(_ reader: ReadByReader, highlighted: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
-                readerAvatar(user: reader.user, size: 36)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(reader.user.displayName)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Theme.textPrimary)
-                        .lineLimit(1)
-                    if let finished = reader.entry.dateFinished {
-                        Text("read \(Self.readDateFormatter.string(from: finished))")
-                            .font(.system(size: 11, weight: .regular))
-                            .foregroundStyle(Theme.textTertiary)
+                Button {
+                    readByProfileToView = reader
+                } label: {
+                    HStack(spacing: 10) {
+                        readerAvatar(user: reader.user, size: 36)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(reader.user.displayName)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(Theme.textPrimary)
+                                .lineLimit(1)
+                            if let finished = reader.entry.dateFinished {
+                                Text("read \(Self.readDateFormatter.string(from: finished))")
+                                    .font(.system(size: 11, weight: .regular))
+                                    .foregroundStyle(Theme.textTertiary)
+                            }
+                        }
                     }
                 }
+                .buttonStyle(.plain)
                 Spacer(minLength: 8)
                 if let t = reader.entry.tier {
                     TierBadge(tier: t, size: .mini)

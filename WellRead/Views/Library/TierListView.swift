@@ -8,8 +8,10 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Match queue grid: wider slots so drops register between covers.
-private let tierDropSlotWidth: CGFloat = 16
+/// Narrower than the queue grid's 16pt: tier rows trade drop-target width for
+/// bigger covers. Between-cover drops stay easy because each cover's own edge
+/// zones (tierBookDropZoneFraction) also accept inserts.
+private let tierDropSlotWidth: CGFloat = 10
 
 /// Coordinate space of the tier-list ScrollView, used to pin each tier's letter
 /// to the top of the viewport while its (possibly very tall) row scrolls by.
@@ -28,8 +30,8 @@ private func tierColor(for tier: String?) -> Color {
 /// anything yet, so the tier list doesn't read as just blank on first arrival.
 private func tierEmptyHint(for tier: String) -> String? {
     switch tier {
-    case "S": return "the best of the best"
-    case "F": return "the worst of the worst"
+    case "S": return "The best of the best"
+    case "F": return "The worst of the worst"
     default: return nil
     }
 }
@@ -164,6 +166,17 @@ struct TierDragItem: Transferable, Hashable {
     }
 }
 
+/// Year filter rendered as a folder tab on the S tier box, in your own library
+/// and on other people's. Counts come from the unfiltered read list so every
+/// menu row can show "2025 (16)" style totals.
+struct TierYearFilter {
+    let availableYears: [Int]
+    let selectedYear: Int?
+    /// Book count for a year; nil = all read books.
+    let countForYear: (Int?) -> Int
+    let onSelect: (Int?) -> Void
+}
+
 struct TierListView: View {
     let userBooks: [UserBook]
     /// (userBookId, tier, insertionIndex). Index 0 = first in row; nil = append at end.
@@ -176,6 +189,8 @@ struct TierListView: View {
     var highlightedBookId: String? = nil
     /// `Book.id`s to render with a selection check (Discover seed-book picker). Only used with `readOnly`.
     var selectedBookIds: Set<String> = []
+    /// When set, the S tier box grows a header strip with this year dropdown in its top-right corner.
+    var yearFilter: TierYearFilter? = nil
 
     @EnvironmentObject private var queueDragCoordinator: QueueBookDragCoordinator
 
@@ -186,7 +201,8 @@ struct TierListView: View {
 
     /// Content area width for each row: list width minus horizontal padding and tier label.
     private static let tierLabelWidth: CGFloat = 38
-    private static let horizontalPadding: CGFloat = 6 * 2
+    /// Must match the ScrollView content's `.padding(.horizontal, 4)` below.
+    private static let horizontalPadding: CGFloat = 4 * 2
 
     var body: some View {
         GeometryReader { geo in
@@ -200,18 +216,28 @@ struct TierListView: View {
                     // scrollTo on an unbuilt LazyVStack child silently does nothing.
                     VStack(alignment: .leading, spacing: 8) {
                         ForEach(tierLabels, id: \.self) { tier in
-                            TierRowView(
-                                tier: tier,
-                                books: sortedBooks(for: tier),
-                                contentAreaWidth: contentAreaWidth,
-                                topCount: tier == "S" ? topBookCount : nil,
-                                onUpdateTierAndOrder: onUpdateTierAndOrder,
-                                onBookTap: onBookTap,
-                                readOnly: readOnly,
-                                highlightedBookId: highlightedBookId,
-                                selectedBookIds: selectedBookIds,
-                                emptyHint: (!readOnly && hasNoRankedBooks) ? tierEmptyHint(for: tier) : nil
-                            )
+                            // spacing 0 so the S tier's year tab sits flush on the row's
+                            // top edge, reading as one piece of folder furniture.
+                            VStack(alignment: .trailing, spacing: 0) {
+                                if tier == "S", let yearFilter {
+                                    yearFilterTab(yearFilter)
+                                        .padding(.trailing, Theme.cardCornerRadius + 4)
+                                }
+                                TierRowView(
+                                    tier: tier,
+                                    books: sortedBooks(for: tier),
+                                    contentAreaWidth: contentAreaWidth,
+                                    // Top N only means "absolute favorites" against the full list,
+                                    // so hide it while a year filter is narrowing the tier.
+                                    topCount: (tier == "S" && yearFilter?.selectedYear == nil) ? topBookCount : nil,
+                                    onUpdateTierAndOrder: onUpdateTierAndOrder,
+                                    onBookTap: onBookTap,
+                                    readOnly: readOnly,
+                                    highlightedBookId: highlightedBookId,
+                                    selectedBookIds: selectedBookIds,
+                                    emptyHint: (!readOnly && hasNoRankedBooks) ? tierEmptyHint(for: tier) : nil
+                                )
+                            }
                         }
                         TierRowView(
                             tier: nil,
@@ -336,16 +362,56 @@ struct TierListView: View {
         // positions in this exact ordering.
         spineTierSorted(userBooks.filter { $0.normalizedTier == tier })
     }
+
+    /// "2025 (16)" / "All (288)" label for the year tab and its menu rows.
+    private func yearFilterLabel(_ year: Int?, _ filter: TierYearFilter) -> String {
+        let name = year.map(String.init) ?? "All"
+        return "\(name) (\(filter.countForYear(year)))"
+    }
+
+    /// Year dropdown styled as a physical folder tab riding the top edge of the
+    /// S tier box: rounded top corners, square bottom, and the exact row surface
+    /// fill so tab and box read as one piece.
+    private func yearFilterTab(_ filter: TierYearFilter) -> some View {
+        Menu {
+            Button(yearFilterLabel(nil, filter)) { filter.onSelect(nil) }
+            ForEach(filter.availableYears, id: \.self) { year in
+                Button(yearFilterLabel(year, filter)) { filter.onSelect(year) }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Text(yearFilterLabel(filter.selectedYear, filter))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.textPrimary)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(Theme.textTertiary)
+            }
+            .padding(.horizontal, 13)
+            .padding(.top, 6)
+            .padding(.bottom, 5)
+            .background(
+                UnevenRoundedRectangle(
+                    topLeadingRadius: 10,
+                    bottomLeadingRadius: 0,
+                    bottomTrailingRadius: 0,
+                    topTrailingRadius: 10
+                )
+                .fill(Theme.surface.opacity(0.6))
+            )
+        }
+        .accessibilityLabel("Filter books by year")
+    }
 }
 
 /// Min/max book size so 4-per-row stays readable and doesn't clip.
 private let tierBookSizeMin: CGFloat = 48
-private let tierBookSizeMax: CGFloat = 80
+private let tierBookSizeMax: CGFloat = 88
 private let tierRowPadding: CGFloat = 1
-/// Horizontal inset of the "Top N" favorites box within the S-tier row.
+/// Leading inset of the "Top N" favorites box background within the S-tier row.
 private let topGroupInset: CGFloat = 5
-/// Extra trailing inset so the box's right edge doesn't run as far as the row's.
-private let topGroupTrailingExtra: CGFloat = 3
+/// Trailing inset of the box background, kept clear of the row's corner clip.
+private let topGroupTrailingInset: CGFloat = 8
 
 struct TierRowView: View {
     let tier: String?
@@ -419,10 +485,10 @@ struct TierRowView: View {
         // The top-group callout only appears once the S tier is full enough for the
         // first `topCount` slots to actually mean "your absolute favorites".
         let activeTopCount: Int? = topCount.flatMap { books.count >= $0 ? $0 : nil }
-        // When the top-favorites box is present, its horizontal inset eats into the
-        // row width — size books to fit inside it or the box overflows the row's
-        // rounded clip on the right.
-        let available = w - tierRowPadding * 2 - (activeTopCount != nil ? topGroupInset * 2 + topGroupTrailingExtra : 0)
+        // Every tier reserves the same clearance (the top-favorites box's trailing
+        // inset), so covers are one size everywhere and their columns line up
+        // across tiers — and top-group rows always end inside the inset box.
+        let available = w - tierRowPadding * 2 - topGroupTrailingInset
         let booksPerRow = 4
         // One narrow slot before each cover, plus the trailing slot: it's flexible
         // upward but can't compress below its minWidth, so full rows (and the Top N
@@ -448,7 +514,7 @@ struct TierRowView: View {
                         Text(emptyHint)
                             .font(Theme.caption())
                             .foregroundStyle(Theme.textSecondary.opacity(0.5))
-                            .padding(.leading, 8)
+                            .frame(maxWidth: .infinity)
                             .allowsHitTesting(false)
                     }
                 }
@@ -477,12 +543,15 @@ struct TierRowView: View {
                                 RoundedRectangle(cornerRadius: 8)
                                     .strokeBorder(Theme.blend(Theme.background, toward: Theme.chrome, light: 0.3, dark: 0.5), lineWidth: 1)
                             )
+                            // Only the box background is inset — the rows inside keep
+                            // the exact geometry of every other row, so the top covers
+                            // sit flush with the covers below instead of shifted right.
+                            // The trailing inset also keeps the box's rounded right
+                            // edge clear of the row's 14pt corner clip.
+                            .padding(.leading, topGroupInset)
+                            .padding(.trailing, topGroupTrailingInset)
                     )
-                    // Inset far enough that the row's 14pt corner clip can't slice the
-                    // box's rounded right edge square.
                     .padding(.top, 3)
-                    .padding(.leading, topGroupInset)
-                    .padding(.trailing, topGroupInset + topGroupTrailingExtra)
                     .padding(.bottom, 2)
                 }
                 ForEach(allRows.dropFirst(topRowCount), id: \.offset) { rowIndex, rowBooks in
@@ -522,7 +591,8 @@ struct TierRowView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
         .background(Capsule().fill(Theme.chrome))
-        .padding(.leading, 6)
+        // Line the chip up with the covers' leading edge (row pad + first slot).
+        .padding(.leading, tierRowPadding + tierDropSlotWidth)
         .padding(.top, 6)
         .padding(.bottom, 4)
         .accessibilityLabel("Top \(count) books")

@@ -192,8 +192,10 @@ struct MainTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: .wellreadOpenFeedPost)) { note in
             // Consume the cold-start stash too, so onAppear doesn't re-handle.
             _ = PushNotificationService.consumePendingOpenPostCommentsTap()
+            _ = PushNotificationService.consumePendingOpenPostCommentsCommentTap()
             if let id = note.userInfo?["postId"] as? String {
                 selectedTab = .feed
+                appState.deepLinkFeedCommentId = note.userInfo?["commentId"] as? String
                 appState.deepLinkFeedPostId = id
             }
         }
@@ -311,6 +313,7 @@ struct MainTabView: View {
             }
             if let postId = PushNotificationService.consumePendingOpenPostCommentsTap() {
                 selectedTab = .feed
+                appState.deepLinkFeedCommentId = PushNotificationService.consumePendingOpenPostCommentsCommentTap()
                 appState.deepLinkFeedPostId = postId
             }
             if let uid = PushNotificationService.consumePendingProfileUserTap() {

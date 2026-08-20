@@ -39,6 +39,8 @@ struct EditReadReviewSheet: View {
     @State private var showDeleteConfirm = false
     @State private var isDeleting = false
     @FocusState private var isThoughtsFocused: Bool
+    /// Roster for @mention autocomplete in Thoughts.
+    @ObservedObject private var mentionCatalog = MentionCatalog.shared
 
     init(userBook: UserBook, feedCaption: String? = nil) {
         self.userBook = userBook
@@ -86,10 +88,22 @@ struct EditReadReviewSheet: View {
                         Text("Read dates")
                             .font(Theme.caption())
                             .foregroundStyle(Theme.textSecondary)
-                        DatePicker("", selection: $dateFinished, displayedComponents: .date)
-                            .datePickerStyle(.compact)
-                            .labelsHidden()
-                            .tint(Theme.accent)
+                        HStack(spacing: 8) {
+                            DatePicker("", selection: $dateFinished, displayedComponents: .date)
+                                .datePickerStyle(.compact)
+                                .labelsHidden()
+                                .tint(Theme.accent)
+                            if !additionalReadDates.isEmpty {
+                                Button {
+                                    removePrimaryReadDate()
+                                } label: {
+                                    Image(systemName: "minus.circle.fill")
+                                        .font(.system(size: 18))
+                                        .foregroundStyle(Theme.textTertiary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
                         ForEach(additionalReadDates.indices, id: \.self) { i in
                             HStack(spacing: 8) {
                                 DatePicker("", selection: $additionalReadDates[i], displayedComponents: .date)
@@ -151,6 +165,19 @@ struct EditReadReviewSheet: View {
                         .padding(12)
                         .background(Theme.background.opacity(0.6))
                         .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                        // Tag readers with "@" — suggestions appear one letter in.
+                        if let query = MentionScanner.activeQuery(in: thoughts) {
+                            let matches = mentionCatalog.suggestions(matching: query)
+                            if !matches.isEmpty {
+                                MentionSuggestionBar(suggestions: matches) { user in
+                                    thoughts = MentionScanner.insertMention(
+                                        handle: user.username.lowercased(),
+                                        into: thoughts
+                                    )
+                                }
+                            }
+                        }
                     }
                     .id("editReviewThoughts")
 
@@ -159,7 +186,7 @@ struct EditReadReviewSheet: View {
                             .font(Theme.callout())
                             .foregroundStyle(Theme.textPrimary)
                     }
-                    .tint(Theme.accent)
+                    .tint(Theme.toggleOn)
                     .disabled(!loadedFeedToggle)
                     .opacity(loadedFeedToggle ? 1 : 0.6)
 
@@ -221,6 +248,7 @@ struct EditReadReviewSheet: View {
             }
         }
         .task {
+            MentionCatalog.shared.ensureLoadedForCurrentUser()
             let has = await appState.hasFinishedBookPost(forBookId: userBook.bookId)
             await MainActor.run {
                 postToFeed = has
@@ -237,6 +265,13 @@ struct EditReadReviewSheet: View {
             }
             Button("Cancel", role: .cancel) {}
         }
+    }
+
+    /// `dateFinished` stays the most recent read, so deleting it promotes the
+    /// newest remaining re-read date into the primary slot.
+    private func removePrimaryReadDate() {
+        guard let newestIndex = additionalReadDates.indices.max(by: { additionalReadDates[$0] < additionalReadDates[$1] }) else { return }
+        dateFinished = additionalReadDates.remove(at: newestIndex)
     }
 
     private func save() async {

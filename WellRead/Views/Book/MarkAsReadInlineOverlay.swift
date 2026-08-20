@@ -15,6 +15,8 @@ struct MarkAsReadInlineOverlay: View {
     let onConfirm: (Date, Double?, Bool, String?, String?) -> Void
 
     @FocusState private var isThoughtsFocused: Bool
+    /// Roster for @mention autocomplete in Thoughts.
+    @ObservedObject private var mentionCatalog = MentionCatalog.shared
     /// Starts empty on purpose: defaulting to today let users save without ever
     /// noticing the date, so finished-on dates silently became "whenever I tapped".
     @State private var markAsReadDate: Date? = nil
@@ -80,6 +82,7 @@ struct MarkAsReadInlineOverlay: View {
             selectedTier = nil
             showDatePopover = false
             showDateError = false
+            MentionCatalog.shared.ensureLoadedForCurrentUser()
         }
     }
 
@@ -196,6 +199,20 @@ struct MarkAsReadInlineOverlay: View {
             )
             .id("inlineThoughts")
 
+            // Tag readers with "@" — suggestions appear one letter in.
+            if let query = MentionScanner.activeQuery(in: markAsReadThoughts) {
+                let matches = mentionCatalog.suggestions(matching: query)
+                if !matches.isEmpty {
+                    MentionSuggestionBar(suggestions: matches) { user in
+                        markAsReadThoughts = MentionScanner.insertMention(
+                            handle: user.username.lowercased(),
+                            into: markAsReadThoughts
+                        )
+                    }
+                    .padding(.top, -8)
+                }
+            }
+
             InlineTierPicker(selection: $selectedTier)
 
             Toggle(isOn: $markAsReadPostToFeed) {
@@ -203,7 +220,7 @@ struct MarkAsReadInlineOverlay: View {
                     .font(Theme.callout())
                     .foregroundStyle(Theme.textPrimary)
             }
-            .tint(Theme.accent)
+            .tint(Theme.toggleOn)
 
             Button {
                 guard let date = markAsReadDate else {

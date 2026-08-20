@@ -71,6 +71,56 @@ final class CommentRepository {
         }
     }
 
+    /// Deletes the given comment docs (a comment plus whichever replies beneath it
+    /// the viewer is allowed to remove) and drops the post's commentCount to match.
+    /// Like docs on those comments are cleared first (rules let the comment author do
+    /// that) but best-effort: a failure there never blocks the delete itself.
+    func deleteComments(ids: [String], postId: String) async throws {
+        guard !ids.isEmpty else { return }
+        await deleteLikes(forCommentIds: Set(ids), postId: postId)
+        var i = 0
+        while i < ids.count {
+            let end = min(i + 400, ids.count)
+            let batch = db.batch()
+            for j in i..<end {
+                batch.deleteDocument(db.collection(comments).document(ids[j]))
+            }
+            try await batch.commit()
+            i = end
+        }
+        try await db.collection("posts").document(postId).updateData([
+            "commentCount": FieldValue.increment(Int64(-ids.count)),
+        ])
+    }
+
+    /// Removes every commentLikes doc pointing at the given comments. Best-effort:
+    /// orphaned like docs are harmless, so errors are swallowed.
+    private func deleteLikes(forCommentIds commentIds: Set<String>, postId: String) async {
+        do {
+            let snapshot = try await db.collection("commentLikes")
+                .whereField("postId", isEqualTo: postId)
+                .getDocuments()
+            let docs = snapshot.documents.filter {
+                guard let cid = $0.data()["commentId"] as? String else { return false }
+                return commentIds.contains(cid)
+            }
+            var i = 0
+            while i < docs.count {
+                let end = min(i + 400, docs.count)
+                let batch = db.batch()
+                for j in i..<end {
+                    batch.deleteDocument(docs[j].reference)
+                }
+                try await batch.commit()
+                i = end
+            }
+        } catch {
+            #if DEBUG
+            print("CommentRepository.deleteLikes: \(error.localizedDescription)")
+            #endif
+        }
+    }
+
     /// Adds a comment and increments post's commentCount. `parentCommentId` marks a reply
     /// to another comment (triggers the reply push in Cloud Functions).
     func addComment(
@@ -110,6 +160,50 @@ final class CommentRepository {
         )
     }
 
+    /// Record that the user liked the comment. Idempotent. Increments comment's likeCount.
+    /// Doc id is "{uid}_{commentId}" (same scheme as postLikes).
+    func addLike(commentId: String, postId: String, userId: String) async throws {
+        let likeRef = db.collection("commentLikes").document("\(userId)_\(commentId)")
+        let commentRef = db.collection(comments).document(commentId)
+        let snapshot = try await likeRef.getDocument()
+        guard !snapshot.exists else { return }
+        try await likeRef.setData([
+            "userId": userId,
+            "commentId": commentId,
+            "postId": postId,
+            "createdAt": Timestamp(date: Date()),
+        ])
+        try await commentRef.updateData([
+            "likeCount": FieldValue.increment(Int64(1)),
+        ])
+    }
+
+    /// Remove the user's like. Idempotent. Decrements comment's likeCount.
+    func removeLike(commentId: String, userId: String) async throws {
+        let likeRef = db.collection("commentLikes").document("\(userId)_\(commentId)")
+        let commentRef = db.collection(comments).document(commentId)
+        let snapshot = try await likeRef.getDocument()
+        guard snapshot.exists else { return }
+        try await likeRef.delete()
+        try await commentRef.updateData([
+            "likeCount": FieldValue.increment(Int64(-1)),
+        ])
+    }
+
+    /// Comment ids (UUID strings) the user has liked on this post — heart fill state.
+    func fetchLikedCommentIds(postId: String, userId: String) async -> Set<String> {
+        do {
+            let snapshot = try await db.collection("commentLikes")
+                .whereField("userId", isEqualTo: userId)
+                .whereField("postId", isEqualTo: postId)
+                .getDocuments()
+            let ids = snapshot.documents.compactMap { $0.data()["commentId"] as? String }
+            return Set(ids)
+        } catch {
+            return []
+        }
+    }
+
     private func comment(from data: [String: Any], docId: String) -> Comment? {
         guard let postId = data["postId"] as? String,
               let userId = data["userId"] as? String,
@@ -120,6 +214,7 @@ final class CommentRepository {
         let displayName = data["displayName"] as? String
         let profileImageURL = data["profileImageURL"] as? String
         let parentCommentId = data["parentCommentId"] as? String
+        let likeCount = (data["likeCount"] as? Int) ?? 0
         return Comment(
             id: id,
             postId: postId,
@@ -128,7 +223,8 @@ final class CommentRepository {
             createdAt: createdAt,
             displayName: displayName,
             profileImageURL: profileImageURL,
-            parentCommentId: parentCommentId
+            parentCommentId: parentCommentId,
+            likeCount: max(0, likeCount)
         )
     }
 }

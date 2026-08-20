@@ -3,9 +3,10 @@
 //  Spine
 //
 //  The Book Blend story: full-bleed auto-advancing pages (Wrapped-style) built
-//  from the stored blend result — score reveal, archetype, shared shelf, taste
-//  map, insights, shelf-steal recs, fresh picks, outro. Hold to pause, tap the
-//  edges to scrub, swipe down to leave. Rewatch is just replaying the doc.
+//  from the stored blend result — score reveal, archetype, one rating-reveal
+//  slide per shared book (did you agree?), taste map, insights, shelf-steal
+//  recs, fresh picks, outro. Hold to pause, tap the edges to scrub, swipe down
+//  to leave. Rewatch is just replaying the doc.
 //
 
 import SwiftUI
@@ -21,10 +22,11 @@ struct BookBlendStoryView: View {
         case intro
         case score
         case archetype
-        case sharedShelf
+        case sharedIntro
+        case bookReveal(Int)
         case genres
         case insight(BookBlend.Insight)
-        case recs(forUid: String)
+        case rec(uid: String, index: Int)
         case freshPicks
         case outro
     }
@@ -42,13 +44,6 @@ struct BookBlendStoryView: View {
     /// Recs queued from this story (by rec key) — instant button flip, and the only
     /// signal for AI recs with no bookId to match against the queue.
     @State private var queuedRecKeys: Set<String> = []
-    /// Shared-shelf page scrolling: the story timer holds while the user browses,
-    /// and the "scroll for more" affordance shows only while books are actually
-    /// cut off below the fold.
-    @State private var shelfLastScroll: Date?
-    @State private var shelfContentMaxY: CGFloat?
-    @State private var shelfNeedsScroll = false
-    @State private var shelfAtBottom = false
 
     private let tick = Timer.publish(every: 1.0 / 30.0, on: .main, in: .common).autoconnect()
 
@@ -60,13 +55,17 @@ struct BookBlendStoryView: View {
     private var pages: [Page] {
         guard let result else { return [.outro] }
         var list: [Page] = [.intro, .score, .archetype]
-        if !result.sharedBooks.isEmpty { list.append(.sharedShelf) }
+        if !result.sharedBooks.isEmpty {
+            list.append(.sharedIntro)
+            for i in result.sharedBooks.indices { list.append(.bookReveal(i)) }
+        }
         if !result.sharedGenres.isEmpty || !(result.distinctGenres[myUid] ?? []).isEmpty || !(result.distinctGenres[otherUid] ?? []).isEmpty {
             list.append(.genres)
         }
         for insight in result.insights.prefix(2) { list.append(.insight(insight)) }
-        if !(result.recs[myUid] ?? []).isEmpty { list.append(.recs(forUid: myUid)) }
-        if !(result.recs[otherUid] ?? []).isEmpty { list.append(.recs(forUid: otherUid)) }
+        // One full slide per rec, so each pick's reason gets read, not skimmed.
+        for i in (result.recs[myUid] ?? []).prefix(3).indices { list.append(.rec(uid: myUid, index: i)) }
+        for i in (result.recs[otherUid] ?? []).prefix(3).indices { list.append(.rec(uid: otherUid, index: i)) }
         if !result.freshPicks.isEmpty { list.append(.freshPicks) }
         list.append(.outro)
         return list
@@ -75,7 +74,12 @@ struct BookBlendStoryView: View {
     private var pageDuration: Double {
         switch pages[pageIndex] {
         case .score: return 8.5
-        case .sharedShelf, .recs, .genres: return 9.0
+        case .sharedIntro: return 4.0
+        // Quick beats: cover in, my verdict, their verdict, agree/clash stamp.
+        case .bookReveal: return 4.4
+        // Room to read the full pick reason (and hit Add to Queue).
+        case .rec: return 7.5
+        case .genres: return 9.0
         default: return 7.0
         }
     }
@@ -127,15 +131,10 @@ struct BookBlendStoryView: View {
         .sensoryFeedback(.impact(weight: .light), trigger: pageIndex)
         .onReceive(tick) { _ in
             guard !paused else { return }
-            if let t = shelfLastScroll, Date().timeIntervalSince(t) < 0.8 { return }
             pageProgress += (1.0 / 30.0) / pageDuration
             if pageProgress >= 1 { advance() }
         }
         .onChange(of: pageIndex) { _, _ in
-            shelfLastScroll = nil
-            shelfContentMaxY = nil
-            shelfNeedsScroll = false
-            shelfAtBottom = false
             if case .score = pages[pageIndex] { startScoreReveal() }
         }
     }
@@ -186,21 +185,21 @@ struct BookBlendStoryView: View {
             onDismiss()
             return
         }
+        // Reset progress before the page switch: the incoming page's reveal
+        // beats key off pageProgress, and flipping pageIndex first lets it
+        // render one frame at the old page's ~1.0 (fully-revealed ghost flash).
+        pageProgress = 0
         withAnimation(.easeOut(duration: 0.3)) {
             pageIndex += 1
         }
-        pageProgress = 0
     }
 
     private func goBack() {
-        if pageIndex == 0 {
-            pageProgress = 0
-            return
-        }
+        pageProgress = 0
+        if pageIndex == 0 { return }
         withAnimation(.easeOut(duration: 0.3)) {
             pageIndex -= 1
         }
-        pageProgress = 0
     }
 
     private var progressBars: some View {
@@ -251,10 +250,11 @@ struct BookBlendStoryView: View {
         case .intro: introPage
         case .score: scorePage
         case .archetype: archetypePage
-        case .sharedShelf: sharedShelfPage
+        case .sharedIntro: sharedIntroPage
+        case .bookReveal(let index): bookRevealPage(index)
         case .genres: genresPage
         case .insight(let insight): insightPage(insight)
-        case .recs(let uid): recsPage(forUid: uid)
+        case .rec(let uid, let index): recPage(uid: uid, index: index)
         case .freshPicks: freshPicksPage
         case .outro: outroPage
         }
@@ -362,117 +362,42 @@ struct BookBlendStoryView: View {
         }
     }
 
-    private var sharedShelfPage: some View {
-        let shared = result?.sharedBooks ?? []
-        let showMoreHint = shelfNeedsScroll && !shelfAtBottom
-        return VStack(alignment: .leading, spacing: 18) {
-            Spacer(minLength: 70)
-            pageHeader("You've both read", big: "\(shared.count) of the same \(shared.count == 1 ? "book" : "books")")
-            GeometryReader { viewport in
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 12) {
-                        ForEach(Array(shared.enumerated()), id: \.offset) { _, book in
-                            HStack(spacing: 12) {
-                                BookCoverView(book: bookFor(shared: book), size: 44)
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(book.title)
-                                        .font(.system(size: 15, weight: .semibold))
-                                        .foregroundStyle(Theme.paperFixed)
-                                        .lineLimit(1)
-                                    HStack(spacing: 8) {
-                                        verdictChip(name: myName, uid: myUid, book: book)
-                                        verdictChip(name: otherName, uid: otherUid, book: book)
-                                    }
-                                }
-                                Spacer()
-                            }
-                            .padding(10)
-                            .background(RoundedRectangle(cornerRadius: 14).fill(.white.opacity(0.09)))
-                        }
-                    }
-                    .onGeometryChange(for: CGRect.self) { proxy in
-                        proxy.frame(in: .global)
-                    } action: { frame in
-                        let viewportBottom = viewport.frame(in: .global).maxY
-                        let viewportHeight = viewport.size.height
-                        if let prev = shelfContentMaxY, abs(prev - frame.maxY) > 0.5 {
-                            shelfLastScroll = Date()
-                        }
-                        shelfContentMaxY = frame.maxY
-                        let needsScroll = frame.height > viewportHeight + 2
-                        let atBottom = frame.maxY <= viewportBottom + 12
-                        if needsScroll != shelfNeedsScroll || atBottom != shelfAtBottom {
-                            withAnimation(.easeOut(duration: 0.25)) {
-                                shelfNeedsScroll = needsScroll
-                                shelfAtBottom = atBottom
-                            }
-                        }
-                    }
-                    .padding(.bottom, shelfNeedsScroll ? 44 : 0)
-                }
-                .scrollDisabled(!shelfNeedsScroll)
-                .mask(
-                    VStack(spacing: 0) {
-                        Rectangle()
-                        LinearGradient(
-                            colors: [.black, showMoreHint ? .clear : .black],
-                            startPoint: .top, endPoint: .bottom
-                        )
-                        .frame(height: 48)
-                    }
-                )
-                .overlay(alignment: .bottom) {
-                    if showMoreHint {
-                        HStack(spacing: 6) {
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 11, weight: .bold))
-                            Text("Scroll for more")
-                                .font(.system(size: 12, weight: .semibold))
-                        }
-                        .foregroundStyle(Theme.paperFixed.opacity(0.9))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Capsule().fill(.white.opacity(0.16)))
-                        .transition(.opacity)
-                    }
-                }
-            }
-            Spacer(minLength: 24)
+    private var sharedIntroPage: some View {
+        let count = result?.sharedBooks.count ?? 0
+        return VStack(spacing: 24) {
+            Spacer()
+            BlendAvatarLockup(
+                leftURL: blend.participants[myUid]?.photoURL,
+                rightURL: blend.participants[otherUid]?.photoURL,
+                leftName: myName,
+                rightName: otherName,
+                size: 84
+            )
+            pageHeader("You've both read", big: "\(count) of the same \(count == 1 ? "book" : "books")", centered: true)
+            Text("Let's see if you agreed.")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Theme.paperFixed.opacity(0.75))
+            Spacer()
         }
         .padding(.horizontal, 24)
     }
 
-    private func verdictChip(name: String, uid: String, book: BookBlend.SharedBook) -> some View {
-        let rating = book.ratings[uid]
-        let tier = book.tiers[uid]
-        return HStack(spacing: 5) {
-            Text(name)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Theme.paperFixed.opacity(0.85))
-            if let tier {
-                Text(tier)
-                    .font(.system(size: 10, weight: .heavy))
-                    .foregroundStyle(Color.black.opacity(0.78))
-                    .frame(width: 17, height: 17)
-                    .background(
-                        RoundedRectangle(cornerRadius: 5)
-                            .fill(spineTierColor(for: tier))
-                    )
-            }
-            if let rating {
-                Text(Theme.formatRatingOutOfTen(rating))
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Theme.paperFixed.opacity(0.85))
-            }
-            if tier == nil && rating == nil {
-                Text("read it")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Theme.paperFixed.opacity(0.85))
-            }
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(Capsule().fill(.white.opacity(0.14)))
+    private func bookRevealPage(_ index: Int) -> some View {
+        let books = result?.sharedBooks ?? []
+        let book = books[min(index, max(0, books.count - 1))]
+        return BlendBookRevealPage(
+            book: book,
+            coverBook: bookFor(shared: book),
+            index: index,
+            total: books.count,
+            myUid: myUid,
+            otherUid: otherUid,
+            myName: myName,
+            otherName: otherName,
+            myPhotoURL: blend.participants[myUid]?.photoURL,
+            otherPhotoURL: blend.participants[otherUid]?.photoURL,
+            progress: pageProgress
+        )
     }
 
     private var genresPage: some View {
@@ -547,50 +472,59 @@ struct BookBlendStoryView: View {
         }
     }
 
-    private func recsPage(forUid uid: String) -> some View {
-        let recs = result?.recs[uid] ?? []
+    /// One rec, one slide — the full reason gets read, and mine end in an
+    /// Add to Queue button.
+    private func recPage(uid: String, index: Int) -> some View {
+        let recs = Array((result?.recs[uid] ?? []).prefix(3))
+        let rec = recs[min(index, max(0, recs.count - 1))]
         let isMine = uid == myUid
         let shelfOwner = isMine ? otherName : myName
-        return VStack(alignment: .leading, spacing: 18) {
-            Spacer(minLength: 70)
-            pageHeader(
-                isMine ? "For you, \(myName)" : "And for \(otherName)",
-                big: "Steal these from \(shelfOwner)'s shelf"
-            )
-            VStack(spacing: 12) {
-                ForEach(Array(recs.prefix(3).enumerated()), id: \.offset) { _, rec in
-                    VStack(spacing: 10) {
-                        HStack(alignment: .top, spacing: 12) {
-                            BookCoverView(book: bookFor(rec: rec), size: 48)
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(rec.title)
-                                    .font(.system(size: 16, weight: .bold))
-                                    .foregroundStyle(Theme.paperFixed)
-                                    .lineLimit(2)
-                                Text(rec.author)
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundStyle(Theme.paperFixed.opacity(0.6))
-                                    .lineLimit(1)
-                                if !rec.reason.isEmpty {
-                                    Text(rec.reason)
-                                        .font(.system(size: 13, weight: .regular).italic())
-                                        .foregroundStyle(Theme.paperFixed.opacity(0.85))
-                                        .lineLimit(3)
-                                }
-                            }
-                            Spacer(minLength: 0)
-                        }
-                        if isMine {
-                            addToQueueButton(for: rec)
-                        }
-                    }
-                    .padding(12)
-                    .background(RoundedRectangle(cornerRadius: 16).fill(.white.opacity(0.09)))
+        let counter = recs.count > 1 ? " · \(index + 1) of \(recs.count)" : ""
+        return VStack(spacing: 0) {
+            Spacer(minLength: 86)
+            VStack(spacing: 6) {
+                Text((isMine ? "For you, \(myName)\(counter)" : "And for \(otherName)\(counter)").uppercased())
+                    .font(.system(size: 11, weight: .heavy))
+                    .tracking(2)
+                    .foregroundStyle(Theme.paperFixed.opacity(0.55))
+                Text("Steal this from \(shelfOwner)'s shelf")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(Theme.paperFixed)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, 28)
+            Spacer()
+            VStack(spacing: 16) {
+                BookCoverView(book: bookFor(rec: rec), size: 140)
+                    .shadow(color: Theme.shadowInk.opacity(0.5), radius: 18, y: 10)
+                VStack(spacing: 3) {
+                    Text(rec.title)
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundStyle(Theme.paperFixed)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                    Text(rec.author)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Theme.paperFixed.opacity(0.65))
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 32)
+                if !rec.reason.isEmpty {
+                    Text(rec.reason)
+                        .font(.system(size: 17, weight: .medium).italic())
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(4)
+                        .foregroundStyle(Theme.paperFixed.opacity(0.85))
+                        .padding(.horizontal, 36)
                 }
             }
             Spacer()
+            if isMine {
+                addToQueueButton(for: rec)
+                    .padding(.horizontal, 44)
+            }
+            Spacer(minLength: 44)
         }
-        .padding(.horizontal, 24)
         .sensoryFeedback(.success, trigger: queuedRecKeys)
     }
 
@@ -728,6 +662,177 @@ struct BookBlendStoryView: View {
     }
 }
 
+// MARK: - Per-book rating reveal
+
+/// One shared book, one slide: the cover pops in over the two readers, then each
+/// verdict flips from "?" in turn — mine, then theirs — and an AGREED! /
+/// HARD DISAGREE stamp lands when the pair calls for one. Reveal beats key off
+/// the story's page progress, so hold-to-pause freezes mid-reveal and tapping
+/// forward skips the wait.
+private struct BlendBookRevealPage: View {
+    let book: BookBlend.SharedBook
+    let coverBook: Book
+    let index: Int
+    let total: Int
+    let myUid: String
+    let otherUid: String
+    let myName: String
+    let otherName: String
+    let myPhotoURL: String?
+    let otherPhotoURL: String?
+    let progress: Double
+
+    private var showCover: Bool { progress > 0.03 }
+    private var showMine: Bool { progress > 0.22 }
+    private var showTheirs: Bool { progress > 0.50 }
+    private var showStamp: Bool { progress > 0.72 }
+
+    private enum Stamp { case agreed, hardDisagree }
+
+    /// Tier-vs-tier only — numeric ratings never enter the reveal. Same tier =
+    /// agreed; three or more rungs apart on the S–F ladder = hard disagree.
+    private var stamp: Stamp? {
+        guard let mine = book.tiers[myUid].flatMap({ spineTierLabels.firstIndex(of: $0) }),
+              let theirs = book.tiers[otherUid].flatMap({ spineTierLabels.firstIndex(of: $0) }) else { return nil }
+        if mine == theirs { return .agreed }
+        if abs(mine - theirs) >= 3 { return .hardDisagree }
+        return nil
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 86)
+            Text("BOOK \(index + 1) OF \(total)")
+                .font(.system(size: 11, weight: .heavy))
+                .tracking(2)
+                .foregroundStyle(Theme.paperFixed.opacity(0.55))
+            Spacer()
+            VStack(spacing: 16) {
+                BookCoverView(book: coverBook, size: 128)
+                    .shadow(color: Theme.shadowInk.opacity(0.5), radius: 18, y: 10)
+                VStack(spacing: 3) {
+                    Text(book.title)
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundStyle(Theme.paperFixed)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                    Text(book.author)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Theme.paperFixed.opacity(0.65))
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 32)
+            }
+            .opacity(showCover ? 1 : 0)
+            .scaleEffect(showCover ? 1 : 0.7)
+            .animation(.spring(response: 0.45, dampingFraction: 0.75), value: showCover)
+            Spacer()
+            HStack(alignment: .top, spacing: 0) {
+                readerColumn(name: myName, photoURL: myPhotoURL, uid: myUid, revealed: showMine)
+                Text("vs")
+                    .font(.system(size: 14, weight: .heavy))
+                    .foregroundStyle(Theme.paperFixed.opacity(0.45))
+                    .padding(.top, 24)
+                readerColumn(name: otherName, photoURL: otherPhotoURL, uid: otherUid, revealed: showTheirs)
+            }
+            .padding(.horizontal, 28)
+            .overlay { stampView }
+            Spacer()
+            Spacer(minLength: 40)
+        }
+        .sensoryFeedback(.impact(weight: .medium), trigger: showMine)
+        .sensoryFeedback(.impact(weight: .medium), trigger: showTheirs)
+        .sensoryFeedback(stamp == .agreed ? .success : .impact(weight: .heavy), trigger: showStamp && stamp != nil)
+    }
+
+    private func readerColumn(name: String, photoURL: String?, uid: String, revealed: Bool) -> some View {
+        VStack(spacing: 10) {
+            BlendAvatar(urlString: photoURL, name: name, size: 64)
+            Text(name)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Theme.paperFixed.opacity(0.8))
+                .lineLimit(1)
+            ZStack {
+                Text("?")
+                    .font(.system(size: 26, weight: .heavy))
+                    .foregroundStyle(Theme.paperFixed.opacity(0.55))
+                    .frame(width: 54, height: 54)
+                    .background(RoundedRectangle(cornerRadius: 13).fill(.white.opacity(0.12)))
+                    .opacity(revealed ? 0 : 1)
+                    .scaleEffect(revealed ? 0.5 : 1)
+                verdictBadge(uid: uid)
+                    .opacity(revealed ? 1 : 0)
+                    .scaleEffect(revealed ? 1 : 1.7)
+            }
+            .animation(.spring(response: 0.35, dampingFraction: 0.62), value: revealed)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// Tier badge only — numeric ratings are deliberately never shown here.
+    @ViewBuilder
+    private func verdictBadge(uid: String) -> some View {
+        if let tier = book.tiers[uid] {
+            Text(tier)
+                .font(.system(size: 28, weight: .heavy))
+                .foregroundStyle(Color.black.opacity(0.78))
+                .frame(width: 54, height: 54)
+                .background(RoundedRectangle(cornerRadius: 13).fill(spineTierColor(for: tier)))
+                .shadow(color: Theme.shadowInk.opacity(0.4), radius: 8, y: 4)
+        } else {
+            Text("Read it")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(Theme.paperFixed)
+                .padding(.horizontal, 13)
+                .padding(.vertical, 13)
+                .background(Capsule().fill(.white.opacity(0.16)))
+        }
+    }
+
+    @ViewBuilder
+    private var stampView: some View {
+        let visible = showStamp && stamp != nil
+        Group {
+            switch stamp {
+            case .agreed:
+                Text("AGREED!")
+                    .font(.system(size: 24, weight: .heavy))
+                    .tracking(1.5)
+                    .foregroundStyle(Theme.inkFixed)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 9)
+                    .background(Capsule().fill(Theme.paperFixed))
+                    .rotationEffect(.degrees(-7))
+            case .hardDisagree:
+                HStack(spacing: 7) {
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 16, weight: .heavy))
+                    Text("HARD DISAGREE")
+                        .font(.system(size: 18, weight: .heavy))
+                        .tracking(1.2)
+                }
+                .foregroundStyle(Theme.paperFixed)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 9)
+                .background(
+                    Capsule()
+                        .fill(Theme.inkFixed)
+                        .overlay(Capsule().strokeBorder(Theme.paperFixed, lineWidth: 2))
+                )
+                .rotationEffect(.degrees(5))
+            case nil:
+                EmptyView()
+            }
+        }
+        .shadow(color: Theme.shadowInk.opacity(0.45), radius: 10, y: 5)
+        .opacity(visible ? 1 : 0)
+        .scaleEffect(visible ? 1 : 2.1)
+        .animation(.spring(response: 0.3, dampingFraction: 0.6), value: visible)
+        .offset(y: -34)
+        .allowsHitTesting(false)
+    }
+}
+
 #if DEBUG
 extension BookBlend {
     /// Demo blend for `-uiPreviewBlend` simulator runs — exercises every story page.
@@ -751,15 +856,18 @@ extension BookBlend {
                 archetype: "The Plot Twisters",
                 archetypeEmoji: "🌀",
                 tagline: "You read for the moment the floor drops out.",
+                // Ratings stay populated to prove the reveal never displays them —
+                // slides are tier-only. Book 4 = tier hard disagree; book 6 = one
+                // side untier'd ("Read it").
                 sharedBooks: [
-                    SharedBook(bookId: "1", title: "Project Hail Mary", author: "Andy Weir", coverURL: "", ratings: [me: 9.4, them: 9.0], tiers: [me: "S"]),
-                    SharedBook(bookId: "2", title: "Educated", author: "Tara Westover", coverURL: "", ratings: [them: 8.6], tiers: [me: "A"]),
-                    SharedBook(bookId: "3", title: "The Martian", author: "Andy Weir", coverURL: "", ratings: [me: 8.8, them: 7.9], tiers: [:]),
-                    SharedBook(bookId: "4", title: "Atomic Habits", author: "James Clear", coverURL: "", ratings: [me: 7.2], tiers: [them: "B"]),
-                    SharedBook(bookId: "5", title: "Dune", author: "Frank Herbert", coverURL: "", ratings: [me: 9.9, them: 9.5], tiers: [:]),
+                    SharedBook(bookId: "1", title: "Project Hail Mary", author: "Andy Weir", coverURL: "", ratings: [me: 9.4, them: 9.0], tiers: [me: "S", them: "S"]),
+                    SharedBook(bookId: "2", title: "Educated", author: "Tara Westover", coverURL: "", ratings: [them: 8.6], tiers: [me: "A", them: "B"]),
+                    SharedBook(bookId: "3", title: "The Martian", author: "Andy Weir", coverURL: "", ratings: [me: 8.8, them: 7.9], tiers: [me: "B", them: "A"]),
+                    SharedBook(bookId: "4", title: "Atomic Habits", author: "James Clear", coverURL: "", ratings: [me: 3.9], tiers: [me: "F", them: "B"]),
+                    SharedBook(bookId: "5", title: "Dune", author: "Frank Herbert", coverURL: "", ratings: [me: 9.9, them: 9.5], tiers: [me: "S", them: "S"]),
                     SharedBook(bookId: "6", title: "The Midnight Library", author: "Matt Haig", coverURL: "", ratings: [them: 8.1], tiers: [me: "B"]),
-                    SharedBook(bookId: "7", title: "Sapiens", author: "Yuval Noah Harari", coverURL: "", ratings: [me: 8.4, them: 9.1], tiers: [:]),
-                    SharedBook(bookId: "8", title: "The Name of the Wind", author: "Patrick Rothfuss", coverURL: "", ratings: [me: 9.2], tiers: [them: "S"]),
+                    SharedBook(bookId: "7", title: "Sapiens", author: "Yuval Noah Harari", coverURL: "", ratings: [me: 8.4, them: 9.1], tiers: [me: "A", them: "S"]),
+                    SharedBook(bookId: "8", title: "The Name of the Wind", author: "Patrick Rothfuss", coverURL: "", ratings: [me: 9.2], tiers: [me: "S", them: "S"]),
                 ],
                 sharedGenres: ["Science Fiction", "Memoir", "Psychology"],
                 distinctGenres: [me: ["History", "Economics"], them: ["Literary Fiction", "Horror"]],

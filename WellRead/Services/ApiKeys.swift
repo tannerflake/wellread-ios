@@ -16,6 +16,13 @@ enum ApiKeys {
         return nil
     }
 
+    /// Amplitude ingestion key for product analytics. From Secrets.plist / Info.plist "AMPLITUDE_API_KEY".
+    static var amplitude: String? {
+        if let key = keyFromPlist(named: "Secrets", key: "AMPLITUDE_API_KEY"), !key.isEmpty { return key }
+        if let key = keyFromPlist(named: "Info", key: "AMPLITUDE_API_KEY"), !key.isEmpty { return key }
+        return nil
+    }
+
     /// Email/password for hidden test login (tap the welcome book icon 5×). Add `TEST_ACCOUNT_EMAIL` and `TEST_ACCOUNT_PASSWORD` to Secrets.plist; create the same user in Firebase Authentication (Email/Password).
     static var testAccountCredentials: (email: String, password: String)? {
         guard let email = keyFromPlist(named: "Secrets", key: "TEST_ACCOUNT_EMAIL"), !email.isEmpty,
