@@ -559,7 +559,8 @@ struct MainTabView: View {
                     selectedTab = tab
                 }
             } else if tab == .feed {
-                // Already on Feed: FeedView decides whether to scroll to top or refresh.
+                // Already on Feed: FeedView pops any pushed profile/book back to the
+                // feed root, else scrolls to top or refreshes.
                 NotificationCenter.default.post(name: .spineFeedTabTappedAgain, object: nil)
             }
         } label: {

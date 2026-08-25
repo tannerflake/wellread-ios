@@ -87,7 +87,7 @@ struct ProfileLibraryView: View {
                     spineProfileHeader
 
                     if activeReadingGoal != nil || !appState.readBooks.isEmpty {
-                        HStack(alignment: .center, spacing: 12) {
+                        HStack(alignment: .center, spacing: 8) {
                             if let goal = activeReadingGoal {
                                 Button {
                                     editProfileFocusesBookGoal = true
@@ -112,7 +112,7 @@ struct ProfileLibraryView: View {
                             userFeedButton
                         }
                         .padding(.horizontal, Theme.horizontalPadding)
-                        .padding(.vertical, 6)
+                        .padding(.vertical, 2)
                     }
 
                     if segment == .read && appState.goodreadsWizardRemainingCount > 0 {
@@ -318,24 +318,29 @@ struct ProfileLibraryView: View {
             librarySegmentControl
                 .frame(maxWidth: .infinity)
             Spacer(minLength: 8)
-            // What you're reading right now, floating beside your avatar. Tap a cover for its profile.
+            // What you're reading right now, floating beside your avatar. Tapping a
+            // cover jumps to the Queue shelf it lives on, not the book's profile.
             HStack(alignment: .center, spacing: 2) {
                 ReadingNowFanStack(
                     books: appState.wantToReadReadingNow.compactMap(\.book),
                     coverWidth: 30,
-                    onTap: { selectedBookForProfile = $0 },
+                    onTap: { _ in
+                        withAnimation(LibrarySegmentControlAnimation.selection) {
+                            segment = .wantToRead
+                        }
+                    },
                     floats: true
                 )
-                toolbarProfilePhoto
                 if Self.isNotificationsBellVisible {
                     notificationsBell
-                        .padding(.leading, 8)
+                        .padding(.trailing, 8)
                 }
+                toolbarProfilePhoto
             }
         }
         .padding(.horizontal, Theme.horizontalPadding)
         .padding(.top, 8)
-        .padding(.bottom, 12)
+        .padding(.bottom, 4)
     }
 
     /// Custom Read / Queue control: **Read** = mark read from queue (green +) or remove from read shelf (red −); **Queue** = remove from queue (red −). Chrome follows UIKit drag sessions.
@@ -574,25 +579,18 @@ struct ProfileLibraryView: View {
         return notificationsBellEnabled
     }
 
-    /// Bell to the right of your avatar: opens the notifications feed. Shows a
+    /// Bell to the left of your avatar: opens the notifications feed. Shows a
     /// badge dot while unread rows exist; opening the feed marks them read.
     private var notificationsBell: some View {
         Button {
             showNotifications = true
             hasUnreadNotifications = false
         } label: {
-            Circle()
-                .fill(Theme.surface)
+            Image(systemName: "bell")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(Theme.textPrimary)
                 .frame(width: 40, height: 40)
-                .overlay(
-                    Image(systemName: "bell")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(Theme.textPrimary)
-                )
-                .overlay(
-                    Circle()
-                        .strokeBorder(Theme.chrome.opacity(0.55), lineWidth: 1.5)
-                )
+                .contentShape(Circle())
                 .overlay(alignment: .topTrailing) {
                     if hasUnreadNotifications {
                         Circle()
@@ -687,16 +685,22 @@ struct ProfileLibraryView: View {
         Button {
             showYearList = true
         } label: {
-            Image(systemName: "list.bullet")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Theme.textPrimary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Theme.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+            goalStripIconLabel("list.bullet")
         }
         .buttonStyle(.plain)
         .accessibilityLabel("List view")
+    }
+
+    /// Shared chrome for the square icon buttons beside the reading goal strip:
+    /// identical footprint and identical glyph box, so `list.bullet` and
+    /// `newspaper` can't render at different sizes.
+    private func goalStripIconLabel(_ systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(Theme.textPrimary)
+            .frame(width: 34, height: 34)
+            .background(Theme.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     /// Feed icon beside the list button: opens your post history, every feed
@@ -705,13 +709,7 @@ struct ProfileLibraryView: View {
         Button {
             showUserFeed = true
         } label: {
-            Image(systemName: "newspaper")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Theme.textPrimary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Theme.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+            goalStripIconLabel("newspaper")
         }
         .buttonStyle(.plain)
         .accessibilityLabel("My feed")

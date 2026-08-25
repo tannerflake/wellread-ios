@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { initializeApp, getApps } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
@@ -753,9 +754,12 @@ export const onPostLiked = onDocumentCreated(
     const liker = (await db.collection("users").doc(likerId).get()).data();
     const first = firstNameFromUser(liker);
     const { title: book, coverURL } = await bookInfo(postData.bookId as string | undefined);
+    // readRecord = hidden discussion carrier for a read that was never posted
+    // to the feed, so "review" would ring false.
+    const likedNoun = postData.type === "readRecord" ? "read" : "review";
     const title = book
-      ? `${first} liked your review of ${book}`
-      : `${first} liked your review`;
+      ? `${first} liked your ${likedNoun} of ${book}`
+      : `${first} liked your ${likedNoun}`;
 
     // Empty body: the push falls back to "Tap to open SPINE", while the in-app
     // notification row shows just the title (a like needs no second line).
@@ -860,11 +864,13 @@ export const onCommentCreated = onDocumentCreated(
       }
     }
 
-    // Author: review_commented (not if self-comment; skip if they already got comment_replied)
+    // Author: review_commented (not if self-comment; skip if they already got comment_replied).
+    // readRecord posts are read discussions without a review, so say "read".
+    const commentNoun = postData.type === "readRecord" ? "read" : "review";
     if (commenterId !== authorId && authorId !== replyTargetUid && hiddenAccountCanNotify(commenterId, authorId)) {
       const title = book
-        ? `${first} commented on your review of ${book}`
-        : `${first} replied to your review`;
+        ? `${first} commented on your ${commentNoun} of ${book}`
+        : `${first} replied to your ${commentNoun}`;
       const preview = teaser8Words(commentText);
       const body = preview.length > 0 ? preview : "";
       await notifyUser(
@@ -913,8 +919,8 @@ export const onCommentCreated = onDocumentCreated(
     for (const uid of mentionUids) participantIds.delete(uid);
 
     const threadTitle = book
-      ? `${first} also commented on the ${book} review you joined`
-      : `${first} replied in a review thread you joined`;
+      ? `${first} also commented on the ${book} ${commentNoun} you joined`
+      : `${first} replied in a ${commentNoun} thread you joined`;
     const threadBody = teaser8Words(commentText);
 
     for (const uid of participantIds) {
@@ -926,6 +932,102 @@ export const onCommentCreated = onDocumentCreated(
         commenterId,
         coverURL
       );
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Community book popularity (bookStats/)
+//
+// Search ranking boosts works that 2+ SPINE members have shelved. This trigger
+// maintains one bookStats doc per *work* — keyed by a hash of popularityKey —
+// with the distinct set of users who currently have any userBooks entry for it.
+// The client (BookPopularityService) reads keys where count >= 2.
+// ---------------------------------------------------------------------------
+
+/**
+ * Cross-edition identity for the popularity signal: normalized main title
+ * (parentheticals stripped, subtitle dropped, leading article removed) + "|" +
+ * primary author's surname. MUST stay in lockstep with the Swift
+ * `BookSearchRanker.popularityKey` — the client matches search candidates
+ * against these exact strings. Empty when the title normalizes to nothing.
+ */
+export function popularityKey(title: string, author: string): string {
+  const normalize = (s: string): string =>
+    s
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase()
+      .replace(/['’]/g, "")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  let raw = title.replace(/\([^)]*\)|\[[^\]]*\]/g, " ");
+  raw = raw.split(":")[0] ?? raw;
+  let t = normalize(raw);
+  for (const article of ["the ", "a ", "an "]) {
+    if (t.startsWith(article)) {
+      t = t.slice(article.length);
+      break;
+    }
+  }
+  if (!t) return "";
+  const primary = normalize(author.split(",")[0] ?? "");
+  const surname = primary.split(" ").filter(Boolean).pop() ?? "";
+  return `${t}|${surname}`;
+}
+
+/** Adds/removes one user's membership in a work's bookStats doc. */
+async function adjustBookPopularity(userId: string, bookId: string, add: boolean): Promise<void> {
+  if (!userId || !bookId) return;
+  // Test accounts never count toward community popularity.
+  const user = (await db.collection("users").doc(userId).get()).data();
+  if (user?.isTestAccount === true) return;
+  const book = (await db.collection("books").doc(bookId).get()).data();
+  const title = ((book?.title as string | undefined) ?? "").trim();
+  const author = ((book?.author as string | undefined) ?? "").trim();
+  const key = popularityKey(title, author);
+  if (!key) return;
+  const docId = createHash("sha256").update(key).digest("hex").slice(0, 40);
+  const ref = db.collection("bookStats").doc(docId);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const userIds = new Set<string>((snap.data()?.userIds as string[] | undefined) ?? []);
+    if (add) userIds.add(userId);
+    else userIds.delete(userId);
+    if (userIds.size === 0) {
+      if (snap.exists) tx.delete(ref);
+      return;
+    }
+    tx.set(ref, {
+      key,
+      sampleTitle: title,
+      sampleAuthor: author,
+      userIds: [...userIds],
+      count: userIds.size,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+}
+
+export const onUserBookWritten = onDocumentWritten(
+  {
+    document: "userBooks/{userBookId}",
+    database: DATABASE_ID,
+  },
+  async (event) => {
+    const before = event.data?.before?.exists ? event.data.before.data() : undefined;
+    const after = event.data?.after?.exists ? event.data.after.data() : undefined;
+    const beforeUser = (before?.userId as string | undefined) ?? "";
+    const beforeBook = (before?.bookId as string | undefined) ?? "";
+    const afterUser = (after?.userId as string | undefined) ?? "";
+    const afterBook = (after?.bookId as string | undefined) ?? "";
+    // Status/tier/rating edits keep the same membership — nothing to do.
+    if (beforeUser === afterUser && beforeBook === afterBook) return;
+    try {
+      if (before && beforeBook) await adjustBookPopularity(beforeUser, beforeBook, false);
+      if (after && afterBook) await adjustBookPopularity(afterUser, afterBook, true);
+    } catch (err) {
+      logger.error("bookStats update failed", { beforeBook, afterBook, err });
     }
   }
 );

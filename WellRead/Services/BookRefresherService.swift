@@ -63,6 +63,10 @@ final class BookRefresherService {
     /// Generates the full refresher. Cached by book.id; throws so the view can show a retry state.
     func refresher(for book: Book) async throws -> BookRefresher {
         if let cached = cachedRefresher(for: book) { return cached }
+        if let shared = await AIContentCacheRepository.shared.content(for: book.id).refresher {
+            queue.sync { refresherCache[book.id] = shared }
+            return shared
+        }
         let system = """
         You write "refresher" pages for a reading app: the reader FINISHED this book a while ago and wants their memory jogged. Full spoilers are expected and good — do not hold anything back or warn about spoilers.
 
@@ -90,11 +94,12 @@ final class BookRefresherService {
         }
         input += "\n\nWrite the refresher JSON."
         // Plot/character recall with full spoilers — fabrication risk is high on small models.
-        let response = try await ClaudeService.shared.sendMessage(system: system, userMessage: input, maxTokens: 2048, tier: .complex)
-        guard let refresher = Self.parseRefresher(from: response) else {
+        let response = try await ClaudeService.shared.sendMessageDetailed(system: system, userMessage: input, maxTokens: 2048, tier: .complex)
+        guard let refresher = Self.parseRefresher(from: response.text) else {
             throw NSError(domain: "BookRefresherService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Couldn't read the refresher response."])
         }
         queue.sync { refresherCache[book.id] = refresher }
+        await AIContentCacheRepository.shared.storeRefresher(refresher, bookId: book.id, model: response.model)
         return refresher
     }
 

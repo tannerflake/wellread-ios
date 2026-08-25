@@ -14,7 +14,10 @@ import Foundation
 
 final class BookSearchCacheService {
     static let shared = BookSearchCacheService()
-    private let db = Firestore.firestore()
+    // FirestoreDatabase (not Firestore.firestore()): the app's data — and the
+    // deployed rules — live on the named "wellread" database; the default
+    // database has no rules, so requests there fail silently.
+    private var db: Firestore { FirestoreDatabase.firestore }
     private let collection = "bookSearchCache"
 
     /// ISBNdb/Google-sourced entries carry full metadata and ranking — serve for
@@ -32,6 +35,18 @@ final class BookSearchCacheService {
         case openLibrary = "openlibrary"
     }
 
+    /// Bumped when ranking/filtering changes enough that old entries can be
+    /// wrong in ways read-time filtering can't repair (v2: ISBN-implied language
+    /// joined the ranking, so a legacy entry may have dedup-merged a foreign
+    /// edition over the English one). Entries written before the field exists
+    /// read as version 1.
+    static let currentSchemaVersion = 2
+
+    struct CachedEntry {
+        let books: [Book]
+        let schemaVersion: Int
+    }
+
     private init() {}
 
     /// Doc id is a hash: queries contain slashes/case/length Firestore ids can't take.
@@ -41,8 +56,8 @@ final class BookSearchCacheService {
 
     /// Cached books for the key, or nil on miss/expiry/timeout/error. Never throws —
     /// a cache problem must never break search.
-    func lookup(cacheKey: String) async -> [Book]? {
-        await withTaskGroup(of: [Book]?.self) { group in
+    func lookup(cacheKey: String) async -> CachedEntry? {
+        await withTaskGroup(of: CachedEntry?.self) { group in
             group.addTask { await self.fetchEntry(cacheKey: cacheKey) }
             group.addTask { [lookupTimeout] in
                 try? await Task.sleep(nanoseconds: lookupTimeout)
@@ -54,7 +69,7 @@ final class BookSearchCacheService {
         }
     }
 
-    private func fetchEntry(cacheKey: String) async -> [Book]? {
+    private func fetchEntry(cacheKey: String) async -> CachedEntry? {
         guard let snapshot = try? await db.collection(collection).document(docId(for: cacheKey)).getDocument(),
               snapshot.exists, let data = snapshot.data() else { return nil }
         guard let updated = (data["updatedAt"] as? Timestamp)?.dateValue() else { return nil }
@@ -63,7 +78,8 @@ final class BookSearchCacheService {
         guard Date().timeIntervalSince(updated) < ttl else { return nil }
         guard let raw = data["books"] as? [[String: Any]] else { return nil }
         let books = raw.compactMap(book(from:))
-        return books.isEmpty ? nil : books
+        guard !books.isEmpty else { return nil }
+        return CachedEntry(books: books, schemaVersion: data["schemaVersion"] as? Int ?? 1)
     }
 
     /// Fire-and-forget write-through after a successful API fetch.
@@ -72,6 +88,7 @@ final class BookSearchCacheService {
         let payload: [String: Any] = [
             "query": String(cacheKey.prefix(200)),
             "source": source.rawValue,
+            "schemaVersion": Self.currentSchemaVersion,
             "updatedAt": FieldValue.serverTimestamp(),
             "books": books.prefix(30).map(data(from:))
         ]

@@ -36,6 +36,10 @@ final class BookSummaryMoreService {
     /// throws so the view can show a retry state.
     func longSummary(for book: Book) async throws -> String {
         if let cached = cachedSummary(for: book) { return cached }
+        if let shared = await AIContentCacheRepository.shared.content(for: book.id).about {
+            queue.sync { summaryCache[book.id] = shared }
+            return shared
+        }
         let system = """
         You write "about this book" pages for a reading app. The reader has NOT read the book yet and is deciding whether to pick it up.
 
@@ -57,12 +61,13 @@ final class BookSummaryMoreService {
         }
         input += "\n\nWrite the three-paragraph summary."
         // Needs real knowledge of the book's contents (and spoiler judgment) — smarter tier.
-        let response = try await ClaudeService.shared.sendMessage(system: system, userMessage: input, maxTokens: 1024, tier: .complex)
-        let summary = response.trimmingCharacters(in: .whitespacesAndNewlines)
+        let response = try await ClaudeService.shared.sendMessageDetailed(system: system, userMessage: input, maxTokens: 1024, tier: .complex)
+        let summary = response.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !summary.isEmpty else {
             throw NSError(domain: "BookSummaryMoreService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Couldn't read the summary response."])
         }
         queue.sync { summaryCache[book.id] = summary }
+        await AIContentCacheRepository.shared.storeAbout(summary, bookId: book.id, model: response.model)
         return summary
     }
 

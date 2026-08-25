@@ -78,15 +78,10 @@ struct BookProfileView: View {
         let uid: String
         let user: User
     }
-    // "Read by" section — followed readers who've finished this book.
-    private struct ReadByReader: Identifiable {
-        var id: String { uid }
-        let uid: String
-        let user: User
-        let entry: UserBook
-    }
-    @State private var readByReaders: [ReadByReader] = []
-    @State private var readByProfileToView: ReadByReader?
+    // "Read by" section — every SPINE reader who's finished this book, people
+    // you follow first. Rows, likes, and comments render in BookDiscussionSection.
+    @State private var readByReaders: [BookDiscussionReader] = []
+    @State private var readByProfileToView: BookDiscussionReader?
 
     @State private var recommendReaders: [RecommendReader] = []
     @State private var recommendLoading = false
@@ -290,32 +285,33 @@ struct BookProfileView: View {
             if let myUid = appState.authUserId {
                 let following = Set(appState.currentUser?.following ?? [])
                 let sourceUid = sourceReaderUid
-                if !following.isEmpty || sourceUid != nil {
-                    let bookId = book.id
-                    Task {
-                        let entries = await UserBookRepository().fetchReadEntries(bookId: bookId)
-                        var seen = Set<String>()
-                        let included = entries.filter {
-                            $0.userId != myUid
-                                && (following.contains($0.userId) || $0.userId == sourceUid)
-                                && seen.insert($0.userId).inserted
-                        }
-                        guard !included.isEmpty else { return }
-                        let repo = UserRepository()
-                        var readers: [ReadByReader] = []
-                        for entry in included {
-                            if let user = await repo.getUser(uid: entry.userId) {
-                                readers.append(ReadByReader(uid: entry.userId, user: user, entry: entry))
-                            }
-                        }
-                        let sorted = readers.sorted {
-                            Self.readByPrecedes($0, $1, sourceUid: sourceUid)
-                        }
-                        await MainActor.run {
-                            guard bookId == book.id else { return }
-                            readByReaders = sorted
-                            refreshMatchScore()
-                        }
+                let bookId = book.id
+                Task {
+                    let entries = await UserBookRepository().fetchReadEntries(bookId: bookId)
+                    var seen = Set<String>()
+                    let included = entries.filter {
+                        $0.userId != myUid
+                            && !HiddenAccounts.isHiddenFromCurrentViewer(uid: $0.userId)
+                            && seen.insert($0.userId).inserted
+                    }
+                    guard !included.isEmpty else { return }
+                    let users = await UserRepository().getUsers(uids: included.map(\.userId))
+                    let readers = included.compactMap { entry -> BookDiscussionReader? in
+                        guard let user = users[entry.userId] else { return nil }
+                        return BookDiscussionReader(
+                            uid: entry.userId,
+                            user: user,
+                            entry: entry,
+                            isFollowed: following.contains(entry.userId)
+                        )
+                    }
+                    let sorted = readers.sorted {
+                        Self.readByPrecedes($0, $1, sourceUid: sourceUid)
+                    }
+                    await MainActor.run {
+                        guard bookId == book.id else { return }
+                        readByReaders = sorted
+                        refreshMatchScore()
                     }
                 }
             }
@@ -484,7 +480,8 @@ struct BookProfileView: View {
     private func refreshMatchScore() {
         let bookId = book.id
         let tags = profileTags
-        let friendEntries = readByReaders.map(\.entry)
+        // Trust weighting stays follow-scoped even though the section now lists everyone.
+        let friendEntries = readByReaders.filter(\.isFollowed).map(\.entry)
         let library = appState.userBooks
         let user = appState.currentUser
         Task {
@@ -560,6 +557,9 @@ struct BookProfileView: View {
             if !ub.allReadDates.isEmpty {
                 reviewFooter(ub: ub)
             }
+            if canEditReadReview {
+                OwnReadEngagementRow(book: book)
+            }
         }
         .hingeSectionCard(title: reviewSectionHeading) {
             if canEditReadReview {
@@ -567,13 +567,13 @@ struct BookProfileView: View {
                     userBookToEdit = ub
                 } label: {
                     Image(systemName: "pencil")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Theme.textSecondary)
-                        .padding(6)
-                        .contentShape(Rectangle())
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Theme.background)
+                        .padding(7)
+                        .background(Circle().fill(Theme.chrome))
+                        .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
-                .padding(-6)
             }
         } titleAccessory: {
             if let t = ub.tier {
@@ -868,12 +868,13 @@ struct BookProfileView: View {
     }
 
     /// "Read by" ordering: the source reader (whose tier list or feed post led
-    /// here) pins to the top, then best-ranked first (S → F, unranked last),
-    /// most recently finished breaking ties.
-    private static func readByPrecedes(_ a: ReadByReader, _ b: ReadByReader, sourceUid: String?) -> Bool {
+    /// here) pins to the top, then people you follow, then best-ranked first
+    /// (S → F, unranked last), most recently finished breaking ties.
+    private static func readByPrecedes(_ a: BookDiscussionReader, _ b: BookDiscussionReader, sourceUid: String?) -> Bool {
         if let sourceUid, (a.uid == sourceUid) != (b.uid == sourceUid) {
             return a.uid == sourceUid
         }
+        if a.isFollowed != b.isFollowed { return a.isFollowed }
         let aRank = a.entry.normalizedTier.flatMap(spineTierLabels.firstIndex(of:)) ?? spineTierLabels.count
         let bRank = b.entry.normalizedTier.flatMap(spineTierLabels.firstIndex(of:)) ?? spineTierLabels.count
         if aRank != bRank { return aRank < bRank }
@@ -881,68 +882,12 @@ struct BookProfileView: View {
     }
 
     private var readByWindow: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            ForEach(Array(readByReaders.enumerated()), id: \.element.id) { index, reader in
-                readByRow(reader, highlighted: reader.uid == sourceReaderUid)
-                if index < readByReaders.count - 1 {
-                    Rectangle()
-                        .fill(Theme.chrome.opacity(0.18))
-                        .frame(height: Theme.chromeHairline)
-                }
-            }
-        }
-        .hingeSectionCard(title: "Read by")
-    }
-
-    private func readByRow(_ reader: ReadByReader, highlighted: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
-                Button {
-                    readByProfileToView = reader
-                } label: {
-                    HStack(spacing: 10) {
-                        readerAvatar(user: reader.user, size: 36)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(reader.user.displayName)
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(Theme.textPrimary)
-                                .lineLimit(1)
-                            if let finished = reader.entry.dateFinished {
-                                Text("read \(Self.readDateFormatter.string(from: finished))")
-                                    .font(.system(size: 11, weight: .regular))
-                                    .foregroundStyle(Theme.textTertiary)
-                            }
-                        }
-                    }
-                }
-                .buttonStyle(.plain)
-                Spacer(minLength: 8)
-                if let t = reader.entry.tier {
-                    TierBadge(tier: t, size: .mini)
-                }
-            }
-            if let text = reader.entry.reviewText?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
-                Text(text)
-                    .font(.system(size: 14, weight: .regular))
-                    .foregroundStyle(Theme.textSecondary)
-                    .lineSpacing(Theme.bodyLineSpacing)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        // Highlight bleeds past the row without shifting its layout, so the
-        // source reader's row stays aligned with the others.
-        .padding(highlighted ? 8 : 0)
-        .background {
-            if highlighted {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(Theme.chrome.opacity(0.07))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Theme.chrome.opacity(0.25), lineWidth: 1)
-                    )
-            }
-        }
-        .padding(highlighted ? -8 : 0)
+        BookDiscussionSection(
+            book: book,
+            readers: readByReaders,
+            sourceReaderUid: sourceReaderUid,
+            onOpenProfile: { readByProfileToView = $0 }
+        )
     }
 
     // MARK: - Recommend window

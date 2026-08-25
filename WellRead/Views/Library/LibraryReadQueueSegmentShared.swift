@@ -21,11 +21,13 @@ enum LibraryReadingGoalStripCopy {
 struct LibraryReadingGoalProgressStrip: View {
     let calendarYear: Int
     let booksRead: Int
-    let goal: Int
+    /// Nil when the member never set a goal: the strip still renders (an empty
+    /// track plus the year's count) rather than vanishing from their profile.
+    let goal: Int?
     var copy: LibraryReadingGoalStripCopy = .own
 
     private var goalTotal: Double {
-        max(Double(goal), 1)
+        max(Double(goal ?? 0), 1)
     }
 
     /// Pace vs. a straight-line schedule through the calendar year.
@@ -39,6 +41,7 @@ struct LibraryReadingGoalProgressStrip: View {
     /// On track means within one full book of the straight-line pace; ahead/behind
     /// only count whole books so the label never overstates a fractional gap.
     private var pace: GoalPace {
+        guard let goal else { return .onTrack }
         if booksRead >= goal { return .goalMet }
         let cal = Calendar.current
         let now = Date()
@@ -67,6 +70,7 @@ struct LibraryReadingGoalProgressStrip: View {
     /// Pace commentary (and its color) is only for your own goal — on someone
     /// else's library we just report progress, never how far behind they are.
     private var showsPace: Bool {
+        guard goal != nil else { return false }
         if case .own = copy { return true }
         return false
     }
@@ -91,9 +95,15 @@ struct LibraryReadingGoalProgressStrip: View {
     }
 
     private var caption: String {
-        showsPaceText
+        guard let goal else { return "Read \(booksRead) in \(calendarYear), no goal set" }
+        return showsPaceText
             ? "Read \(booksRead)/\(goal) for \(calendarYear) (\(paceText))"
             : "Read \(booksRead)/\(goal) for \(calendarYear)"
+    }
+
+    private var accessibilityValueText: String {
+        guard let goal else { return "\(booksRead) books read, no goal set." }
+        return showsPaceText ? "\(booksRead) of \(goal) books. \(paceText)" : "\(booksRead) of \(goal) books."
     }
 
     var body: some View {
@@ -105,7 +115,9 @@ struct LibraryReadingGoalProgressStrip: View {
                 .minimumScaleFactor(0.85)
                 .fixedSize(horizontal: false, vertical: true)
             GeometryReader { geo in
-                let fraction = min(Double(booksRead), goalTotal) / goalTotal
+                // No goal: empty track, so the row keeps its shape without
+                // implying progress toward a number they never picked.
+                let fraction = goal == nil ? 0 : min(Double(booksRead), goalTotal) / goalTotal
                 ZStack(alignment: .leading) {
                     Capsule().fill(Theme.textSecondary.opacity(0.18))
                     if fraction > 0 {
@@ -118,7 +130,7 @@ struct LibraryReadingGoalProgressStrip: View {
             .frame(height: 10)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(calendarYear) reading goal")
-            .accessibilityValue(showsPaceText ? "\(booksRead) of \(goal) books. \(paceText)" : "\(booksRead) of \(goal) books.")
+            .accessibilityValue(accessibilityValueText)
         }
         .padding(.top, 4)
         .padding(.bottom, 6)

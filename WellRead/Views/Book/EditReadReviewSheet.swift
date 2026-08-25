@@ -89,6 +89,9 @@ struct EditReadReviewSheet: View {
                             .font(Theme.caption())
                             .foregroundStyle(Theme.textSecondary)
                         HStack(spacing: 8) {
+                            Image(systemName: "pencil")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Theme.textSecondary)
                             DatePicker("", selection: $dateFinished, displayedComponents: .date)
                                 .datePickerStyle(.compact)
                                 .labelsHidden()
@@ -97,15 +100,18 @@ struct EditReadReviewSheet: View {
                                 Button {
                                     removePrimaryReadDate()
                                 } label: {
-                                    Image(systemName: "minus.circle.fill")
-                                        .font(.system(size: 18))
-                                        .foregroundStyle(Theme.textTertiary)
+                                    Image(systemName: "trash")
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundStyle(Theme.danger)
                                 }
                                 .buttonStyle(.plain)
                             }
                         }
                         ForEach(additionalReadDates.indices, id: \.self) { i in
                             HStack(spacing: 8) {
+                                Image(systemName: "pencil")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(Theme.textSecondary)
                                 DatePicker("", selection: $additionalReadDates[i], displayedComponents: .date)
                                     .datePickerStyle(.compact)
                                     .labelsHidden()
@@ -113,9 +119,9 @@ struct EditReadReviewSheet: View {
                                 Button {
                                     additionalReadDates.remove(at: i)
                                 } label: {
-                                    Image(systemName: "minus.circle.fill")
-                                        .font(.system(size: 18))
-                                        .foregroundStyle(Theme.textTertiary)
+                                    Image(systemName: "trash")
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundStyle(Theme.danger)
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -165,6 +171,10 @@ struct EditReadReviewSheet: View {
                         .padding(12)
                         .background(Theme.background.opacity(0.6))
                         .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .strokeBorder(Theme.chrome.opacity(0.3), lineWidth: Theme.chromeHairline)
+                        )
 
                         // Tag readers with "@" — suggestions appear one letter in.
                         if let query = MentionScanner.activeQuery(in: thoughts) {

@@ -9,7 +9,6 @@
 /* Begin PBXBuildFile section */
 		8B7B90EC2F54C77000B7FB0C /* Secrets.plist in Resources */ = {isa = PBXBuildFile; fileRef = 8B7B90EB2F54C72300B7FB0C /* Secrets.plist */; };
 		8B8FC0012F4E9AEF0068B4B7 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = 8BE1FAC52F4E8A70006ED44D /* FirebaseMessaging */; };
-		AMP0000000000000000000001 /* AmplitudeSwift in Frameworks */ = {isa = PBXBuildFile; productRef = AMP0000000000000000000003 /* AmplitudeSwift */; };
 		8BB2986E2F671AAA007008DC /* WellReadShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 8BB298642F671AAA007008DC /* WellReadShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		8BB4CBC02F4E9AEF0068B4B6 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 8BE1FABE2F4E8A70006ED44D /* FirebaseCore */; };
 		8BB4CBC32F4E9F2B0068B4B6 /* WellRead Firebase Service Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 8BB4CBC22F4E9F2B0068B4B6 /* WellRead Firebase Service Info.plist */; };
@@ -18,6 +17,8 @@
 		8BB4CBC82F4E8B00006ED44D /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 8BE1FAC22F4E8B00006ED44D /* GoogleSignIn */; };
 		8BB4CBC92F4E9AEF0068B4B6 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = 8BE1FAC42F4E8A70006ED44D /* FirebaseStorage */; };
 		8BB4CBCA2F4E9AEF0068B4B6 /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = 8BE1FAC72F4E8A70006ED44D /* FirebaseFunctions */; };
+		AMP0000000000000000000001 /* AmplitudeSwift in Frameworks */ = {isa = PBXBuildFile; productRef = AMP0000000000000000000003 /* AmplitudeSwift */; };
+		AMP0000000000000000000004 /* AmplitudeSwiftSessionReplayPlugin in Frameworks */ = {isa = PBXBuildFile; productRef = AMP0000000000000000000006 /* AmplitudeSwiftSessionReplayPlugin */; };
 		B0010001 /* WellReadApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010001 /* WellReadApp.swift */; };
 		B0010002 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010002 /* RootView.swift */; };
 		B0010003 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010003 /* AppState.swift */; };
@@ -46,7 +47,6 @@
 		B001001A /* WellRead/GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 8BE1FAC02F4E8A70006ED44D /* WellRead/GoogleService-Info.plist */; };
 		B0010020 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010020 /* AuthService.swift */; };
 		B0010021 /* UserRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010021 /* UserRepository.swift */; };
-		BA9E7301 /* Mentions.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA9E7301 /* Mentions.swift */; };
 		B0010022 /* RootViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010022 /* RootViewController.swift */; };
 		B0010023 /* BookRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010023 /* BookRepository.swift */; };
 		B0010024 /* UserBookRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010024 /* UserBookRepository.swift */; };
@@ -90,9 +90,9 @@
 		B0010051 /* PushNotificationNudgeModal.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010051 /* PushNotificationNudgeModal.swift */; };
 		B0010052 /* BookRefresherService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010052 /* BookRefresherService.swift */; };
 		B0010053 /* BookRefresherView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010053 /* BookRefresherView.swift */; };
+		B0010833 /* BookDiscussionSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010833 /* BookDiscussionSection.swift */; };
 		B0010054 /* MatchScoreService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010054 /* MatchScoreService.swift */; };
 		B00100F0 /* TierBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100F0 /* TierBadge.swift */; };
-		B0010777 /* ReadingYearListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010777 /* ReadingYearListView.swift */; };
 		B00100FA /* Toast.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00100FA /* Toast.swift */; };
 		B0010100 /* NoSuggestionsTextField.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010100 /* NoSuggestionsTextField.swift */; };
 		B0010101 /* GoodreadsWizardSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010101 /* GoodreadsWizardSession.swift */; };
@@ -116,6 +116,7 @@
 		B0010331 /* ProfilePhotoNudgeStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010331 /* ProfilePhotoNudgeStorage.swift */; };
 		B0010332 /* ProfilePhotoNudgeModal.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010332 /* ProfilePhotoNudgeModal.swift */; };
 		B0010333 /* OnboardingCurrentlyReadingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010333 /* OnboardingCurrentlyReadingView.swift */; };
+		B0010777 /* ReadingYearListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010777 /* ReadingYearListView.swift */; };
 		B0010C47 /* CircularPhotoCropView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010C47 /* CircularPhotoCropView.swift */; };
 		B0018D71 /* BookSummaryMoreService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0018D71 /* BookSummaryMoreService.swift */; };
 		B0018D72 /* BookSummaryMoreView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0018D72 /* BookSummaryMoreView.swift */; };
@@ -125,6 +126,8 @@
 		B00B1E04 /* BookBlendStoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00B1E04 /* BookBlendStoryView.swift */; };
 		B00B1E05 /* OpenLibraryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00B1E05 /* OpenLibraryService.swift */; };
 		B00B1E06 /* BookSearchCacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00B1E06 /* BookSearchCacheService.swift */; };
+		B00B1E07 /* AIContentCacheRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00B1E07 /* AIContentCacheRepository.swift */; };
+		B00C7A31 /* BookPopularityService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00C7A31 /* BookPopularityService.swift */; };
 		B00D1A01 /* TypewriterText.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00D1A01 /* TypewriterText.swift */; };
 		B00D1A02 /* OnboardingWizard.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00D1A02 /* OnboardingWizard.swift */; };
 		B00D1A03 /* WizardIdentitySteps.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00D1A03 /* WizardIdentitySteps.swift */; };
@@ -137,12 +140,13 @@
 		B00D2A19 /* FeedDayGroupCarousel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00D2A19 /* FeedDayGroupCarousel.swift */; };
 		B00D2A1A /* UserProfileCardSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00D2A1A /* UserProfileCardSheet.swift */; };
 		B00D2A1B /* PeopleStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00D2A1B /* PeopleStrip.swift */; };
-		B07E4D21 /* UserFeedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F07E4D21 /* UserFeedView.swift */; };
 		B00D2A1C /* ProfileSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00D2A1C /* ProfileSettingsView.swift */; };
 		B00E7C31 /* UserAvatarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00E7C31 /* UserAvatarView.swift */; };
 		B04F3B71 /* NotificationsRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = F04F3B71 /* NotificationsRepository.swift */; };
 		B04F3B72 /* NotificationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F04F3B72 /* NotificationsView.swift */; };
+		B07E4D21 /* UserFeedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F07E4D21 /* UserFeedView.swift */; };
 		B7D91A42 /* ISBNdbService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7D91A42 /* ISBNdbService.swift */; };
+		BA9E7301 /* Mentions.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA9E7301 /* Mentions.swift */; };
 		NE01000A /* WellReadNotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = NE010002 /* WellReadNotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		WG01000A /* WellReadWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = WG010002 /* WellReadWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		WG010010 /* WidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = WG010011 /* WidgetSnapshot.swift */; };
@@ -224,7 +228,6 @@
 		F0010019 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F0010020 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
 		F0010021 /* UserRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserRepository.swift; sourceTree = "<group>"; };
-		FA9E7301 /* Mentions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mentions.swift; sourceTree = "<group>"; };
 		F0010022 /* RootViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootViewController.swift; sourceTree = "<group>"; };
 		F0010023 /* BookRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookRepository.swift; sourceTree = "<group>"; };
 		F0010024 /* UserBookRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserBookRepository.swift; sourceTree = "<group>"; };
@@ -268,9 +271,9 @@
 		F0010051 /* PushNotificationNudgeModal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationNudgeModal.swift; sourceTree = "<group>"; };
 		F0010052 /* BookRefresherService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookRefresherService.swift; sourceTree = "<group>"; };
 		F0010053 /* BookRefresherView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookRefresherView.swift; sourceTree = "<group>"; };
+		F0010833 /* BookDiscussionSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookDiscussionSection.swift; sourceTree = "<group>"; };
 		F0010054 /* MatchScoreService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatchScoreService.swift; sourceTree = "<group>"; };
 		F00100F0 /* TierBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TierBadge.swift; sourceTree = "<group>"; };
-		F0010777 /* ReadingYearListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingYearListView.swift; sourceTree = "<group>"; };
 		F00100FA /* Toast.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Toast.swift; sourceTree = "<group>"; };
 		F0010100 /* NoSuggestionsTextField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoSuggestionsTextField.swift; sourceTree = "<group>"; };
 		F0010101 /* GoodreadsWizardSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoodreadsWizardSession.swift; sourceTree = "<group>"; };
@@ -294,6 +297,7 @@
 		F0010331 /* ProfilePhotoNudgeStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfilePhotoNudgeStorage.swift; sourceTree = "<group>"; };
 		F0010332 /* ProfilePhotoNudgeModal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfilePhotoNudgeModal.swift; sourceTree = "<group>"; };
 		F0010333 /* OnboardingCurrentlyReadingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingCurrentlyReadingView.swift; sourceTree = "<group>"; };
+		F0010777 /* ReadingYearListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingYearListView.swift; sourceTree = "<group>"; };
 		F0010C47 /* CircularPhotoCropView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CircularPhotoCropView.swift; sourceTree = "<group>"; };
 		F0018D71 /* BookSummaryMoreService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookSummaryMoreService.swift; sourceTree = "<group>"; };
 		F0018D72 /* BookSummaryMoreView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookSummaryMoreView.swift; sourceTree = "<group>"; };
@@ -303,6 +307,8 @@
 		F00B1E04 /* BookBlendStoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookBlendStoryView.swift; sourceTree = "<group>"; };
 		F00B1E05 /* OpenLibraryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenLibraryService.swift; sourceTree = "<group>"; };
 		F00B1E06 /* BookSearchCacheService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookSearchCacheService.swift; sourceTree = "<group>"; };
+		F00B1E07 /* AIContentCacheRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIContentCacheRepository.swift; sourceTree = "<group>"; };
+		F00C7A31 /* BookPopularityService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookPopularityService.swift; sourceTree = "<group>"; };
 		F00D1A01 /* TypewriterText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypewriterText.swift; sourceTree = "<group>"; };
 		F00D1A02 /* OnboardingWizard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingWizard.swift; sourceTree = "<group>"; };
 		F00D1A03 /* WizardIdentitySteps.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WizardIdentitySteps.swift; sourceTree = "<group>"; };
@@ -315,12 +321,13 @@
 		F00D2A19 /* FeedDayGroupCarousel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedDayGroupCarousel.swift; sourceTree = "<group>"; };
 		F00D2A1A /* UserProfileCardSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserProfileCardSheet.swift; sourceTree = "<group>"; };
 		F00D2A1B /* PeopleStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeopleStrip.swift; sourceTree = "<group>"; };
-		F07E4D21 /* UserFeedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserFeedView.swift; sourceTree = "<group>"; };
 		F00D2A1C /* ProfileSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileSettingsView.swift; sourceTree = "<group>"; };
 		F00E7C31 /* UserAvatarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserAvatarView.swift; sourceTree = "<group>"; };
 		F04F3B71 /* NotificationsRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsRepository.swift; sourceTree = "<group>"; };
 		F04F3B72 /* NotificationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsView.swift; sourceTree = "<group>"; };
+		F07E4D21 /* UserFeedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserFeedView.swift; sourceTree = "<group>"; };
 		F7D91A42 /* ISBNdbService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ISBNdbService.swift; sourceTree = "<group>"; };
+		FA9E7301 /* Mentions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mentions.swift; sourceTree = "<group>"; };
 		NE010002 /* WellReadNotificationService.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = WellReadNotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		WG010002 /* WellReadWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = WellReadWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		WG010011 /* WidgetSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSnapshot.swift; sourceTree = "<group>"; };
@@ -377,6 +384,7 @@
 				8B8FC0012F4E9AEF0068B4B7 /* FirebaseMessaging in Frameworks */,
 				8BB4CBCA2F4E9AEF0068B4B6 /* FirebaseFunctions in Frameworks */,
 				AMP0000000000000000000001 /* AmplitudeSwift in Frameworks */,
+				AMP0000000000000000000004 /* AmplitudeSwiftSessionReplayPlugin in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -494,6 +502,8 @@
 				F00B1E02 /* BookBlendService.swift */,
 				F00B1E05 /* OpenLibraryService.swift */,
 				F00B1E06 /* BookSearchCacheService.swift */,
+				F00B1E07 /* AIContentCacheRepository.swift */,
+				F00C7A31 /* BookPopularityService.swift */,
 				F7D91A42 /* ISBNdbService.swift */,
 				F0010020 /* AuthService.swift */,
 				F0010021 /* UserRepository.swift */,
@@ -657,6 +667,7 @@
 		G0010011 /* Book */ = {
 			isa = PBXGroup;
 			children = (
+				F0010833 /* BookDiscussionSection.swift */,
 				F001002B /* BookProfileView.swift */,
 				F0010053 /* BookRefresherView.swift */,
 				F0018D72 /* BookSummaryMoreView.swift */,
@@ -781,6 +792,7 @@
 				8BE1FAC52F4E8A70006ED44D /* FirebaseMessaging */,
 				8BE1FAC72F4E8A70006ED44D /* FirebaseFunctions */,
 				AMP0000000000000000000003 /* AmplitudeSwift */,
+				AMP0000000000000000000006 /* AmplitudeSwiftSessionReplayPlugin */,
 			);
 			productName = WellRead;
 			productReference = E0010000 /* WellRead.app */;
@@ -842,6 +854,7 @@
 				8BE1FABD2F4E8A70006ED44D /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 				8BE1FAC12F4E8B00006ED44D /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 				AMP0000000000000000000002 /* XCRemoteSwiftPackageReference "Amplitude-Swift" */,
+				AMP0000000000000000000005 /* XCRemoteSwiftPackageReference "AmplitudeSessionReplay-iOS" */,
 			);
 			productRefGroup = G0010002 /* Products */;
 			projectDirPath = "";
@@ -1012,6 +1025,8 @@
 				B00B1E04 /* BookBlendStoryView.swift in Sources */,
 				B00B1E05 /* OpenLibraryService.swift in Sources */,
 				B00B1E06 /* BookSearchCacheService.swift in Sources */,
+				B00B1E07 /* AIContentCacheRepository.swift in Sources */,
+				B00C7A31 /* BookPopularityService.swift in Sources */,
 				B7D91A42 /* ISBNdbService.swift in Sources */,
 				B00D1A01 /* TypewriterText.swift in Sources */,
 				B00D1A02 /* OnboardingWizard.swift in Sources */,
@@ -1022,6 +1037,7 @@
 				B00D2A17 /* WizardAppearanceStep.swift in Sources */,
 				B00D1A07 /* WizardFinaleSteps.swift in Sources */,
 				B0010053 /* BookRefresherView.swift in Sources */,
+				B0010833 /* BookDiscussionSection.swift in Sources */,
 				B0018D72 /* BookSummaryMoreView.swift in Sources */,
 				B0010044 /* FeedCommunityWelcomeModal.swift in Sources */,
 				B0010045 /* FlowLayout.swift in Sources */,
@@ -1420,7 +1436,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 3.3;
+				MARKETING_VERSION = 3.4;
 				PRODUCT_BUNDLE_IDENTIFIER = com.wellread.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -1448,7 +1464,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 3.3;
+				MARKETING_VERSION = 3.4;
 				PRODUCT_BUNDLE_IDENTIFIER = com.wellread.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -1533,6 +1549,14 @@
 				minimumVersion = 1.9.0;
 			};
 		};
+		AMP0000000000000000000005 /* XCRemoteSwiftPackageReference "AmplitudeSessionReplay-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/amplitude/AmplitudeSessionReplay-iOS";
+			requirement = {
+				kind = upToNextMinorVersion;
+				minimumVersion = 0.12.6;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1575,6 +1599,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = AMP0000000000000000000002 /* XCRemoteSwiftPackageReference "Amplitude-Swift" */;
 			productName = AmplitudeSwift;
+		};
+		AMP0000000000000000000006 /* AmplitudeSwiftSessionReplayPlugin */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AMP0000000000000000000005 /* XCRemoteSwiftPackageReference "AmplitudeSessionReplay-iOS" */;
+			productName = AmplitudeSwiftSessionReplayPlugin;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

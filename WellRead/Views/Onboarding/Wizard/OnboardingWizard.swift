@@ -1001,6 +1001,8 @@ struct WizardCTAButton: View {
     let title: String
     var enabled: Bool = true
     var showsProgress: Bool = false
+    /// Optional SF Symbol shown ahead of the title (hidden while progressing).
+    var systemImage: String?
     let action: () -> Void
 
     var body: some View {
@@ -1008,6 +1010,10 @@ struct WizardCTAButton: View {
             HStack(spacing: 8) {
                 if showsProgress {
                     ProgressView().tint(Theme.onChrome)
+                } else if let systemImage {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Theme.onChrome)
                 }
                 Text(title)
                     .font(.system(size: 17, weight: .semibold))
@@ -1031,22 +1037,30 @@ struct WizardCTAButton: View {
 /// Store guidelines require the skip to be a real button, e.g. contacts).
 struct WizardSecondaryButton: View {
     let title: String
+    /// Optional SF Symbol shown ahead of the title.
+    var systemImage: String?
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Text(title)
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(Theme.textPrimary)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 15)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(Theme.textPrimary.opacity(0.22), lineWidth: 1.5)
-                )
-                // A stroked outline is not a fill, so the inside of the pill
-                // is transparent and would not hit test on its own.
-                .contentShape(Rectangle())
+            HStack(spacing: 8) {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 16, weight: .semibold))
+                }
+                Text(title)
+                    .font(.system(size: 17, weight: .semibold))
+            }
+            .foregroundStyle(Theme.textPrimary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 15)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(Theme.textPrimary.opacity(0.22), lineWidth: 1.5)
+            )
+            // A stroked outline is not a fill, so the inside of the pill
+            // is transparent and would not hit test on its own.
+            .contentShape(Rectangle())
         }
         .buttonStyle(.springPress)
     }

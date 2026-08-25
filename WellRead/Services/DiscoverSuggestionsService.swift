@@ -51,16 +51,22 @@ enum DiscoverSuggestionsService {
         let excludedTitles = readBooks.compactMap { $0.book?.title }
         let queuedTitles = unreadLibraryBooks.compactMap { $0.book?.title }
         if ApiKeys.claude != nil {
-            return await fetchBatchViaClaude(readBooks: readBooks, excludedTitles: excludedTitles, queuedTitles: queuedTitles, isExcluded: isExcluded, readingInterestTags: readingInterestTags, criteria: criteria)
+            return await fetchBatchViaClaude(readBooks: readBooks, excludedTitles: excludedTitles, queuedTitles: queuedTitles, libraryBooks: libraryBooks, isExcluded: isExcluded, readingInterestTags: readingInterestTags, criteria: criteria)
         } else {
             return await fetchBatchViaGoogleOnly(readBooks: readBooks, isExcluded: isExcluded, readTitles: excludedTitles, readingInterestTags: readingInterestTags, criteria: criteria)
         }
     }
 
-    private static func fetchBatchViaClaude(readBooks: [UserBook], excludedTitles: [String], queuedTitles: [String], isExcluded: (Book) -> Bool, readingInterestTags: [String], criteria: DiscoverCriteria) async -> [Book] {
-        var avoidTitles = Array(excludedTitles.prefix(40))
-        avoidTitles += queuedTitles.prefix(20)
-        avoidTitles += filteredTitlesSnapshot()
+    private static func fetchBatchViaClaude(readBooks: [UserBook], excludedTitles: [String], queuedTitles: [String], libraryBooks: [Book], isExcluded: (Book) -> Bool, readingInterestTags: [String], criteria: DiscoverCriteria) async -> [Book] {
+        // Read titles first so they are never the part that gets cut: with a large
+        // imported library, dropping them is exactly what re-surfaces already-read books.
+        var avoidTitles: [String] = []
+        func addAvoid(_ title: String) {
+            if !avoidTitles.contains(title) { avoidTitles.append(title) }
+        }
+        excludedTitles.prefix(150).forEach(addAvoid)
+        queuedTitles.prefix(30).forEach(addAvoid)
+        filteredTitlesSnapshot().forEach(addAvoid)
 
         let criteriaLine: String
         if criteria.isDefault {
@@ -85,7 +91,7 @@ enum DiscoverSuggestionsService {
             if avoidTitles.isEmpty {
                 historyLine = "They have not finished logging any books in this app yet."
             } else {
-                historyLine = "Do not suggest any of these titles (the user has already read, queued, or passed on them): \(avoidTitles.suffix(80).joined(separator: ", "))."
+                historyLine = "Do not suggest any of these titles (the user has already read, queued, or passed on them): \(avoidTitles.joined(separator: ", "))."
             }
             let userMessage = "\(criteriaLine)\(historyLine) Suggest 5 books they might enjoy next. Reply with exactly 5 lines, each line one book title (optionally 'Title by Author')."
             do {
@@ -94,8 +100,18 @@ enum DiscoverSuggestionsService {
                 var books: [Book] = []
                 var filteredThisRound: [String] = []
                 for line in lines.prefix(5) {
+                    // Reject a suggestion the moment it names a shelved work — the suggested
+                    // line is a cleaner signal than whatever edition Google resolves it to.
+                    let (title, author) = parseSuggestionLine(line)
+                    if libraryBooks.contains(where: { LibraryDedup.matches(title: title, author: author, book: $0) }) {
+                        filteredThisRound.append(line)
+                        continue
+                    }
                     let query = line.replacingOccurrences(of: " by ", with: " ")
-                    guard let first = try? await GoogleBooksService.shared.search(query: String(query)).first else { continue }
+                    let results = (try? await GoogleBooksService.shared.search(query: String(query), searchAuthors: false)) ?? []
+                    // Prefer the result that names the suggested work itself — the top
+                    // hit can be a related listing (bundle, adaptation) of it instead.
+                    guard let first = results.first(where: { LibraryDedup.matches(title: title, author: author, book: $0) }) ?? results.first else { continue }
                     if isExcluded(first) {
                         filteredThisRound.append(line)
                     } else {
@@ -112,7 +128,7 @@ enum DiscoverSuggestionsService {
             }
         }
         let q = googleFallbackQuery(readBooks: readBooks, readTitles: excludedTitles, readingInterestTags: readingInterestTags, criteria: criteria)
-        let fallback = (try? await GoogleBooksService.shared.search(query: q))?
+        let fallback = (try? await GoogleBooksService.shared.search(query: q, searchAuthors: false))?
             .filter { !isExcluded($0) } ?? []
         return Array(fallback.prefix(5))
     }
@@ -159,7 +175,7 @@ enum DiscoverSuggestionsService {
     private static func fetchBatchViaGoogleOnly(readBooks: [UserBook], isExcluded: (Book) -> Bool, readTitles: [String], readingInterestTags: [String], criteria: DiscoverCriteria) async -> [Book] {
         try? await Task.sleep(nanoseconds: 800_000_000)
         let query = googleFallbackQuery(readBooks: readBooks, readTitles: readTitles, readingInterestTags: readingInterestTags, criteria: criteria)
-        let books = (try? await GoogleBooksService.shared.search(query: query))?
+        let books = (try? await GoogleBooksService.shared.search(query: query, searchAuthors: false))?
             .filter { !isExcluded($0) } ?? []
         return Array(books.prefix(5))
     }
@@ -190,6 +206,15 @@ enum DiscoverSuggestionsService {
             return readTitles.prefix(2).joined(separator: " ")
         }
         return "popular books"
+    }
+
+    /// Splits a suggestion line into title and author on its last " by ", since
+    /// titles themselves can contain " by " ("Death by Water by …").
+    private static func parseSuggestionLine(_ line: String) -> (title: String, author: String?) {
+        guard let r = line.range(of: " by ", options: [.backwards, .caseInsensitive]) else {
+            return (line, nil)
+        }
+        return (String(line[..<r.lowerBound]), String(line[r.upperBound...]))
     }
 
     private static func parseClaudeBookLines(_ response: String) -> [String] {

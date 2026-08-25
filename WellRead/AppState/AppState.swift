@@ -69,6 +69,10 @@ final class AppState: ObservableObject {
 
     /// True only after we've loaded dismissed book IDs from Firestore, so discover suggestions exclude them from the first fetch.
     private var dismissedBookIdsLoaded = false
+    /// True once the library is known (disk cache or first Firestore snapshot).
+    /// Discover must not fetch before this: with an empty `userBooks` there is
+    /// nothing to exclude against, so already-read books sail through.
+    private var userBooksLoaded = false
 
     private static let libraryCacheSaveQueue = DispatchQueue(label: "com.wellread.library-cache-save", qos: .utility)
 
@@ -118,11 +122,13 @@ final class AppState: ObservableObject {
         currentUserId = uid
         currentFollowing = following
         dismissedBookIdsLoaded = false
+        userBooksLoaded = false
         refreshGoodreadsWizardResumeState()
 
         // Load from disk first so the user sees their library immediately.
         if let cached = LocalLibraryCache.shared.loadLibrary(userId: uid), !cached.isEmpty {
             userBooks = cached
+            userBooksLoaded = true
             BookRepository.shared.prewarmCache(with: cached.compactMap(\.book))
         }
 
@@ -130,7 +136,9 @@ final class AppState: ObservableObject {
             guard let self = self else { return }
             self.userBooks = list
             Task { @MainActor in
+                self.userBooksLoaded = true
                 self.dropExcludedFromDiscoverQueue()
+                self.loadDiscoverSuggestionsIfNeeded()
                 self.clearTierHighlightIfTiered()
                 WidgetDataService.shared.scheduleRefresh(appState: self)
             }
@@ -268,6 +276,7 @@ final class AppState: ObservableObject {
         recommenderProfiles = [:]
         dismissedBookIds = []
         dismissedBookIdsLoaded = false
+        userBooksLoaded = false
         discoverCurrentSuggestion = nil
         discoverSuggestionQueue = []
         discoverLoadCameUpEmpty = false
@@ -782,9 +791,21 @@ final class AppState: ObservableObject {
             await MainActor.run { self.updateUserBook(updated) }
             let posts = await postRepo.fetchPostsForUserAndBook(userId: uid, bookId: userBook.bookId)
             let finished = posts.filter { $0.type == .finishedBook }.sorted { $0.createdAt > $1.createdAt }
+            // Hidden discussion carriers from the book profile's "Read by" section —
+            // promoted to a feed post instead of creating a duplicate thread.
+            let discussionStubs = posts.filter { $0.type == .readRecord }
             let currentTier = updated.tier
             if postToFeed {
-                if finished.isEmpty {
+                if finished.isEmpty, let stub = discussionStubs.first {
+                    try await postRepo.updatePost(
+                        postId: stub.id.uuidString,
+                        caption: reviewText,
+                        rating: storedRating,
+                        dateFinished: dateFinished,
+                        tier: currentTier
+                    )
+                    try await postRepo.setPostType(postId: stub.id.uuidString, type: .finishedBook, refreshCreatedAt: true)
+                } else if finished.isEmpty {
                     _ = try await postRepo.createPost(
                         userId: uid,
                         type: .finishedBook,
@@ -806,10 +827,18 @@ final class AppState: ObservableObject {
                     }
                 }
             } else {
+                // Demote instead of delete: comments and likes gathered on the post
+                // keep living in the book profile's "Read by" discussion.
                 for p in finished {
-                    try await postRepo.deletePostCascade(postId: p.id.uuidString)
+                    try await postRepo.updatePost(
+                        postId: p.id.uuidString,
+                        caption: reviewText,
+                        rating: storedRating,
+                        dateFinished: dateFinished,
+                        tier: currentTier
+                    )
+                    try await postRepo.setPostType(postId: p.id.uuidString, type: .readRecord)
                     await MainActor.run {
-                        likedPostIds.remove(p.id.uuidString)
                         feedPosts.removeAll { $0.id == p.id }
                     }
                 }
@@ -826,8 +855,10 @@ final class AppState: ObservableObject {
         guard let uid = currentUserId, userBook.userId == uid else { return "You’re not signed in." }
         do {
             let posts = await postRepo.fetchPostsForUserAndBook(userId: uid, bookId: userBook.bookId)
-            let finished = posts.filter { $0.type == .finishedBook }
-            for p in finished {
+            // Feed posts and hidden discussion carriers both go — the read they
+            // hang off is being removed.
+            let attached = posts.filter { $0.type == .finishedBook || $0.type == .readRecord }
+            for p in attached {
                 try await postRepo.deletePostCascade(postId: p.id.uuidString)
                 await MainActor.run {
                     likedPostIds.remove(p.id.uuidString)
@@ -1065,9 +1096,9 @@ final class AppState: ObservableObject {
         loadDiscoverSuggestionsIfNeeded()
     }
 
-    /// Call when app/tab bar appears to load first suggestion in background. No-op if already have a suggestion or are loading. Waits for dismissed IDs to load from Firestore so we never suggest passed books.
+    /// Call when app/tab bar appears to load first suggestion in background. No-op if already have a suggestion or are loading. Waits for dismissed IDs and the library to load so we never suggest passed or already-read books.
     func loadDiscoverSuggestionsIfNeeded() {
-        guard dismissedBookIdsLoaded else { return }
+        guard dismissedBookIdsLoaded, userBooksLoaded else { return }
         guard discoverCurrentSuggestion == nil, discoverSuggestionQueue.isEmpty, !isLoadingDiscoverSuggestions else { return }
         isLoadingDiscoverSuggestions = true
         discoverLoadCameUpEmpty = false

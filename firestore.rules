@@ -44,10 +44,22 @@ service cloud.firestore {
       allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
     }
 
-    // Posts: read for feed; create when userId == auth.uid; update for likeCount/commentCount
+    // Posts: read for feed; create when userId == auth.uid; update for likeCount/commentCount.
+    // Exception: any signed-in user may create a bare `readRecord` discussion stub for
+    // ANOTHER member's read (book profile "Read by" comments/likes on reads that were
+    // never posted to the feed). Keys are locked to the empty-counter shape, so the
+    // worst abuse is a harmless orphan doc that no surface ever renders.
     match /posts/{postId} {
       allow read: if true;
-      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null && (
+        request.resource.data.userId == request.auth.uid ||
+        (
+          request.resource.data.type == 'readRecord'
+          && request.resource.data.keys().hasOnly(['userId', 'type', 'bookId', 'createdAt', 'likeCount', 'commentCount'])
+          && request.resource.data.likeCount == 0
+          && request.resource.data.commentCount == 0
+        )
+      );
       allow update: if request.auth != null;  // e.g. likeCount, commentCount
       allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
     }
@@ -130,7 +142,28 @@ service cloud.firestore {
       allow create, update: if request.auth != null
         && request.resource.data.books is list
         && request.resource.data.books.size() <= 30
-        && request.resource.data.source in ['google', 'openlibrary'];
+        && request.resource.data.source in ['isbndb', 'google', 'openlibrary'];
+      allow delete: if false;
+    }
+
+    // Community popularity per work (how many members shelved it), maintained
+    // solely by the onUserBookWritten Cloud Function (admin SDK bypasses rules).
+    match /bookStats/{workHash} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // Cross-user cache of user-independent AI content (summary, tags, quote,
+    // "about" page, refresher), one doc per book, fields filled lazily. Any
+    // signed-in user may fill it — accepted tradeoff (same as bookSearchCache):
+    // a malicious user could overwrite a book's cached content. Long-term fix
+    // is server-side generation (Cloud Function proxy as the only writer).
+    match /aiBookContent/{bookId} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null
+        && request.resource.data.keys().hasOnly(
+             ['summary', 'tags', 'quote', 'about', 'refresher', 'promptVersion', 'model', 'updatedAt'])
+        && request.resource.data.promptVersion is int;
       allow delete: if false;
     }
   }

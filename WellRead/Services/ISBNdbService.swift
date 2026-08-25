@@ -178,6 +178,24 @@ final class ISBNdbService {
         return records.compactMap { map($0, queriedISBN: nil) }
     }
 
+    /// Books credited to the named author, via the dedicated `/author/{name}`
+    /// endpoint. `/books/{query}` only matches titles — for "brandon sanderson"
+    /// it returns bundles and books *about* him, never his actual catalog — so
+    /// the search hub runs this alongside it and merges. The endpoint needs a
+    /// reasonably complete name: partial names mid-typing return nothing (fine,
+    /// the title search still answers). The default limit is deliberately large
+    /// because the endpoint's order is arbitrary across a big catalog — the
+    /// ranker's language/popularity/metadata signals sort the pile.
+    func searchByAuthor(name: String, limit: Int = 100) async throws -> [Match] {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return [] }
+        guard let encoded = trimmed.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) else { return [] }
+        guard let data = try await getData(path: "/author/\(encoded)", queryItems: [URLQueryItem(name: "pageSize", value: "\(limit)")]) else { return [] }
+        // The /author payload nests results under "books" like /books does.
+        let records = (try? JSONDecoder().decode(ISBNdbSearchResponse.self, from: data).books) ?? []
+        return records.compactMap { map($0, queriedISBN: nil) }
+    }
+
     /// Returns response data, nil for "not found" (400/404 — ISBNdb answers
     /// both for unknown ISBNs/queries), and throws for service failures.
     private func getData(path: String, queryItems: [URLQueryItem] = []) async throws -> Data? {

@@ -104,6 +104,10 @@ struct LibraryCardPalette {
 struct LibraryCardFace: View {
     let details: LibraryCardDetails
     var palette: LibraryCardPalette = .adaptive
+    /// Set by on-screen callers to blow the photo up on a long press (see
+    /// `AvatarZoomOverlay`). Left nil for the exported image, which is rendered
+    /// by ImageRenderer and has nothing to gesture on.
+    var onPhotoLongPress: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -230,6 +234,10 @@ struct LibraryCardFace: View {
         .frame(width: 66, height: 66)
         .clipShape(Circle())
         .overlay(Circle().stroke(palette.ink, lineWidth: 2))
+        // The card face is one accessibility element, so the hold is discovered
+        // by touch, same as holding the avatar on a profile page.
+        .contentShape(Circle())
+        .onLongPressGesture(minimumDuration: 0.35) { onPhotoLongPress?() }
     }
 
     private var goalStamp: some View {
@@ -279,30 +287,43 @@ struct LibraryCardStoryCanvas: View {
     var body: some View {
         ZStack {
             backgroundLayer
-            VStack(spacing: 24) {
-                LibraryCardFace(details: details, palette: .fixedLight)
-                    .frame(width: 306)
-                    .shadow(
-                        color: Color.black.opacity(background == nil ? 0.16 : 0.38),
-                        radius: 16, y: 10
-                    )
 
-                Text("Download SPINE (Reading Tracker) in the App Store")
-                    .font(.system(size: 13, weight: .semibold))
-                    .tracking(0.3)
-                    .foregroundStyle(captionColor)
-                    .shadow(color: Color.black.opacity(background == nil ? 0 : 0.45), radius: 5, y: 1)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(width: 306)
-            }
+            LibraryCardFace(details: details, palette: .fixedLight)
+                .frame(width: 306)
+                .shadow(
+                    color: Color.black.opacity(background == nil ? 0.16 : 0.38),
+                    radius: 16, y: 10
+                )
+
+            // The pitch hugs the bottom edge (27px at 3x). Instagram's reply
+            // bar no longer overlaps story images.
+            ctaBlock
+                .frame(maxHeight: .infinity, alignment: .bottom)
+                .padding(.bottom, 9)
         }
         .frame(width: Self.size.width, height: Self.size.height)
         .clipped()
     }
 
+    private var ctaBlock: some View {
+        HStack(spacing: 8) {
+            Text("Track your reading with SPINE")
+                .font(.system(size: 12.5, weight: .semibold))
+                .tracking(0.3)
+                .foregroundStyle(captionColor)
+                .lineLimit(1)
+                .fixedSize()
+            Image("AppStoreBadge")
+                .resizable()
+                .scaledToFit()
+                .frame(height: 22)
+                .foregroundStyle(captionColor)
+        }
+        .shadow(color: Color.black.opacity(background == nil ? 0 : 0.45), radius: 5, y: 1)
+    }
+
     private var captionColor: Color {
-        background == nil ? Theme.inkFixed.opacity(0.72) : Color.white.opacity(0.95)
+        background == nil ? Theme.inkFixed.opacity(0.8) : Color.white.opacity(0.95)
     }
 
     @ViewBuilder
@@ -360,6 +381,45 @@ enum LibraryCardExporter {
         }
     }
 
+    // MARK: Instagram story share
+
+    /// Whether Instagram is installed (and its story scheme is declared in our
+    /// Info.plist, so canOpenURL is allowed to answer).
+    @MainActor
+    static var canShareToInstagramStories: Bool {
+        guard let url = URL(string: "instagram-stories://share") else { return false }
+        return UIApplication.shared.canOpenURL(url)
+    }
+
+    /// Meta's "Sharing to Stories" integration, the same one Strava uses: the
+    /// composed canvas rides the pasteboard under Instagram's documented keys
+    /// and the instagram-stories:// scheme drops the reader straight into the
+    /// story editor with the image preloaded as the background.
+    @MainActor
+    static func shareToInstagramStories(details: LibraryCardDetails, background: UIImage? = nil) -> Bool {
+        guard let image = renderImage(details: details, background: background) else { return false }
+        // Photo backgrounds compress far better as JPEG; the plain card keeps
+        // PNG so its flat paper tone and thin rules stay crisp.
+        let imageData: Data? = background == nil
+            ? image.pngData()
+            : image.jpegData(compressionQuality: 0.92)
+        guard let imageData else { return false }
+
+        let appID = ApiKeys.metaAppID ?? Bundle.main.bundleIdentifier ?? "com.wellread.app"
+        guard let url = URL(string: "instagram-stories://share?source_application=\(appID)"),
+              UIApplication.shared.canOpenURL(url) else { return false }
+
+        UIPasteboard.general.setItems(
+            [[
+                "com.instagram.sharedSticker.backgroundImage": imageData,
+                "com.instagram.sharedSticker.appID": appID
+            ]],
+            options: [.expirationDate: Date().addingTimeInterval(60 * 5)]
+        )
+        UIApplication.shared.open(url)
+        return true
+    }
+
     /// Resolves the avatar to a UIImage up front: ImageRenderer cannot wait on
     /// an async loader, so an unresolved photo would export as the monogram.
     static func loadPhoto(urlString: String?) async -> UIImage? {
@@ -371,9 +431,9 @@ enum LibraryCardExporter {
 
 // MARK: - Download button
 
-/// Shared "download the card" control: opens the story composer sheet, where
-/// the reader picks a background and saves. The wizard step and the settings
-/// sheet behave identically.
+/// Shared "share the card" control: opens the story composer sheet, where the
+/// reader picks a background, then posts to Instagram or saves. The wizard step
+/// and the settings sheet behave identically.
 struct LibraryCardDownloadButton: View {
     let details: LibraryCardDetails
     /// Ghost styling for the wizard (where Next is the primary action).
@@ -384,11 +444,11 @@ struct LibraryCardDownloadButton: View {
     var body: some View {
         Group {
             if prominent {
-                WizardCTAButton(title: "Download my card") {
+                WizardCTAButton(title: "View my card", systemImage: "square.and.arrow.up") {
                     showComposer = true
                 }
             } else {
-                WizardSecondaryButton(title: "Download my card") {
+                WizardSecondaryButton(title: "View my card", systemImage: "square.and.arrow.up") {
                     showComposer = true
                 }
             }
@@ -396,6 +456,63 @@ struct LibraryCardDownloadButton: View {
         .sheet(isPresented: $showComposer) {
             LibraryCardStoryComposerSheet(details: details)
         }
+    }
+}
+
+// MARK: - Instagram share button
+
+/// The Instagram story CTA: official brand gradient, the app glyph, white
+/// text, dressed with the same gloss treatment as the app's hero buttons.
+/// Deliberately off-palette for SPINE: it borrows Instagram's brand so the
+/// destination is unmistakable, matching the share convention users know.
+private struct InstagramStoryShareButton: View {
+    let action: () -> Void
+
+    /// Instagram's brand gradient, diagonal like their app icon.
+    private static let gradient = LinearGradient(
+        colors: [
+            Color(red: 64/255, green: 93/255, blue: 230/255),
+            Color(red: 131/255, green: 58/255, blue: 180/255),
+            Color(red: 225/255, green: 48/255, blue: 108/255),
+            Color(red: 253/255, green: 89/255, blue: 73/255),
+            Color(red: 247/255, green: 119/255, blue: 55/255)
+        ],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image("InstagramLogo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 26, height: 26)
+                    .clipShape(RoundedRectangle(cornerRadius: 7))
+                    .shadow(color: Color.black.opacity(0.3), radius: 3, y: 1)
+                Text("Share to Instagram Story")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .shadow(color: Color.black.opacity(0.18), radius: 2, y: 1)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 15)
+            .contentShape(Rectangle())
+        }
+        .background(Self.gradient, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.35), Color.white.opacity(0.05)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 1
+                )
+        )
+        .shadow(color: Theme.shadowInk.opacity(0.30), radius: 9, x: 0, y: 4)
+        .buttonStyle(.springPress)
     }
 }
 
@@ -410,9 +527,13 @@ struct LibraryCardStoryComposerSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var pickerItem: PhotosPickerItem?
+    @State private var showPhotoPicker = false
     @State private var backgroundPhoto: UIImage?
     @State private var isSaving = false
     @State private var outcome: LibraryCardExporter.SaveOutcome?
+    /// Whether Instagram is installed; decides which action leads.
+    @State private var instagramAvailable = false
+    @State private var instagramShareFailed = false
 
     var body: some View {
         NavigationStack {
@@ -420,25 +541,42 @@ struct LibraryCardStoryComposerSheet: View {
                 Theme.background.ignoresSafeArea()
                 VStack(spacing: 16) {
                     preview
-                    photoControls
+                    if backgroundPhoto != nil {
+                        VStack(spacing: 6) {
+                            changePhotoChip
+                            WizardGhostButton(title: "No photo, keep it plain") {
+                                withAnimation(.easeInOut(duration: 0.2)) { backgroundPhoto = nil }
+                            }
+                        }
+                    }
 
-                    if let outcome {
-                        Text(message(for: outcome))
+                    if let resultLine {
+                        Text(resultLine.text)
                             .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(outcome == .saved ? Theme.textSecondary : Theme.danger)
+                            .foregroundStyle(resultLine.isError ? Theme.danger : Theme.textSecondary)
                             .multilineTextAlignment(.center)
                             .fixedSize(horizontal: false, vertical: true)
                             .transition(.opacity)
                     }
 
-                    WizardCTAButton(title: "Save to Photos", showsProgress: isSaving) {
-                        save()
+                    if instagramAvailable {
+                        InstagramStoryShareButton {
+                            shareToInstagram()
+                        }
+                        WizardSecondaryButton(title: isSaving ? "Saving…" : "Save to Photos") {
+                            save()
+                        }
+                    } else {
+                        WizardCTAButton(title: "Save to Photos", showsProgress: isSaving) {
+                            save()
+                        }
                     }
                 }
                 .padding(.horizontal, 24)
                 .padding(.top, 8)
                 .padding(.bottom, 12)
                 .animation(.easeInOut(duration: 0.2), value: outcome)
+                .animation(.easeInOut(duration: 0.2), value: instagramShareFailed)
             }
             .navigationTitle("Your story card")
             .navigationBarTitleDisplayMode(.inline)
@@ -456,6 +594,13 @@ struct LibraryCardStoryComposerSheet: View {
             }
         }
         .presentationDragIndicator(.visible)
+        .photosPicker(isPresented: $showPhotoPicker, selection: $pickerItem, matching: .images)
+        .onAppear {
+            // -uiPreviewInstagramShare forces the Instagram CTA in the
+            // simulator, where Instagram can't be installed.
+            instagramAvailable = LibraryCardExporter.canShareToInstagramStories
+                || ProcessInfo.processInfo.arguments.contains("-uiPreviewInstagramShare")
+        }
         .onChange(of: pickerItem) { _, item in
             guard let item else { return }
             Task {
@@ -473,7 +618,9 @@ struct LibraryCardStoryComposerSheet: View {
 
     /// The exact canvas that gets exported, scaled to fit the sheet. Sizing is
     /// done with scaleEffect rather than a smaller layout so text wrapping and
-    /// minimum scale factors resolve identically to the saved image.
+    /// minimum scale factors resolve identically to the saved image. The whole
+    /// preview is the photo picker's tap target: choosing the background IS
+    /// tapping the card, with a pulsing hint chip until a photo is picked.
     private var preview: some View {
         GeometryReader { geo in
             let scale = min(
@@ -481,10 +628,17 @@ struct LibraryCardStoryComposerSheet: View {
                 geo.size.height / LibraryCardStoryCanvas.size.height
             )
             LibraryCardStoryCanvas(details: details, background: backgroundPhoto)
+                .overlay(alignment: .bottom) { emptyCanvasPrompt }
                 .clipShape(RoundedRectangle(cornerRadius: 36))
                 .overlay(
                     RoundedRectangle(cornerRadius: 36)
                         .strokeBorder(Theme.textPrimary.opacity(0.14), lineWidth: 2)
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 36))
+                .onTapGesture { showPhotoPicker = true }
+                .accessibilityAddTraits(.isButton)
+                .accessibilityLabel(
+                    backgroundPhoto == nil ? "Choose a background photo" : "Change the background photo"
                 )
                 .scaleEffect(scale)
                 .frame(width: geo.size.width, height: geo.size.height)
@@ -492,45 +646,84 @@ struct LibraryCardStoryComposerSheet: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var photoControls: some View {
-        VStack(spacing: 8) {
-            PhotosPicker(selection: $pickerItem, matching: .images, photoLibrary: .shared()) {
-                Label(
-                    backgroundPhoto == nil ? "Choose a background photo" : "Change photo",
-                    systemImage: "photo"
-                )
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Theme.textPrimary)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14)
-                        .stroke(Theme.textPrimary.opacity(0.22), lineWidth: 1.5)
-                )
-                .contentShape(Rectangle())
+    /// The "no photo yet" prompt, drawn ON the empty canvas where it pulls the
+    /// eye into the thing it wants tapped. Safe to sit there because the canvas
+    /// is still blank: nothing here can be mistaken for the finished image.
+    /// Once a photo lands, this disappears and `changePhotoChip` takes over
+    /// below the preview. Fixed ink/paper tones, not Theme.chrome, because the
+    /// canvas is always the light card regardless of app appearance.
+    ///
+    /// The pulse is a phaseAnimator scoped to this view only: an unscoped
+    /// repeatForever here would hijack the sheet's drag-to-dismiss tracking.
+    @ViewBuilder
+    private var emptyCanvasPrompt: some View {
+        if backgroundPhoto == nil {
+            HStack(spacing: 7) {
+                Image(systemName: "photo")
+                Text("Tap to choose a background")
             }
-            .buttonStyle(.springPress)
-
-            if backgroundPhoto != nil {
-                WizardGhostButton(title: "No photo, keep it plain") {
-                    withAnimation(.easeInOut(duration: 0.2)) { backgroundPhoto = nil }
-                }
-            }
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(Theme.paperFixed)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(Capsule().fill(Theme.inkFixed.opacity(0.85)))
+            .padding(.bottom, 150)
+            .phaseAnimator([false, true]) { view, pulsing in
+                view
+                    .scaleEffect(pulsing ? 1.05 : 0.97)
+                    .opacity(pulsing ? 1 : 0.72)
+            } animation: { _ in .easeInOut(duration: 1.0) }
+            // The canvas's own tap gesture opens the picker.
+            .allowsHitTesting(false)
         }
     }
 
-    private func message(for outcome: LibraryCardExporter.SaveOutcome) -> String {
-        switch outcome {
-        case .saved: return "Saved to your Photos. Ready for your story."
-        case .permissionDenied: return "SPINE needs photo access to save your card. Turn it on in Settings."
-        case .failed: return "Could not save your card. Try again."
+    /// The "swap it out" affordance once a photo IS in. Lives below the preview
+    /// on purpose: from here on the canvas shows exactly what gets posted, so
+    /// anything drawn over it would read as part of the image.
+    private var changePhotoChip: some View {
+        Button {
+            showPhotoPicker = true
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "photo")
+                Text("Tap to change the photo")
+            }
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(Theme.onChrome)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(Capsule().fill(Theme.chrome.opacity(0.55)))
+            .contentShape(Capsule())
         }
+        .buttonStyle(.springPress)
+    }
+
+    private var resultLine: (text: String, isError: Bool)? {
+        if instagramShareFailed {
+            return ("Could not open Instagram. Try again.", true)
+        }
+        guard let outcome else { return nil }
+        switch outcome {
+        case .saved: return ("Saved to your Photos. Ready for your story.", false)
+        case .permissionDenied: return ("SPINE needs photo access to save your card. Turn it on in Settings.", true)
+        case .failed: return ("Could not save your card. Try again.", true)
+        }
+    }
+
+    private func shareToInstagram() {
+        outcome = nil
+        instagramShareFailed = !LibraryCardExporter.shareToInstagramStories(
+            details: details, background: backgroundPhoto
+        )
+        if !instagramShareFailed { WizardHaptics.success() }
     }
 
     private func save() {
         guard !isSaving else { return }
         isSaving = true
         outcome = nil
+        instagramShareFailed = false
         let background = backgroundPhoto
         Task {
             let result = await LibraryCardExporter.saveToPhotos(details: details, background: background)

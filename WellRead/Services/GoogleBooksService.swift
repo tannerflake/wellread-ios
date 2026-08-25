@@ -130,21 +130,56 @@ final class GoogleBooksService {
     /// language via Google's `langRestrict` — used by the Goodreads import, where a
     /// same-title foreign edition is worse than no match. Interactive search leaves
     /// it nil (the ranker's soft device-language preference applies instead).
-    func search(query: String, includeAllEditions: Bool = false, libraryAuthors: Set<String> = [], languageRestriction: String? = nil) async throws -> [Book] {
+    /// `searchAuthors` adds a second ISBNdb request against the /author endpoint so
+    /// a query naming an author surfaces their books (the default `/books/{query}`
+    /// only matches titles; Google and Open Library already match authors). Bulk
+    /// title lookups (Goodreads import, Discover, Blend) pass false — they know
+    /// the title and shouldn't spend a second paced ISBNdb request per book.
+    func search(query: String, includeAllEditions: Bool = false, libraryAuthors: Set<String> = [], languageRestriction: String? = nil, searchAuthors: Bool = true) async throws -> [Book] {
         let normalized = query.trimmingCharacters(in: .whitespaces).lowercased()
         guard !normalized.isEmpty else { return [] }
         let isISBNQuery = normalized.hasPrefix("isbn:")
-        let cacheKey = (languageRestriction.map { "lang=\($0)|" } ?? "") + (includeAllEditions ? "all|" : "") + normalized
+        // Author-merged results live in their own cache namespace ("a|"): legacy
+        // entries were built from title-only ISBNdb fetches and can be missing an
+        // author's books entirely, which read-time filtering can't repair. Title-
+        // only consumers keep the legacy keys, so their warm cache stays valid.
+        let mergesAuthors = searchAuthors && !isISBNQuery
+        let cacheKey = (mergesAuthors ? "a|" : "")
+            + (languageRestriction.map { "lang=\($0)|" } ?? "")
+            + (includeAllEditions ? "all|" : "")
+            + normalized
         if let cached = cacheQueue.sync(execute: { searchCache[cacheKey] }) {
             return cached
         }
         // Shared cross-user Firestore cache: a query any user has run before resolves
         // without touching any API. (Entries keep the ranking of whoever populated
-        // them — the libraryAuthors personalization boost isn't re-applied.)
+        // them — the libraryAuthors personalization boost isn't re-applied.) Entries
+        // written before the junk filter widened still carry collection sets and
+        // study guides, so re-filter on read; if that empties the entry, fall
+        // through to a fresh API fetch that overwrites it.
         if let shared = await BookSearchCacheService.shared.lookup(cacheKey: cacheKey) {
-            storeInMemory(cacheKey: cacheKey, books: shared)
-            return shared
+            let cleaned = (includeAllEditions || isISBNQuery)
+                ? shared.books
+                : shared.books.filter { !BookSearchRanker.isJunkListing(title: $0.title, query: query) }
+            // Entries ranked before ISBN-implied language joined the scorer can have
+            // a foreign edition dedup-merged as the winner — the English sibling is
+            // gone from the stored list, so it can't be repaired on read. Treat such
+            // an entry as a miss; the fresh fetch overwrites it at the new version.
+            let staleForeignTop = shared.schemaVersion < BookSearchCacheService.currentSchemaVersion
+                && !includeAllEditions && !isISBNQuery
+                && cleaned.first.map { top in
+                    let implied = BookSearchRanker.impliedLanguageCode(fromISBN: top.isbn)
+                    let device = Locale.current.language.languageCode?.identifier.lowercased()
+                    return implied != nil && device != nil && implied != device
+                } == true
+            if !cleaned.isEmpty, !staleForeignTop {
+                storeInMemory(cacheKey: cacheKey, books: cleaned)
+                return cleaned
+            }
         }
+        // Works 2+ SPINE members have shelved get a large ranking boost.
+        // Cached hourly; a cold/slow fetch returns empty rather than delaying search.
+        let popularKeys = isISBNQuery ? [] : await BookPopularityService.shared.popularKeys()
         // Tier 1: ISBNdb (paid, dedicated quota). Google runs only when ISBNdb
         // errors, is rate-limited, or has nothing for the query.
         if ISBNdbService.shared.isConfigured {
@@ -154,7 +189,9 @@ final class GoogleBooksService {
                     isISBNQuery: isISBNQuery,
                     includeAllEditions: includeAllEditions,
                     libraryAuthors: libraryAuthors,
-                    languageRestriction: languageRestriction
+                    languageRestriction: languageRestriction,
+                    popularKeys: popularKeys,
+                    searchAuthors: searchAuthors
                 )
                 if !books.isEmpty {
                     storeInMemory(cacheKey: cacheKey, books: books)
@@ -206,7 +243,8 @@ final class GoogleBooksService {
         }
         let applyJunkFilter = !includeAllEditions && !isISBNQuery
         let candidates: [BookSearchRanker.Candidate] = (decoded.items ?? []).compactMap { item in
-            guard let book = mapToBook(item: item, filterJunkEditions: applyJunkFilter) else { return nil }
+            guard let book = mapToBook(item: item) else { return nil }
+            if applyJunkFilter, BookSearchRanker.isJunkListing(title: book.title, query: query) { return nil }
             return BookSearchRanker.Candidate(
                 book: book,
                 signals: BookSearchSignals(
@@ -224,7 +262,8 @@ final class GoogleBooksService {
                 candidates,
                 query: query,
                 deduplicate: !includeAllEditions,
-                libraryAuthors: libraryAuthors
+                libraryAuthors: libraryAuthors,
+                popularKeys: popularKeys
             )
         }
         storeInMemory(cacheKey: cacheKey, books: books)
@@ -241,20 +280,55 @@ final class GoogleBooksService {
         isISBNQuery: Bool,
         includeAllEditions: Bool,
         libraryAuthors: Set<String>,
-        languageRestriction: String?
+        languageRestriction: String?,
+        popularKeys: Set<String>,
+        searchAuthors: Bool
     ) async throws -> [Book] {
         if isISBNQuery {
             let digits = query.trimmingCharacters(in: .whitespaces).dropFirst(5).filter(\.isNumber)
             guard let book = try await ISBNdbService.shared.lookupISBN(String(digits)) else { return [] }
             return [book]
         }
-        var matches = try await ISBNdbService.shared.search(query: query)
+        // Author-shaped queries (a few words, no digits — how names look) also
+        // hit ISBNdb's /author endpoint, concurrently with the title request
+        // (the service's pacer spaces their starts). One request failing must
+        // not drop the other's results; both empty/failed falls to Google.
+        let trimmedQuery = query.trimmingCharacters(in: .whitespaces)
+        let authorShaped = !trimmedQuery.contains(where: \.isNumber)
+            && (1...4).contains(trimmedQuery.split(separator: " ").count)
+        let authorTask: Task<[ISBNdbService.Match], Never>? = (searchAuthors && authorShaped)
+            ? Task { (try? await ISBNdbService.shared.searchByAuthor(name: trimmedQuery)) ?? [] }
+            : nil
+        var matches: [ISBNdbService.Match] = []
+        var titleError: Error?
+        do {
+            matches = try await ISBNdbService.shared.search(query: query)
+        } catch is CancellationError {
+            authorTask?.cancel()
+            throw CancellationError()
+        } catch {
+            titleError = error
+        }
+        if let authorTask {
+            let authorMatches = await authorTask.value
+            var seen = Set(matches.map(\.book.id))
+            for match in authorMatches where seen.insert(match.book.id).inserted {
+                matches.append(match)
+            }
+        }
+        if matches.isEmpty, let titleError { throw titleError }
         if let lang = languageRestriction?.lowercased(), !lang.isEmpty {
-            matches = matches.filter { $0.languageCode == nil || $0.languageCode == lang }
+            // ISBNdb records often omit language; the ISBN registration group
+            // fills the gap (978-602 = Indonesia, etc). Records with neither
+            // signal stay in — the import's title gate catches translations.
+            matches = matches.filter { match in
+                let effective = match.languageCode ?? BookSearchRanker.impliedLanguageCode(fromISBN: match.book.isbn)
+                return effective == nil || effective == lang
+            }
         }
         let applyJunkFilter = !includeAllEditions
         let candidates: [BookSearchRanker.Candidate] = matches.compactMap { match in
-            if applyJunkFilter, isJunkEditionTitle(match.book.title) { return nil }
+            if applyJunkFilter, BookSearchRanker.isJunkListing(title: match.book.title, query: query) { return nil }
             return BookSearchRanker.Candidate(
                 book: match.book,
                 signals: BookSearchSignals(ratingsCount: nil, averageRating: nil, language: match.languageCode)
@@ -264,7 +338,8 @@ final class GoogleBooksService {
             candidates,
             query: query,
             deduplicate: !includeAllEditions,
-            libraryAuthors: libraryAuthors
+            libraryAuthors: libraryAuthors,
+            popularKeys: popularKeys
         )
     }
 
@@ -431,10 +506,13 @@ final class GoogleBooksService {
         return .success(data)
     }
 
-    /// Use imageLinks in documented size order (best available first). Books without covers still map (empty coverURL — UI uses title placeholder / Open Library). Excludes obvious summary/study-guide entries unless `filterJunkEditions` is false ("show all editions" fallback).
-    private func mapToBook(item: GoogleBooksItem, filterJunkEditions: Bool = true) -> Book? {
+    /// Use imageLinks in documented size order (best available first). Books without
+    /// covers still map (empty coverURL — UI uses title placeholder / Open Library).
+    /// Junk-listing filtering happens at the call sites that have the query in hand
+    /// (see `BookSearchRanker.isJunkListing`); `fetchVolume` never filters, since it
+    /// resolves a book the user already has.
+    private func mapToBook(item: GoogleBooksItem) -> Book? {
         guard let info = item.volumeInfo, let title = info.title, !title.isEmpty else { return nil }
-        if filterJunkEditions, isJunkEditionTitle(title) { return nil }
         let links = info.imageLinks
         // Prefer thumbnail → medium before extraLarge: very large assets are sometimes interior scans or preview pages, not the marketing cover.
         let rawOrder: [String?] = [
@@ -467,14 +545,6 @@ final class GoogleBooksService {
             isbn: isbnDigits,
             fallbackCoverURLs: fallbacks.isEmpty ? nil : fallbacks
         )
-    }
-
-    /// Filters junk editions that often appear in broad search (not used for
-    /// strict ISBN queries) — shared by the ISBNdb and Google tiers.
-    private func isJunkEditionTitle(_ title: String) -> Bool {
-        let t = title.lowercased()
-        let junk = ["summary", "study guide", "sparknotes", "cliffsnotes", "book review", "analysis of", "reading guide"]
-        return junk.contains { t.contains($0) }
     }
 
     /// Prefer ISBN-13, then ISBN-10 (digits only).

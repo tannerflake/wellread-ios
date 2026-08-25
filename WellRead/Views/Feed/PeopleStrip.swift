@@ -221,6 +221,8 @@ struct PeopleStrip: View {
     @State private var scrollX: CGFloat = 0
     /// Measured width of the pinned "FOLLOWING" label (for the push-out offset).
     @State private var followingLabelWidth: CGFloat = 0
+    /// Member whose photo is being held open full screen (see `AvatarZoomOverlay`).
+    @State private var zoomUser: User?
 
     private let userRepo = UserRepository()
 
@@ -242,6 +244,17 @@ struct PeopleStrip: View {
             }
         }
         .padding(.top, 4)
+        .avatarZoom(
+            isPresented: Binding(
+                get: { zoomUser != nil },
+                set: { if !$0 { zoomUser = nil } }
+            ),
+            urlString: zoomUser?.profileImageURL,
+            displayName: zoomUser?.displayName,
+            firstName: zoomUser?.firstName,
+            lastName: zoomUser?.lastName,
+            caption: zoomUser?.displayName
+        )
         .animation(.easeInOut(duration: 0.25), value: myFollowingSet)
         .task {
             await model.loadIfNeeded(
@@ -365,7 +378,14 @@ struct PeopleStrip: View {
         let readingNow = model.readingNowByUid[reader.uid] ?? []
         return NavigationLink(value: reader.uid) {
             VStack(spacing: 8) {
+                // The hold lives on the avatar itself, a descendant of the
+                // link's label, so it consumes the touch instead of letting the
+                // release push the library.
                 circleAvatar(user: reader.user, size: 64)
+                    .onLongPressGesture(minimumDuration: 0.35) {
+                        WizardHaptics.step()
+                        AvatarZoomPresentation.present($zoomUser, reader.user)
+                    }
                     .overlay(alignment: .bottomLeading) {
                         if !readingNow.isEmpty {
                             ReadingNowFanStack(books: readingNow, coverWidth: 19)
@@ -387,6 +407,7 @@ struct PeopleStrip: View {
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel("\(reader.user.displayName), \(isFollowed ? "following" : "not following"), open library")
+            .accessibilityHint("Touch and hold their photo to see it full screen")
         }
         .buttonStyle(.plain)
     }

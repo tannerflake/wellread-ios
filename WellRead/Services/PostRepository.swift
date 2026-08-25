@@ -5,6 +5,7 @@
 //  Firestore posts: create, feed query, like/comment counts.
 //
 
+import CryptoKit
 import Foundation
 import FirebaseFirestore
 
@@ -166,7 +167,10 @@ final class PostRepository {
             if let uid = doc.data()["userId"] as? String, HiddenAccounts.isHiddenFromCurrentViewer(uid: uid) { return nil }
             return (doc.data(), doc.documentID)
         }
-        let parsed = rawDocs.compactMap { data, docId in parsePost(from: data, docId: docId) }
+        let parsed = rawDocs
+            .compactMap { data, docId in parsePost(from: data, docId: docId) }
+            // Hidden discussion carriers live only on the book profile, never in a feed.
+            .filter { $0.type != .readRecord }
         async let booksTask = bookRepo.getBooks(ids: parsed.compactMap(\.bookId))
         async let usersTask = userRepo.getUsers(uids: parsed.map(\.userId))
         let (books, users) = await (booksTask, usersTask)
@@ -333,6 +337,84 @@ final class PostRepository {
     }
 
     private let commentRepo = CommentRepository()
+
+    /// Deterministic post id for the hidden discussion thread on a member's read
+    /// of a book. Every client computes the same id, so concurrent first
+    /// interactions converge on one document instead of forking the thread.
+    static func readDiscussionPostId(readerUid: String, bookId: String) -> UUID {
+        let digest = SHA256.hash(data: Data("readRecord|\(readerUid)|\(bookId)".utf8))
+        let b = Array(digest.prefix(16))
+        return UUID(uuid: (b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7],
+                           b[8], b[9], b[10], b[11], b[12], b[13], b[14], b[15]))
+    }
+
+    /// Every finished-book or read-discussion post attached to this book, one
+    /// query — the "Read by" section matches them to readers by userId. Hidden
+    /// authors are dropped, book/author hydration is skipped (the caller
+    /// already holds both).
+    func fetchPosts(bookId: String) async -> [Post] {
+        do {
+            let snapshot = try await db.collection(posts)
+                .whereField("bookId", isEqualTo: bookId)
+                .getDocuments()
+            return snapshot.documents.compactMap { doc -> Post? in
+                guard let post = parsePost(from: doc.data(), docId: doc.documentID),
+                      post.type == .finishedBook || post.type == .readRecord,
+                      !HiddenAccounts.isHiddenFromCurrentViewer(uid: post.userId) else { return nil }
+                return post
+            }
+        } catch {
+            return []
+        }
+    }
+
+    /// The discussion post for a member's read, creating the hidden readRecord
+    /// stub when the read has no post yet. The get-then-set is not transactional;
+    /// two viewers racing the very first interaction on the same read is rare
+    /// enough that an off-by-one likeCount is an accepted tradeoff.
+    func ensureReadDiscussionPost(readerUid: String, bookId: String) async throws -> Post {
+        let id = Self.readDiscussionPostId(readerUid: readerUid, bookId: bookId)
+        let ref = db.collection(posts).document(id.uuidString)
+        if let snapshot = try? await ref.getDocument(), snapshot.exists,
+           let data = snapshot.data(),
+           let existing = parsePost(from: data, docId: snapshot.documentID) {
+            return existing
+        }
+        let now = Date()
+        // Exactly the keys the security rules allow a non-owner to create.
+        try await ref.setData([
+            "userId": readerUid,
+            "type": PostType.readRecord.rawValue,
+            "bookId": bookId,
+            "createdAt": Timestamp(date: now),
+            "likeCount": 0,
+            "commentCount": 0,
+        ])
+        return Post(
+            id: id,
+            userId: readerUid,
+            type: .readRecord,
+            bookId: bookId,
+            book: nil,
+            caption: nil,
+            createdAt: now,
+            likeCount: 0,
+            commentCount: 0,
+            user: nil,
+            rating: nil,
+            dateFinished: nil,
+            tier: nil
+        )
+    }
+
+    /// Flips a post between the feed (`finishedBook`) and the hidden discussion
+    /// carrier (`readRecord`) without touching its likes or comments. Promoting
+    /// back to the feed restamps createdAt so it surfaces as a fresh post.
+    func setPostType(postId: String, type: PostType, refreshCreatedAt: Bool = false) async throws {
+        var data: [String: Any] = ["type": type.rawValue]
+        if refreshCreatedAt { data["createdAt"] = Timestamp(date: Date()) }
+        try await db.collection(posts).document(postId).updateData(data)
+    }
 
     /// All posts for this user + book (e.g. find feed posts to sync with a read entry).
     func fetchPostsForUserAndBook(userId: String, bookId: String) async -> [Post] {

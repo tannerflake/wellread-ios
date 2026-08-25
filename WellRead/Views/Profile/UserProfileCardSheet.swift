@@ -37,6 +37,8 @@ struct UserProfileCardSheet: View {
     @State private var showSettings = false
     /// Roster row tapped: pushes that member's full library over the card.
     @State private var selectedRosterUserId: String?
+    /// Holding the card's photo blows it up over a dimmed screen.
+    @State private var showAvatarZoom = false
 
     enum RosterTab: String, CaseIterable {
         case following = "Following"
@@ -72,6 +74,14 @@ struct UserProfileCardSheet: View {
         NavigationStack {
             ZStack {
                 Theme.background.ignoresSafeArea()
+                    .avatarZoom(
+                        isPresented: $showAvatarZoom,
+                        urlString: displayUser.profileImageURL,
+                        displayName: displayUser.displayName,
+                        firstName: displayUser.firstName,
+                        lastName: displayUser.lastName,
+                        caption: details?.name ?? displayUser.displayName
+                    )
                 ScrollView {
                     VStack(spacing: 22) {
                         cardPager
@@ -145,8 +155,11 @@ struct UserProfileCardSheet: View {
             HStack(alignment: .top, spacing: 14) {
                 Group {
                     if let details {
-                        LibraryCardFace(details: details)
-                            .transition(.opacity)
+                        LibraryCardFace(details: details) {
+                            WizardHaptics.step()
+                            AvatarZoomPresentation.present($showAvatarZoom)
+                        }
+                        .transition(.opacity)
                     } else {
                         RoundedRectangle(cornerRadius: 18)
                             .fill(Theme.surfaceElevated)

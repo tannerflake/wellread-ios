@@ -104,3 +104,145 @@ struct UserAvatarView: View {
         return URL(string: urlString)
     }
 }
+
+// MARK: - Full-screen avatar zoom
+
+/// Long-press a member's avatar anywhere in the app to blow their profile photo
+/// up over a dimmed screen. Presented as a clear-background full-screen cover so
+/// it also covers the nav bar; the cover's own transition is suppressed and the
+/// zoom/dim are animated by hand, so the photo springs out of nothing instead of
+/// sliding up from the bottom.
+struct AvatarZoomOverlay: View {
+    let urlString: String?
+    let displayName: String?
+    var firstName: String? = nil
+    var lastName: String? = nil
+    /// Name printed under the photo. Nil hides the caption.
+    var caption: String? = nil
+    let onDismiss: () -> Void
+
+    /// Drives both the entrance spring and the exit, so dismissing reverses the
+    /// same animation the press played.
+    @State private var presented = false
+    /// Live drag offset: flicking the photo in any direction dismisses it.
+    @State private var dragOffset: CGSize = .zero
+
+    /// 0...1 by drag distance: fades the dim and shrinks the photo as it's flicked away.
+    private var dragProgress: Double {
+        let distance = sqrt(dragOffset.width * dragOffset.width + dragOffset.height * dragOffset.height)
+        return Double(min(distance / 220, 1))
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let side = min(geo.size.width - 48, geo.size.height * 0.62)
+            ZStack {
+                Theme.shadowInk
+                    .opacity(presented ? 0.9 * (1 - dragProgress * 0.7) : 0)
+                    .ignoresSafeArea()
+                    .onTapGesture { dismiss() }
+
+                VStack(spacing: 18) {
+                    UserAvatarView(
+                        urlString: urlString,
+                        displayName: displayName,
+                        firstName: firstName,
+                        lastName: lastName,
+                        size: side
+                    )
+                    .overlay(Circle().strokeBorder(Theme.phosphorWhite.opacity(0.18), lineWidth: 1))
+                    .shadow(color: Theme.shadowInk.opacity(0.5), radius: 30, y: 12)
+
+                    if let caption, !caption.isEmpty {
+                        Text(caption)
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(Theme.phosphorWhite)
+                            .opacity(presented ? 1 - dragProgress : 0)
+                    }
+                }
+                .scaleEffect(presented ? 1 - dragProgress * 0.12 : 0.55)
+                .opacity(presented ? 1 : 0)
+                .offset(dragOffset)
+                .gesture(
+                    DragGesture()
+                        .onChanged { dragOffset = $0.translation }
+                        .onEnded { value in
+                            let distance = sqrt(
+                                value.translation.width * value.translation.width
+                                    + value.translation.height * value.translation.height
+                            )
+                            if distance > 90 {
+                                dismiss()
+                            } else {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                    dragOffset = .zero
+                                }
+                            }
+                        }
+                )
+                .onTapGesture { dismiss() }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .onAppear {
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) { presented = true }
+        }
+    }
+
+    private func dismiss() {
+        withAnimation(.easeOut(duration: 0.18)) {
+            presented = false
+        }
+        // Let the shrink play before the cover goes away.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { onDismiss() }
+    }
+}
+
+enum AvatarZoomPresentation {
+    /// Flip the zoom flag without the full-screen cover's own slide-up: the
+    /// overlay animates its own spring, and a cover transition on top of that
+    /// reads as two different animations fighting.
+    static func present(_ binding: Binding<Bool>) {
+        var t = Transaction(animation: nil)
+        t.disablesAnimations = true
+        withTransaction(t) { binding.wrappedValue = true }
+    }
+
+    /// Same, for surfaces that carry which member to show (a strip of avatars)
+    /// rather than a single fixed one.
+    static func present<Value>(_ binding: Binding<Value?>, _ value: Value) {
+        var t = Transaction(animation: nil)
+        t.disablesAnimations = true
+        withTransaction(t) { binding.wrappedValue = value }
+    }
+}
+
+extension View {
+    /// Attach beside any avatar: pair with a long press that calls
+    /// `AvatarZoomPresentation.present($flag)`. Attach it to a leaf view
+    /// (not the same view as another `fullScreenCover`) so the two don't collide.
+    func avatarZoom(
+        isPresented: Binding<Bool>,
+        urlString: String?,
+        displayName: String?,
+        firstName: String? = nil,
+        lastName: String? = nil,
+        caption: String? = nil
+    ) -> some View {
+        fullScreenCover(isPresented: isPresented) {
+            AvatarZoomOverlay(
+                urlString: urlString,
+                displayName: displayName,
+                firstName: firstName,
+                lastName: lastName,
+                caption: caption,
+                onDismiss: {
+                    var t = Transaction(animation: nil)
+                    t.disablesAnimations = true
+                    withTransaction(t) { isPresented.wrappedValue = false }
+                }
+            )
+            .presentationBackground(.clear)
+        }
+    }
+}

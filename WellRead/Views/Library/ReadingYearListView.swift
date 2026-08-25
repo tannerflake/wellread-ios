@@ -34,6 +34,8 @@ struct ReadingYearListView: View {
     /// the parent would push from the stack root, popping this list on the way back.
     @State private var selectedBook: Book?
 
+    private static let topAnchorID = "readingYearListTop"
+
     /// One row = one (book, year) pair; a book re-read across years appears
     /// under each year and moves independently per year.
     struct YearBookRef: Hashable {
@@ -100,18 +102,32 @@ struct ReadingYearListView: View {
                 if sections.isEmpty {
                     noMatchesState
                 } else {
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
-                            ForEach(sections) { section in
-                                Section {
-                                    sectionBody(section)
-                                } header: {
-                                    sectionHeader(section)
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                                // Anchor for jumping back to the top when search opens.
+                                Color.clear
+                                    .frame(height: 0)
+                                    .id(Self.topAnchorID)
+                                ForEach(sections) { section in
+                                    Section {
+                                        sectionBody(section)
+                                    } header: {
+                                        sectionHeader(section)
+                                    }
                                 }
                             }
+                            .padding(.horizontal, Theme.horizontalPadding)
+                            .padding(.bottom, mainTabBarOverlapExtraHeight + 40)
                         }
-                        .padding(.horizontal, Theme.horizontalPadding)
-                        .padding(.bottom, mainTabBarOverlapExtraHeight + 40)
+                        // Opening search from deep in a long list would otherwise leave
+                        // you looking at unrelated rows while the results sit above.
+                        .onChange(of: isSearching) { _, nowSearching in
+                            guard nowSearching else { return }
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                proxy.scrollTo(Self.topAnchorID, anchor: .top)
+                            }
+                        }
                     }
                 }
             }
@@ -127,30 +143,35 @@ struct ReadingYearListView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Theme.background, for: .navigationBar)
         .toolbar {
+            // One item holding both controls: two separate ToolbarItems get spread
+            // apart by the navigation bar, which reads as unrelated buttons.
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isSearching.toggle()
-                        if !isSearching { searchText = "" }
-                    }
-                    searchFieldFocused = isSearching
-                } label: {
-                    Image(systemName: isSearching ? "xmark" : "magnifyingglass")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Theme.textPrimary)
-                }
-                .accessibilityLabel(isSearching ? "Close search" : "Search books")
-            }
-            if isEditable {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(isSelecting ? "Done" : "Select") {
+                HStack(spacing: 16) {
+                    Button {
                         withAnimation(.easeInOut(duration: 0.2)) {
-                            isSelecting.toggle()
-                            if !isSelecting { selection.removeAll() }
+                            isSearching.toggle()
+                            if !isSearching { searchText = "" }
                         }
+                        searchFieldFocused = isSearching
+                    } label: {
+                        Image(systemName: isSearching ? "xmark" : "magnifyingglass")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Theme.textPrimary)
                     }
-                    .font(Theme.callout().weight(.semibold))
-                    .foregroundStyle(Theme.textPrimary)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(isSearching ? "Close search" : "Search books")
+
+                    if isEditable {
+                        Button(isSelecting ? "Done" : "Select") {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                isSelecting.toggle()
+                                if !isSelecting { selection.removeAll() }
+                            }
+                        }
+                        .font(Theme.callout().weight(.semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                        .buttonStyle(.plain)
+                    }
                 }
             }
         }

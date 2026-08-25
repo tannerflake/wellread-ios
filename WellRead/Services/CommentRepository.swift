@@ -53,6 +53,33 @@ final class CommentRepository {
         }
     }
 
+    /// Comments for many posts at once (chunked `in` queries, sorted client-side
+    /// so no composite index is needed) — the "Read by" section's inline previews.
+    func fetchComments(postIds: [String]) async -> [String: [Comment]] {
+        let ids = Array(Set(postIds))
+        guard !ids.isEmpty else { return [:] }
+        let chunks = stride(from: 0, to: ids.count, by: 30).map { Array(ids[$0..<min($0 + 30, ids.count)]) }
+        var all: [Comment] = []
+        await withTaskGroup(of: [Comment].self) { group in
+            for chunk in chunks {
+                group.addTask { [self] in
+                    do {
+                        let snapshot = try await db.collection(comments)
+                            .whereField("postId", in: chunk)
+                            .getDocuments()
+                        return snapshot.documents.compactMap { doc in
+                            comment(from: doc.data(), docId: doc.documentID)
+                        }
+                    } catch {
+                        return []
+                    }
+                }
+            }
+            for await list in group { all.append(contentsOf: list) }
+        }
+        return Dictionary(grouping: all.sorted { $0.createdAt < $1.createdAt }, by: \.postId)
+    }
+
     /// Deletes all comments for a post (e.g. when removing the post). Batched; requires rules allowing post author to delete.
     func deleteAllCommentsForPost(postId: String) async throws {
         let snapshot = try await db.collection(comments)

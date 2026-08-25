@@ -121,7 +121,7 @@ final class GoodreadsImportService {
         // A foreign-only result dropped by the filter becomes .noMatch — consistent
         // with the confident-only rule that a wrong guess is worse than no match.
         let language = Locale.current.language.languageCode?.identifier.lowercased() ?? "en"
-        let results = try await googleBooks.search(query: query, languageRestriction: language)
+        let results = try await googleBooks.search(query: query, languageRestriction: language, searchAuthors: false)
         let rowISBNs = [row.isbn13, row.isbn].compactMap { $0 }.map { $0.filter(\.isNumber) }
 
         var confident: [Book] = []
@@ -236,13 +236,51 @@ enum LibraryDedup {
         return t + "|" + a
     }
 
-    /// Same volume id, equivalent ISBNs, or same work key.
+    /// Order-insensitive title words: articles and bare numbers dropped. Catches
+    /// series editions whose title and series name swap positions — "The Final
+    /// Empire (Mistborn, #1)" vs "Mistborn: The Final Empire" — which the
+    /// positional keys above miss. Set *equality* (not subset) keeps sequels
+    /// apart: {dune} ≠ {dune, messiah}.
+    static func titleContentWords(_ title: String) -> Set<String> {
+        let articles: Set<String> = ["the", "a", "an"]
+        let words = GoodreadsTitleMatcher.normalize(title).components(separatedBy: " ")
+        return Set(words.filter { !articles.contains($0) && Int($0) == nil })
+    }
+
+    private static func authorLastName(_ author: String) -> String? {
+        GoodreadsTitleMatcher.authorLastName(GoodreadsTitleMatcher.primaryAuthor(author))
+    }
+
+    /// Same volume id, equivalent ISBNs, same work key, or same title words by the same author.
     static func isSameWork(_ a: Book, _ b: Book) -> Bool {
         if a.id == b.id { return true }
         if let ia = a.isbn, let ib = b.isbn, ISBNMatcher.equivalent(ia, ib) { return true }
         if let fa = fullTitleKey(for: a), let fb = fullTitleKey(for: b), fa == fb { return true }
-        guard let ka = workKey(for: a), let kb = workKey(for: b) else { return false }
-        return ka == kb
+        if let ka = workKey(for: a), let kb = workKey(for: b), ka == kb { return true }
+        let wa = titleContentWords(a.title)
+        if !wa.isEmpty, wa == titleContentWords(b.title),
+           let la = authorLastName(a.author), let lb = authorLastName(b.author), la == lb {
+            return true
+        }
+        return false
+    }
+
+    /// True when a plain "Title" (+ optional author) names the same work as `book`.
+    /// Used by Discover to reject an LLM suggestion *before* it's resolved to an
+    /// edition, since resolution can land on a volume whose metadata no longer
+    /// matches the shelved copy. With no author, matches on title alone — for
+    /// suggestion filtering a rare same-title false positive just skips one pick.
+    static func matches(title: String, author: String?, book: Book) -> Bool {
+        if let author, !author.isEmpty {
+            if let k = workKey(title: title, author: author), k == workKey(for: book) { return true }
+            let la = authorLastName(author)
+            guard la == nil || la == authorLastName(book.author) else { return false }
+        }
+        let t = GoodreadsTitleMatcher.normalize(GoodreadsTitleMatcher.mainTitle(title))
+        let bt = GoodreadsTitleMatcher.normalize(GoodreadsTitleMatcher.mainTitle(book.title))
+        if !t.isEmpty, t == bt { return true }
+        let w = titleContentWords(title)
+        return !w.isEmpty && w == titleContentWords(book.title)
     }
 }
 

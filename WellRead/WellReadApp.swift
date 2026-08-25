@@ -7,6 +7,7 @@
 
 import SwiftUI
 import AmplitudeSwift
+import AmplitudeSwiftSessionReplayPlugin
 import FirebaseCore
 import GoogleSignIn
 import FirebaseFirestore
@@ -22,10 +23,26 @@ enum Analytics {
             print("Amplitude API key missing — analytics disabled")
             return nil
         }
-        return Amplitude(configuration: Configuration(
+        let client = Amplitude(configuration: Configuration(
             apiKey: key,
             autocapture: [.sessions, .appLifecycles, .screenViews]
         ))
+        // Session Replay. `.medium` masking blanks every editable field, so
+        // sign-in email/password and search text never reach a recording;
+        // titles, reviews, and member names stay visible. Replays count against
+        // the plan's monthly quota, so lower `sampleRate` to record only a
+        // fraction of sessions.
+        //
+        // `enableRemoteConfig: false` keeps these values authoritative. The
+        // Amplitude project's server-side config caps iOS capture at 3% (it is
+        // tuned for the web app sharing this project) and would otherwise
+        // silently override both settings.
+        client.add(plugin: AmplitudeSwiftSessionReplayPlugin(
+            sampleRate: 1.0,
+            maskLevel: .medium,
+            enableRemoteConfig: false
+        ))
+        return client
     }()
 }
 

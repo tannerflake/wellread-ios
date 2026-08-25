@@ -2,13 +2,16 @@
 //  ClaudeService.swift
 //  WellRead
 //
-//  Calls Anthropic Messages API for AI suggestions. Uses ApiKeys.claude.
+//  LLM gateway for AI suggestions. Despite the name it now routes across two
+//  providers: Google Gemini (cheap tier) and Anthropic Claude (quality tier +
+//  fallback). Uses ApiKeys.gemini / ApiKeys.claude.
 //
 
 import Foundation
 
 private let messagesURL = URL(string: "https://api.anthropic.com/v1/messages")!
 private let apiVersion = "2023-06-01"
+private let geminiModelsBase = "https://generativelanguage.googleapis.com/v1beta/models"
 
 struct ClaudeMessageRequest: Encodable {
     let model: String
@@ -52,22 +55,35 @@ final class ClaudeService {
     static let shared = ClaudeService()
     private let session: URLSession
 
+    enum Provider {
+        case anthropic
+        case gemini
+    }
+
     /// Which model a call runs on. Pick the cheapest tier that doesn't meaningfully
-    /// hurt quality; each tier is a fallback chain (404/400 falls through to the next).
+    /// hurt quality; each tier is a fallback chain (an HTTP error — bad model, quota,
+    /// outage — falls through to the next entry, crossing providers if needed).
     enum ModelTier {
-        /// Haiku ($1/$5 per MTok): high-volume, well-scoped tasks — condensing a
-        /// provided description, picking tags from a fixed list, matching similar
-        /// titles, short recommendation lists.
+        /// Gemini Flash-Lite ($0.30/$2.50 per MTok), falling back to Haiku ($1/$5):
+        /// high-volume, well-scoped tasks — condensing a provided description,
+        /// picking tags from a fixed list, matching similar titles, short rec lists.
         case simple
         /// Sonnet ($3/$15 per MTok): tasks that lean on deep knowledge of a book's
         /// actual contents, where a small model is likelier to fabricate — verbatim
         /// quotes, spoiler-aware prose and Q&A, refreshers, blend generation.
         case complex
 
-        fileprivate var modelsToTry: [String] {
+        fileprivate var modelsToTry: [(provider: Provider, model: String)] {
             switch self {
-            case .simple: return ["claude-haiku-4-5", "claude-sonnet-5"]
-            case .complex: return ["claude-sonnet-5", "claude-haiku-4-5"]
+            case .simple: return [
+                (.gemini, "gemini-3.5-flash-lite"),
+                (.anthropic, "claude-haiku-4-5"),
+                (.anthropic, "claude-sonnet-5")
+            ]
+            case .complex: return [
+                (.anthropic, "claude-sonnet-5"),
+                (.anthropic, "claude-haiku-4-5")
+            ]
             }
         }
     }
@@ -78,11 +94,23 @@ final class ClaudeService {
         session = URLSession(configuration: config)
     }
 
+    /// Reply text plus the model that actually produced it (the tier's fallback
+    /// chain means it isn't fixed) — callers persisting content record the model.
+    struct DetailedResponse {
+        let text: String
+        let model: String
+    }
+
     /// Sends a user message and returns the assistant's text reply. Requires ApiKeys.claude.
     /// `timeout` caps the wait for the (non-streaming) response — callers with a user
     /// staring at a spinner should pass one and fall back when it trips.
     func sendMessage(system: String? = nil, userMessage: String, maxTokens: Int = 1024, timeout: TimeInterval? = nil, tier: ModelTier = .complex) async throws -> String {
-        try await sendConversation(
+        try await sendMessageDetailed(system: system, userMessage: userMessage, maxTokens: maxTokens, timeout: timeout, tier: tier).text
+    }
+
+    /// `sendMessage` variant that also reports which model answered.
+    func sendMessageDetailed(system: String? = nil, userMessage: String, maxTokens: Int = 1024, timeout: TimeInterval? = nil, tier: ModelTier = .complex) async throws -> DetailedResponse {
+        try await sendConversationDetailed(
             system: system,
             messages: [.init(role: "user", content: userMessage)],
             maxTokens: maxTokens,
@@ -93,23 +121,42 @@ final class ClaudeService {
 
     /// Multi-turn variant: sends alternating user/assistant turns (e.g. refresher Q&A follow-ups).
     func sendConversation(system: String? = nil, messages: [ClaudeMessageRequest.Message], maxTokens: Int = 1024, timeout: TimeInterval? = nil, tier: ModelTier = .complex) async throws -> String {
-        guard let key = ApiKeys.claude, !key.isEmpty else {
-            throw NSError(domain: "ClaudeService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Claude API key not configured. Add CLAUDE_API_KEY to Secrets.plist."])
-        }
+        try await sendConversationDetailed(system: system, messages: messages, maxTokens: maxTokens, timeout: timeout, tier: tier).text
+    }
+
+    /// `sendConversation` variant that also reports which model answered.
+    func sendConversationDetailed(system: String? = nil, messages: [ClaudeMessageRequest.Message], maxTokens: Int = 1024, timeout: TimeInterval? = nil, tier: ModelTier = .complex) async throws -> DetailedResponse {
         var lastError: Error?
-        for model in tier.modelsToTry {
+        for entry in tier.modelsToTry {
+            let key: String?
+            switch entry.provider {
+            case .anthropic: key = ApiKeys.claude
+            case .gemini: key = ApiKeys.gemini
+            }
+            // Provider not configured: skip to the next entry in the chain.
+            guard let key, !key.isEmpty else { continue }
             do {
-                return try await send(model: model, key: key, system: system, messages: messages, maxTokens: maxTokens, timeout: timeout)
+                switch entry.provider {
+                case .anthropic:
+                    let text = try await send(model: entry.model, key: key, system: system, messages: messages, maxTokens: maxTokens, timeout: timeout)
+                    return DetailedResponse(text: text, model: entry.model)
+                case .gemini:
+                    let text = try await sendGemini(model: entry.model, key: key, system: system, messages: messages, maxTokens: maxTokens, timeout: timeout)
+                    return DetailedResponse(text: text, model: entry.model)
+                }
             } catch {
                 lastError = error
                 let ns = error as NSError
-                if ns.domain == "ClaudeService", (ns.code == 404 || ns.code == 400) {
+                // Any HTTP-level failure (retired model, bad key, quota, outage)
+                // falls through to the next entry — crossing providers if needed.
+                // Network errors (offline) surface directly; retrying won't help.
+                if ns.domain == "ClaudeService", ns.code > 0 {
                     continue
                 }
                 throw error
             }
         }
-        throw lastError ?? NSError(domain: "ClaudeService", code: -2, userInfo: [NSLocalizedDescriptionKey: "No model available."])
+        throw lastError ?? NSError(domain: "ClaudeService", code: -1, userInfo: [NSLocalizedDescriptionKey: "No AI provider configured. Add CLAUDE_API_KEY or GEMINI_API_KEY to Secrets.plist."])
     }
 
     private func send(model: String, key: String, system: String?, messages: [ClaudeMessageRequest.Message], maxTokens: Int, timeout: TimeInterval? = nil) async throws -> String {
@@ -141,5 +188,58 @@ final class ClaudeService {
         }
         let decoded = try JSONDecoder().decode(ClaudeMessageResponse.self, from: data)
         return decoded.text
+    }
+
+    // MARK: - Gemini
+
+    private struct GeminiResponse: Decodable {
+        struct Candidate: Decodable {
+            struct Content: Decodable {
+                struct Part: Decodable { let text: String? }
+                let parts: [Part]?
+            }
+            let content: Content?
+        }
+        let candidates: [Candidate]?
+
+        var text: String {
+            (candidates?.first?.content?.parts ?? []).compactMap { $0.text }.joined()
+        }
+    }
+
+    /// Same contract as `send`, against the Gemini generateContent REST API.
+    /// Claude "assistant" turns map to Gemini's "model" role.
+    private func sendGemini(model: String, key: String, system: String?, messages: [ClaudeMessageRequest.Message], maxTokens: Int, timeout: TimeInterval? = nil) async throws -> String {
+        guard let url = URL(string: "\(geminiModelsBase)/\(model):generateContent") else {
+            throw NSError(domain: "ClaudeService", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid Gemini model name."])
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        if let timeout { request.timeoutInterval = timeout }
+        request.setValue(key, forHTTPHeaderField: "x-goog-api-key")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var body: [String: Any] = [
+            "contents": messages.map { message in
+                [
+                    "role": message.role == "assistant" ? "model" : "user",
+                    "parts": [["text": message.content]]
+                ]
+            },
+            "generationConfig": ["maxOutputTokens": maxTokens]
+        ]
+        if let system, !system.isEmpty {
+            body["systemInstruction"] = ["parts": [["text": system]]]
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw NSError(domain: "ClaudeService", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid response."])
+        }
+        if http.statusCode != 200 {
+            let message = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? [String: Any]
+            let detail = message?["message"] as? String ?? "Request failed (HTTP \(http.statusCode))."
+            throw NSError(domain: "ClaudeService", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: detail])
+        }
+        return try JSONDecoder().decode(GeminiResponse.self, from: data).text
     }
 }

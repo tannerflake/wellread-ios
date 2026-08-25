@@ -16,10 +16,27 @@ enum ApiKeys {
         return nil
     }
 
+    /// Gemini (Google AI) API key for the cheap model tier. From Secrets.plist / Info.plist "GEMINI_API_KEY".
+    static var gemini: String? {
+        if let key = keyFromPlist(named: "Secrets", key: "GEMINI_API_KEY"), !key.isEmpty { return key }
+        if let key = keyFromPlist(named: "Info", key: "GEMINI_API_KEY"), !key.isEmpty { return key }
+        return nil
+    }
+
     /// Amplitude ingestion key for product analytics. From Secrets.plist / Info.plist "AMPLITUDE_API_KEY".
     static var amplitude: String? {
         if let key = keyFromPlist(named: "Secrets", key: "AMPLITUDE_API_KEY"), !key.isEmpty { return key }
         if let key = keyFromPlist(named: "Info", key: "AMPLITUDE_API_KEY"), !key.isEmpty { return key }
+        return nil
+    }
+
+    /// Meta app ID for the Instagram story share (Sharing to Stories needs a
+    /// Facebook app ID as its source_application). From Secrets.plist /
+    /// Info.plist "META_APP_ID". Optional: the share falls back to the bundle
+    /// id when unset.
+    static var metaAppID: String? {
+        if let key = keyFromPlist(named: "Secrets", key: "META_APP_ID"), !key.isEmpty { return key }
+        if let key = keyFromPlist(named: "Info", key: "META_APP_ID"), !key.isEmpty { return key }
         return nil
     }
 

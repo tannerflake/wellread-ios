@@ -31,6 +31,8 @@ struct UserLibraryDetailView: View {
     @State private var iFollowThem: Bool = false
     @State private var followActionInFlight = false
     @State private var showProfileCard = false
+    /// Long-pressing their avatar blows the photo up over a dimmed screen.
+    @State private var showAvatarZoom = false
     /// Feed button beside the year filter: pushes this person's post history.
     @State private var showUserFeed = false
     /// List button beside the feed button: pushes their read shelf grouped by year.
@@ -116,6 +118,16 @@ struct UserLibraryDetailView: View {
     var body: some View {
         ZStack {
             Theme.background.ignoresSafeArea()
+                // On the background layer, not the ZStack: the blend landing
+                // cover already owns the ZStack's presentation slot.
+                .avatarZoom(
+                    isPresented: $showAvatarZoom,
+                    urlString: profileUser?.profileImageURL,
+                    displayName: profileUser?.displayName,
+                    firstName: profileUser?.firstName,
+                    lastName: profileUser?.lastName,
+                    caption: profileUser.map { fullName(for: $0) }
+                )
             if isInitialLoading {
                 loadingView
             } else {
@@ -142,18 +154,18 @@ struct UserLibraryDetailView: View {
 
                     // Goal bar and feed button; the year filter lives on the S tier
                     // box as a folder tab, same as your own library.
-                    if activeReadingGoal != nil || !availableYears.isEmpty || !readBooks.isEmpty {
+                    if !availableYears.isEmpty || !readBooks.isEmpty || profileUser != nil {
                         HStack(alignment: .center, spacing: 12) {
-                            if let goal = activeReadingGoal {
-                                LibraryReadingGoalProgressStrip(
-                                    calendarYear: calendarYear,
-                                    booksRead: booksFinishedThisCalendarYear,
-                                    goal: goal,
-                                    copy: .other(displayFirstName: profileUser?.firstName)
-                                )
-                            } else {
-                                Spacer(minLength: 0)
-                            }
+                            // The strip stays put even when they never set a goal
+                            // (empty track + this year's count). Plenty of members
+                            // have no goal, and the row used to disappear entirely
+                            // on their profiles.
+                            LibraryReadingGoalProgressStrip(
+                                calendarYear: calendarYear,
+                                booksRead: booksFinishedThisCalendarYear,
+                                goal: activeReadingGoal,
+                                copy: .other(displayFirstName: profileUser?.firstName)
+                            )
 
                             if !readBooks.isEmpty {
                                 yearListButton
@@ -365,10 +377,16 @@ struct UserLibraryDetailView: View {
 
     private var fanAndAvatarHeader: some View {
         HStack(alignment: .center, spacing: 6) {
+            // Tapping a cover drops you on their Queue, where the reading-now
+            // shelf lives, rather than the individual book's profile.
             ReadingNowFanStack(
                 books: wantToReadReadingNow.compactMap(\.book),
                 coverWidth: 28,
-                onTap: { selectedBookForProfile = $0 },
+                onTap: { _ in
+                    withAnimation(LibrarySegmentControlAnimation.selection) {
+                        segment = .wantToRead
+                    }
+                },
                 floats: true
             )
             otherUserAvatar
@@ -381,13 +399,20 @@ struct UserLibraryDetailView: View {
     private var otherUserAvatar: some View {
         Group {
             if let u = profileUser {
-                Button {
-                    showProfileCard = true
-                } label: {
-                    avatarCircle(for: u)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("View \(avatarMenuName(for: u))'s card")
+                // Gestures rather than a Button: a Button's action still fires on
+                // touch-up after a long press, which opened the card sheet behind
+                // the zoom. onLongPressGesture consumes the press, so tap and
+                // hold stay exclusive.
+                avatarCircle(for: u)
+                    .contentShape(Circle())
+                    .onLongPressGesture(minimumDuration: 0.35) {
+                        WizardHaptics.step()
+                        AvatarZoomPresentation.present($showAvatarZoom)
+                    }
+                    .onTapGesture { showProfileCard = true }
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityLabel("View \(avatarMenuName(for: u))'s card")
+                    .accessibilityHint("Touch and hold to see their photo full screen")
             }
         }
     }

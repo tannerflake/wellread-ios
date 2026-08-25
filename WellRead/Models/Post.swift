@@ -10,6 +10,12 @@ enum PostType: String, Codable {
     case review
     case recommendation
     case tierListUpdate
+    /// Hidden discussion carrier for a read that was never posted to the feed —
+    /// created lazily (deterministic id) when someone first likes or comments on
+    /// a read from the book profile's "Read by" section. Never shown in feeds;
+    /// a feed post demoted via "Show on feed" off becomes one of these so its
+    /// comments and likes survive.
+    case readRecord
 }
 
 struct Post: Identifiable, Codable {

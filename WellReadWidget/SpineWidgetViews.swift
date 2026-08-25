@@ -88,6 +88,21 @@ enum WidgetImageLoader {
     }
 }
 
+extension WidgetSnapshot {
+    /// Every (friend, book) pairing flattened in snapshot order — a friend
+    /// reading two books occupies two rotation slots.
+    struct FriendBookItem {
+        let friend: FriendEntry
+        let book: BookEntry
+    }
+
+    var friendBookItems: [FriendBookItem] {
+        friends.flatMap { friend in
+            friend.books.map { FriendBookItem(friend: friend, book: $0) }
+        }
+    }
+}
+
 // MARK: - Entry view
 
 struct SpineWidgetEntryView: View {
@@ -97,7 +112,7 @@ struct SpineWidgetEntryView: View {
     var body: some View {
         switch family {
         case .systemMedium:
-            MediumWidgetView(snapshot: entry.snapshot)
+            MediumWidgetView(snapshot: entry.snapshot, tick: entry.tick)
         default:
             SmallWidgetView(snapshot: entry.snapshot)
         }
@@ -137,16 +152,20 @@ struct SmallWidgetView: View {
     }
 }
 
-// MARK: - Medium: you + friends
+// MARK: - Medium: your stack + friends
 
 struct MediumWidgetView: View {
     let snapshot: WidgetSnapshot?
+    let tick: Int
+
+    /// Friend books shown per rotation page.
+    static let friendsPerPage = 3
 
     var body: some View {
         Group {
             if let snapshot, snapshot.isSignedIn {
                 HStack(alignment: .center, spacing: 14) {
-                    myCover(snapshot)
+                    myStack(snapshot)
                     friendsPane(snapshot)
                 }
                 .containerBackground(SpinePalette.paper, for: .widget)
@@ -159,10 +178,8 @@ struct MediumWidgetView: View {
     }
 
     @ViewBuilder
-    private func myCover(_ snapshot: WidgetSnapshot) -> some View {
-        if let book = snapshot.myBooks.first {
-            CoverTile(book: book, cornerRadius: 10)
-        } else {
+    private func myStack(_ snapshot: WidgetSnapshot) -> some View {
+        if snapshot.myBooks.isEmpty {
             RoundedRectangle(cornerRadius: 10)
                 .fill(SpinePalette.surface)
                 .aspectRatio(2 / 3, contentMode: .fit)
@@ -172,31 +189,74 @@ struct MediumWidgetView: View {
                         .multilineTextAlignment(.center)
                         .foregroundStyle(SpinePalette.textSecondary)
                 }
+        } else {
+            MyBooksFan(books: snapshot.myBooks, tick: tick)
         }
     }
 
     private func friendsPane(_ snapshot: WidgetSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text("FOLLOWING ARE READING")
+        let items = snapshot.friendBookItems
+        let pageCount = max(1, Int(ceil(Double(items.count) / Double(Self.friendsPerPage))))
+        let pageStart = (tick % pageCount) * Self.friendsPerPage
+        let page = Array(items.dropFirst(pageStart).prefix(Self.friendsPerPage))
+
+        return VStack(alignment: .leading, spacing: 7) {
+            Text("FRIENDS READING")
                 .font(.system(size: 9, weight: .semibold))
                 .tracking(1.1)
                 .foregroundStyle(SpinePalette.textSecondary)
 
-            if snapshot.friends.isEmpty {
+            if items.isEmpty {
                 Text("No one you follow is reading yet")
                     .font(.system(size: 12))
                     .foregroundStyle(SpinePalette.textSecondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             } else {
+                // Fixed 3-slot row so covers keep the same size on short pages.
                 HStack(alignment: .top, spacing: 10) {
-                    ForEach(snapshot.friends.prefix(4), id: \.uid) { friend in
-                        FriendCoverCell(friend: friend)
+                    ForEach(0..<Self.friendsPerPage, id: \.self) { slot in
+                        if slot < page.count {
+                            FriendCoverCell(item: page[slot])
+                        } else {
+                            Color.clear.aspectRatio(2 / 3, contentMode: .fit)
+                        }
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+/// All of the user's reading-now books fanned into one stack: the front cover
+/// is full size, the rest peek out behind it to the right. Each rotation tick
+/// brings the next book to the front, so every cover gets its turn.
+struct MyBooksFan: View {
+    let books: [WidgetSnapshot.BookEntry]
+    let tick: Int
+
+    private static let peek: CGFloat = 15
+    private static let depthScale: CGFloat = 0.07
+
+    var body: some View {
+        let count = books.count
+        let front = tick % count
+        let ordered = (0..<count).map { books[(front + $0) % count] }
+
+        ZStack(alignment: .bottomLeading) {
+            ForEach(Array(ordered.enumerated()), id: \.element.bookId) { depth, book in
+                CoverTile(book: book, cornerRadius: 10)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(SpinePalette.textPrimary.opacity(0.14 * Double(depth)))
+                    }
+                    .scaleEffect(1 - Self.depthScale * CGFloat(depth), anchor: .bottomLeading)
+                    .offset(x: CGFloat(depth) * Self.peek)
+                    .zIndex(Double(count - depth))
+            }
+        }
+        .padding(.trailing, CGFloat(count - 1) * Self.peek)
     }
 }
 
@@ -238,30 +298,28 @@ struct CoverTile: View {
     }
 }
 
-/// Friend's current read with their profile pic badged on the corner.
+/// One friend-book pairing with the friend's profile pic badged on the corner.
 struct FriendCoverCell: View {
-    let friend: WidgetSnapshot.FriendEntry
+    let item: WidgetSnapshot.FriendBookItem
 
     var body: some View {
-        if let book = friend.books.first {
-            CoverTile(book: book, cornerRadius: 6)
-                .overlay(alignment: .bottomLeading) {
-                    avatarBadge
-                        .offset(x: -5, y: 5)
-                }
-        }
+        CoverTile(book: item.book, cornerRadius: 6)
+            .overlay(alignment: .bottomLeading) {
+                avatarBadge
+                    .offset(x: -5, y: 5)
+            }
     }
 
     private var avatarBadge: some View {
         Group {
-            if let avatar = WidgetImageLoader.image(friend.avatarFilename) {
+            if let avatar = WidgetImageLoader.image(item.friend.avatarFilename) {
                 Image(uiImage: avatar)
                     .resizable()
                     .scaledToFill()
             } else {
-                SpinePalette.avatarColor(for: friend.displayName)
+                SpinePalette.avatarColor(for: item.friend.displayName)
                     .overlay {
-                        Text(SpinePalette.avatarInitials(for: friend.displayName))
+                        Text(SpinePalette.avatarInitials(for: item.friend.displayName))
                             .font(.system(size: 7.5, weight: .bold))
                             .foregroundStyle(.white)
                             .minimumScaleFactor(0.7)

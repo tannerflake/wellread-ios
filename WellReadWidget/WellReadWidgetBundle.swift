@@ -21,7 +21,7 @@ struct WellReadWidget: Widget {
             SpineWidgetEntryView(entry: entry)
         }
         .configurationDisplayName("SPINE")
-        .description("Your current read and what people you follow are reading now.")
+        .description("Your reading stack and what people you follow are reading now.")
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }

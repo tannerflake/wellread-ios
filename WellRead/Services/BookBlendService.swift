@@ -560,7 +560,7 @@ final class BookBlendService {
         var hydrated: [BookBlend.Rec] = []
         for pick in picks.prefix(2) {
             var pick = pick
-            if let results = try? await GoogleBooksService.shared.search(query: "\(pick.title) \(pick.author)"),
+            if let results = try? await GoogleBooksService.shared.search(query: "\(pick.title) \(pick.author)", searchAuthors: false),
                let match = results.first {
                 pick.bookId = match.id
                 pick.coverURL = match.coverURL

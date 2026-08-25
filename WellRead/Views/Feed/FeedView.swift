@@ -14,6 +14,9 @@ import SwiftUI
 struct FeedView: View {
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var authService: AuthService
+    /// Bound stack path so a Social tab re-tap can pop pushed profiles/books back
+    /// to the feed root.
+    @State private var navPath = NavigationPath()
     @State private var selectedBookForProfile: Book? = nil
     /// Author of the post the book was tapped on — their "Read by" row is
     /// pinned and highlighted on the book profile.
@@ -52,7 +55,7 @@ struct FeedView: View {
     private static let feedTopAnchorId = "feedTop"
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navPath) {
             ZStack {
                 Theme.background.ignoresSafeArea()
                 ScrollViewReader { scrollProxy in
@@ -94,7 +97,13 @@ struct FeedView: View {
                         scrollToPushedPostIfNeeded(proxy: scrollProxy)
                     }
                     .onReceive(NotificationCenter.default.publisher(for: .spineFeedTabTappedAgain)) { _ in
-                        if isScrolledToFeedTop {
+                        // Pushed into a profile/book from the feed: the re-tap
+                        // means "take me back to the feed", not scroll/refresh.
+                        if !navPath.isEmpty || selectedBookForProfile != nil {
+                            navPath = NavigationPath()
+                            selectedBookForProfile = nil
+                            bookProfileSourceUid = nil
+                        } else if isScrolledToFeedTop {
                             Task { await refreshFeed() }
                         } else {
                             withAnimation(.easeInOut(duration: 0.4)) {

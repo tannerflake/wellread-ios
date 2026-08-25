@@ -29,8 +29,8 @@ final class WidgetDataService {
     /// Friends' shelves only change server-side; refetching more often than this
     /// just burns Firestore reads (`fetchAllReadingNowBooks` scans the collection).
     private static let friendRefreshInterval: TimeInterval = 30 * 60
-    private static let maxOwnBooks = 3
-    private static let maxFriends = 4
+    private static let maxOwnBooks = 4
+    private static let maxFriends = 8
     private static let maxBooksPerFriend = 2
     private static let coverSize = CGSize(width: 200, height: 300)
     private static let avatarSize = CGSize(width: 80, height: 80)

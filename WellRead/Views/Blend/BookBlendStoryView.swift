@@ -571,7 +571,7 @@ struct BookBlendStoryView: View {
             // AI recs the blend couldn't hydrate: resolve on Google Books so the queue
             // entry carries a real book id + cover; unmatched falls back to title-only.
             Task {
-                let match = (try? await GoogleBooksService.shared.search(query: "\(rec.title) \(rec.author)"))?.first
+                let match = (try? await GoogleBooksService.shared.search(query: "\(rec.title) \(rec.author)", searchAuthors: false))?.first
                 let book = match ?? bookFor(rec: rec)
                 await MainActor.run { appState.addToWantToRead(book: book) }
             }

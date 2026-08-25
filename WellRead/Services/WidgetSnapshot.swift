@@ -28,9 +28,11 @@ struct WidgetSnapshot: Codable {
 
     let schemaVersion: Int
     let isSignedIn: Bool
-    /// Own reading-now shelf in queue order (widget shows the first).
+    /// Own reading-now shelf in queue order (small widget shows the first;
+    /// medium fans out all of them).
     let myBooks: [BookEntry]
-    /// Friends with at least one reading-now book, at most 4.
+    /// Friends with at least one reading-now book, at most 8; the medium
+    /// widget rotates through their books in pages.
     let friends: [FriendEntry]
     let generatedAt: Date
 }

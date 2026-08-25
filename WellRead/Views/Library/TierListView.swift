@@ -16,8 +16,21 @@ private let tierDropSlotWidth: CGFloat = 10
 /// Coordinate space of the tier-list ScrollView, used to pin each tier's letter
 /// to the top of the viewport while its (possibly very tall) row scrolls by.
 private let tierListScrollSpace = "tierListScroll"
-/// Height of the pinned letter block inside the colored label column.
-private let tierStickyLetterHeight: CGFloat = 96
+/// Natural height of the "A / Tier" letter block that pins inside the colored
+/// label column. Deliberately much shorter than a row's 96pt minimum so even an
+/// empty row has slack to slide the letter down into instead of clipping it.
+private let tierStickyLetterHeight: CGFloat = 34
+/// Where the letter block rests, measured from the row's top edge, before any
+/// scrolling pins it: centered within the row's 96pt minimum height.
+private let tierStickyLetterRestingY: CGFloat = (96 - tierStickyLetterHeight) / 2
+/// Gap the pinned letter keeps above its own row's bottom edge, so it never
+/// slides out through the row's rounded corner clip.
+private let tierStickyLetterBottomGap: CGFloat = 8
+/// Breathing room the pinned tier letter keeps below the viewport's top edge,
+/// so it doesn't crowd the goal strip and the list/feed buttons sitting just
+/// above the scroll view. The year tab deliberately does *not* use this: it's a
+/// folder tab hinged to the top edge, and any gap there reads as detached.
+private let tierStickyTopInset: CGFloat = 18
 
 /// Tier rows rendered top-to-bottom, plus an Unranked row appended after.
 private let tierLabels: [String] = spineTierLabels
@@ -56,6 +69,24 @@ private struct TierCalloutHeightKey: PreferenceKey {
     static let defaultValue: CGFloat = 58
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = max(value, nextValue())
+    }
+}
+
+/// Bottom edge of the in-flow year tab in the scroll coordinate space — once it
+/// scrolls above the viewport, the pinned copy flips down from the top edge.
+private struct TierYearTabMaxYKey: PreferenceKey {
+    static let defaultValue: CGFloat = .greatestFiniteMagnitude
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = min(value, nextValue())
+    }
+}
+
+/// Hinge for the pinned year tab's transition: swings down from (and folds back
+/// up into) the viewport's top edge like a folder tab flipping over it.
+private struct TierYearTabHinge: ViewModifier {
+    let angle: Double
+    func body(content: Content) -> some View {
+        content.rotation3DEffect(.degrees(angle), axis: (x: 1, y: 0, z: 0), anchor: .top, perspective: 0.6)
     }
 }
 
@@ -198,6 +229,9 @@ struct TierListView: View {
     @State private var calloutHeight: CGFloat = 58
     /// Gated on after the scroll settles so the callout fades in over the centered book.
     @State private var showCallout = false
+    /// The S tier's year tab has scrolled above the viewport — show the flipped,
+    /// pinned copy hanging from the top edge instead.
+    @State private var yearTabScrolledPast = false
 
     /// Content area width for each row: list width minus horizontal padding and tier label.
     private static let tierLabelWidth: CGFloat = 38
@@ -216,20 +250,47 @@ struct TierListView: View {
                     // scrollTo on an unbuilt LazyVStack child silently does nothing.
                     VStack(alignment: .leading, spacing: 8) {
                         ForEach(tierLabels, id: \.self) { tier in
-                            // spacing 0 so the S tier's year tab sits flush on the row's
+                            let books = sortedBooks(for: tier)
+                            // Top N only means "absolute favorites" against the full list,
+                            // so hide it while a year filter is narrowing the tier.
+                            let topCount: Int? = (tier == "S" && yearFilter?.selectedYear == nil) ? topBookCount : nil
+                            // Badge only once the tier is full enough for the first
+                            // slots to actually mean "absolute favorites" — must stay
+                            // in lockstep with TierRowView's activeTopCount gate.
+                            let activeTopCount: Int? = topCount.flatMap { books.count >= $0 ? $0 : nil }
+                            // spacing 0 so the S tier's header pieces (Top N badge on
+                            // the left, year tab on the right) sit flush on the row's
                             // top edge, reading as one piece of folder furniture.
-                            VStack(alignment: .trailing, spacing: 0) {
-                                if tier == "S", let yearFilter {
-                                    yearFilterTab(yearFilter)
-                                        .padding(.trailing, Theme.cardCornerRadius + 4)
+                            VStack(spacing: 0) {
+                                if activeTopCount != nil || (tier == "S" && yearFilter != nil) {
+                                    HStack(alignment: .bottom, spacing: 8) {
+                                        if let activeTopCount {
+                                            topGroupBadge(count: activeTopCount)
+                                                // Same spot as inside the box: label
+                                                // column + row pad + first drop slot.
+                                                .padding(.leading, Self.tierLabelWidth + tierRowPadding + tierDropSlotWidth)
+                                                .padding(.bottom, 4)
+                                        }
+                                        Spacer(minLength: 0)
+                                        if tier == "S", let yearFilter {
+                                            yearFilterTab(yearFilter)
+                                                .padding(.trailing, Theme.cardCornerRadius + 4)
+                                                .background(
+                                                    GeometryReader { g in
+                                                        Color.clear.preference(
+                                                            key: TierYearTabMaxYKey.self,
+                                                            value: g.frame(in: .named(tierListScrollSpace)).maxY
+                                                        )
+                                                    }
+                                                )
+                                        }
+                                    }
                                 }
                                 TierRowView(
                                     tier: tier,
-                                    books: sortedBooks(for: tier),
+                                    books: books,
                                     contentAreaWidth: contentAreaWidth,
-                                    // Top N only means "absolute favorites" against the full list,
-                                    // so hide it while a year filter is narrowing the tier.
-                                    topCount: (tier == "S" && yearFilter?.selectedYear == nil) ? topBookCount : nil,
+                                    topCount: topCount,
                                     onUpdateTierAndOrder: onUpdateTierAndOrder,
                                     onBookTap: onBookTap,
                                     readOnly: readOnly,
@@ -261,6 +322,34 @@ struct TierListView: View {
                     .padding(.bottom, 88)
                 }
                 .coordinateSpace(name: tierListScrollSpace)
+                // Once the in-flow tab scrolls off the top, a flipped copy hinges
+                // down from the viewport edge and stays pinned so the filter is
+                // always in reach on a long, filtered-down list.
+                .overlay(alignment: .topTrailing) {
+                    if let yearFilter, yearTabScrolledPast {
+                        yearFilterTab(yearFilter, pinned: true)
+                            // In-flow trailing inset plus the scroll content's own
+                            // horizontal padding, so both copies line up.
+                            .padding(.trailing, Theme.cardCornerRadius + 8)
+                            // Flush to the viewport's top edge: the tab hangs off
+                            // the chrome above, the way the in-flow copy rides the
+                            // S row's edge. Inset it and it floats, disconnected.
+                            .transition(
+                                .modifier(
+                                    active: TierYearTabHinge(angle: -92),
+                                    identity: TierYearTabHinge(angle: 0)
+                                )
+                                .combined(with: .opacity)
+                            )
+                    }
+                }
+                .onPreferenceChange(TierYearTabMaxYKey.self) { maxY in
+                    let past = maxY < 0
+                    guard past != yearTabScrolledPast else { return }
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.72)) {
+                        yearTabScrolledPast = past
+                    }
+                }
                 // Draw the "Rank me!" callout above the tier rows so it isn't clipped
                 // by each row's rounded-rect mask, and point it at the exact book.
                 .overlayPreferenceValue(TierHighlightAnchorKey.self) { anchor in
@@ -363,6 +452,23 @@ struct TierListView: View {
         spineTierSorted(userBooks.filter { $0.normalizedTier == tier })
     }
 
+    /// "♛ TOP 4" chrome chip floating above the S tier box, lined up with the
+    /// covers' leading edge inside it.
+    private func topGroupBadge(count: Int) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: "crown.fill")
+                .font(.system(size: 8, weight: .bold))
+            Text(SpinesGlyphs.caps("Top \(count)"))
+                .font(.system(size: 10, weight: .bold))
+                .tracking(0.6)
+        }
+        .foregroundStyle(Theme.onChrome)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(Capsule().fill(topGroupTint))
+        .accessibilityLabel("Top \(count) books")
+    }
+
     /// "2025 (16)" / "All (288)" label for the year tab and its menu rows.
     private func yearFilterLabel(_ year: Int?, _ filter: TierYearFilter) -> String {
         let name = year.map(String.init) ?? "All"
@@ -371,8 +477,11 @@ struct TierListView: View {
 
     /// Year dropdown styled as a physical folder tab riding the top edge of the
     /// S tier box: rounded top corners, square bottom, and the exact row surface
-    /// fill so tab and box read as one piece.
-    private func yearFilterTab(_ filter: TierYearFilter) -> some View {
+    /// fill so tab and box read as one piece. The `pinned` copy is its mirror,
+    /// hanging from the viewport's top edge once the original scrolls past —
+    /// corners flipped to the bottom, solid fill, and a shadow so it reads as
+    /// floating over the covers instead of merging into them.
+    private func yearFilterTab(_ filter: TierYearFilter, pinned: Bool = false) -> some View {
         Menu {
             Button(yearFilterLabel(nil, filter)) { filter.onSelect(nil) }
             ForEach(filter.availableYears, id: \.self) { year in
@@ -388,16 +497,22 @@ struct TierListView: View {
                     .foregroundStyle(Theme.textTertiary)
             }
             .padding(.horizontal, 13)
-            .padding(.top, 6)
-            .padding(.bottom, 5)
+            .padding(.top, pinned ? 5 : 6)
+            .padding(.bottom, pinned ? 6 : 5)
             .background(
                 UnevenRoundedRectangle(
-                    topLeadingRadius: 10,
-                    bottomLeadingRadius: 0,
-                    bottomTrailingRadius: 0,
-                    topTrailingRadius: 10
+                    topLeadingRadius: pinned ? 0 : 10,
+                    bottomLeadingRadius: pinned ? 10 : 0,
+                    bottomTrailingRadius: pinned ? 10 : 0,
+                    topTrailingRadius: pinned ? 0 : 10
                 )
-                .fill(Theme.surface.opacity(0.6))
+                // Pinned floats over covers, so it needs an opaque fill — use the
+                // color the in-flow tab's surface-at-60% composites to over the
+                // page background, so both copies read as the same material.
+                .fill(pinned
+                    ? AnyShapeStyle(Theme.blend(Theme.background, toward: Theme.surface, light: 0.6, dark: 0.6))
+                    : AnyShapeStyle(Theme.surface.opacity(0.6)))
+                .shadow(color: pinned ? Theme.shadowInk.opacity(0.2) : .clear, radius: 6, x: 0, y: 3)
             )
         }
         .accessibilityLabel("Filter books by year")
@@ -408,6 +523,13 @@ struct TierListView: View {
 private let tierBookSizeMin: CGFloat = 48
 private let tierBookSizeMax: CGFloat = 88
 private let tierRowPadding: CGFloat = 1
+/// Shared fill for the Top N badge and the favorites box behind its covers:
+/// one color that meets halfway between the old grey wash (0.14/0.24 toward
+/// chrome) and the solid chrome chip, so badge and box read as a matched set.
+private var topGroupTint: Color {
+    Theme.blend(Theme.background, toward: Theme.chrome, light: 0.57, dark: 0.62)
+}
+
 /// Leading inset of the "Top N" favorites box background within the S-tier row.
 private let topGroupInset: CGFloat = 5
 /// Trailing inset of the box background, kept clear of the row's corner clip.
@@ -449,8 +571,16 @@ struct TierRowView: View {
                     // a tall tier, stopping at the bottom of the row.
                     GeometryReader { geo in
                         let frame = geo.frame(in: .named(tierListScrollSpace))
-                        let overflow = max(0, -frame.minY)
-                        let pinned = min(overflow, max(0, frame.height - tierStickyLetterHeight))
+                        // Where the viewport's top edge falls inside this row,
+                        // plus the inset the sticky furniture holds below it.
+                        let wanted = -frame.minY + tierStickyTopInset
+                        // Never past the row's own bottom edge, and never above
+                        // the resting position (an unscrolled row is untouched).
+                        let lowest = max(
+                            tierStickyLetterRestingY,
+                            frame.height - tierStickyLetterHeight - tierStickyLetterBottomGap
+                        )
+                        let pinned = min(max(tierStickyLetterRestingY, wanted), lowest)
                         VStack(spacing: 0) {
                             Text(header)
                                 .font(Theme.headline())
@@ -521,27 +651,27 @@ struct TierRowView: View {
                 .padding(.horizontal, 1)
             } else {
                 // Rows containing the user's absolute favorites get their own tinted
-                // background block (with the "TOP N" header) so the group reads as a
-                // distinct section instead of relying on a hairline.
+                // background block (the "TOP N" badge floats above the row, drawn by
+                // TierListView) so the group reads as a distinct section instead of
+                // relying on a hairline.
                 let topRowCount = activeTopCount.map { $0 / booksPerRow } ?? 0
                 let allRows = Array(rows.enumerated())
-                if let activeTopCount {
+                if activeTopCount != nil {
                     VStack(alignment: .leading, spacing: 2) {
-                        topGroupHeader(count: activeTopCount)
                         ForEach(allRows.prefix(topRowCount), id: \.offset) { rowIndex, rowBooks in
                             bookRow(rowIndex: rowIndex, rowBooks: rowBooks, booksPerRow: booksPerRow, slotHeight: slotHeight, bookSize: bookSize)
                         }
                     }
+                    .padding(.top, 6)
                     .padding(.bottom, 4)
                     .background(
-                        // Trait-aware blend, not a flat chrome opacity: an ink wash
-                        // reads on paper, but the same wash in paper-on-ink barely
-                        // moves. Dark gets a heavier lift plus a firmer border.
+                        // Same fill as the Top N badge above the row, so chip and
+                        // box read as one matched set.
                         RoundedRectangle(cornerRadius: 8)
-                            .fill(Theme.blend(Theme.background, toward: Theme.chrome, light: 0.14, dark: 0.24))
+                            .fill(topGroupTint)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 8)
-                                    .strokeBorder(Theme.blend(Theme.background, toward: Theme.chrome, light: 0.3, dark: 0.5), lineWidth: 1)
+                                    .strokeBorder(Theme.blend(Theme.background, toward: Theme.chrome, light: 0.72, dark: 0.8), lineWidth: 1)
                             )
                             // Only the box background is inset — the rows inside keep
                             // the exact geometry of every other row, so the top covers
@@ -578,25 +708,6 @@ struct TierRowView: View {
         .padding(.horizontal, 1)
     }
 
-    /// "♛ TOP 4" chrome chip above the first row(s) of the S tier.
-    private func topGroupHeader(count: Int) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: "crown.fill")
-                .font(.system(size: 8, weight: .bold))
-            Text(SpinesGlyphs.caps("Top \(count)"))
-                .font(.system(size: 10, weight: .bold))
-                .tracking(0.6)
-        }
-        .foregroundStyle(Theme.onChrome)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(Capsule().fill(Theme.chrome))
-        // Line the chip up with the covers' leading edge (row pad + first slot).
-        .padding(.leading, tierRowPadding + tierDropSlotWidth)
-        .padding(.top, 6)
-        .padding(.bottom, 4)
-        .accessibilityLabel("Top \(count) books")
-    }
 }
 
 /// Fraction of book width that acts as "insert before" (left) or "insert after" (right) drop zone when dragging between books.

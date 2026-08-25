@@ -41,6 +41,10 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>FirestoreDatabaseID</key>
 	<string>wellread</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>instagram-stories</string>
+	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>

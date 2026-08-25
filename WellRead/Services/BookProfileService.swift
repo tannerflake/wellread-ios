@@ -10,7 +10,8 @@ import Foundation
 final class BookProfileService {
     static let shared = BookProfileService()
     private var summaryCache: [String: String] = [:]
-    private var quoteCache: [String: String] = [:]
+    /// Inner nil = "no notable quote", cached so the LLM isn't re-asked.
+    private var quoteCache: [String: String?] = [:]
     private var tagsCache: [String: [String]] = [:]
     private var whyLikeCache: [String: String] = [:]
     private let queue = DispatchQueue(label: "com.wellread.bookprofile.cache")
@@ -23,6 +24,10 @@ final class BookProfileService {
     func twoSentenceSummary(for book: Book) async -> String? {
         let key = book.id
         if let cached = queue.sync(execute: { summaryCache[key] }) { return cached }
+        if let shared = await AIContentCacheRepository.shared.content(for: key).summary {
+            queue.sync { summaryCache[key] = shared }
+            return shared
+        }
         let system = "You are a concise book summarizer. Reply with a very short summary of the book in at most two sentences. Maximum 200 characters total. No heading, no bullets, no extra text. If given a long description, condense it. If given only title and author, write a brief summary based on common knowledge. Stay under 200 characters."
         let input: String
         if let d = book.description, !d.isEmpty {
@@ -31,8 +36,8 @@ final class BookProfileService {
             input = "Book: \(book.title) by \(book.author). Write a brief summary in at most two sentences, under 200 characters."
         }
         do {
-            let response = try await ClaudeService.shared.sendMessage(system: system, userMessage: input, tier: .simple)
-            var trimmed = response.trimmingCharacters(in: .whitespacesAndNewlines)
+            let response = try await ClaudeService.shared.sendMessageDetailed(system: system, userMessage: input, tier: .simple)
+            var trimmed = response.text.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.count > summaryMaxCharacters {
                 trimmed = String(trimmed.prefix(summaryMaxCharacters)).trimmingCharacters(in: .whitespacesAndNewlines)
                 if let lastSpace = trimmed.lastIndex(of: " ") {
@@ -40,6 +45,9 @@ final class BookProfileService {
                 }
             }
             queue.sync { summaryCache[key] = trimmed }
+            if !trimmed.isEmpty {
+                await AIContentCacheRepository.shared.storeSummary(trimmed, bookId: key, model: response.model)
+            }
             return trimmed.isEmpty ? nil : trimmed
         } catch {
             return nil
@@ -50,6 +58,10 @@ final class BookProfileService {
     func notableQuote(for book: Book) async -> String? {
         let key = book.id
         if let cached = queue.sync(execute: { quoteCache[key] }) { return cached }
+        if let shared = await AIContentCacheRepository.shared.content(for: key).quote {
+            queue.sync { quoteCache.updateValue(shared, forKey: key) }
+            return shared
+        }
         let system = "You are a literary assistant. Reply with one impactful, famous, or notable quote from this book. Output only the quote in quotation marks, nothing else. If you don't know a real quote from the book, reply with exactly: No notable quote available."
         let input: String
         if let d = book.description, !d.isEmpty {
@@ -59,13 +71,22 @@ final class BookProfileService {
         }
         do {
             // Verbatim quote recall: keep on the smarter tier so we don't fabricate quotes.
-            let response = try await ClaudeService.shared.sendMessage(system: system, userMessage: input, tier: .complex)
-            let trimmed = response.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.isEmpty || trimmed.lowercased().contains("no notable quote") {
-                queue.sync { quoteCache[key] = nil }
+            let response = try await ClaudeService.shared.sendMessageDetailed(system: system, userMessage: input, tier: .complex)
+            let trimmed = response.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.lowercased().contains("no notable quote") {
+                // Cache the miss — an explicit "no quote" answer is stable, so
+                // don't re-ask the LLM for this book ever again.
+                queue.sync { quoteCache.updateValue(nil, forKey: key) }
+                await AIContentCacheRepository.shared.storeQuote(nil, bookId: key, model: response.model)
+                return nil
+            }
+            if trimmed.isEmpty {
+                // Possibly transient (truncation, provider hiccup): skip only this session.
+                queue.sync { quoteCache.updateValue(nil, forKey: key) }
                 return nil
             }
             queue.sync { quoteCache[key] = trimmed }
+            await AIContentCacheRepository.shared.storeQuote(trimmed, bookId: key, model: response.model)
             return trimmed
         } catch {
             return nil
@@ -131,6 +152,14 @@ final class BookProfileService {
     func profileTags(for book: Book) async -> [String] {
         let key = book.id
         if let cached = queue.sync(execute: { tagsCache[key] }) { return cached }
+        if let stored = await AIContentCacheRepository.shared.content(for: key).tags {
+            // Re-whitelist in case the shipped catalog changed since they were written.
+            let valid = WellReadTagCatalog.shared.whitelist(stored)
+            if !valid.isEmpty {
+                queue.sync { tagsCache[key] = valid }
+                return valid
+            }
+        }
         let enriched = await mergeWithVolumeIfNeeded(book)
         let allowed = WellReadTagCatalog.shared.allowedTagsPromptBlock()
         let system = """
@@ -170,12 +199,17 @@ final class BookProfileService {
         }
         let userMessage = "Assign tags for this book.\n\n\(metadata)"
         do {
-            let response = try await ClaudeService.shared.sendMessage(system: system, userMessage: userMessage, tier: .simple)
-            let parsed = parseTagsFromResponse(response) ?? []
+            let response = try await ClaudeService.shared.sendMessageDetailed(system: system, userMessage: userMessage, tier: .simple)
+            let parsed = parseTagsFromResponse(response.text) ?? []
             let normalized = normalizeProfileTags(parsed, book: enriched)
             queue.sync { tagsCache[key] = normalized }
+            if !normalized.isEmpty {
+                await AIContentCacheRepository.shared.storeTags(normalized, bookId: key, model: response.model)
+            }
             return normalized
         } catch {
+            // Keyword fallback is a degraded guess — keep it session-local, never
+            // persist it as the book's tags for everyone.
             let fallback = fallbackProfileTags(for: enriched)
             queue.sync { tagsCache[key] = fallback }
             return fallback
