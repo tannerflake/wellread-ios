@@ -26,7 +26,7 @@ struct BookBlendStoryView: View {
         case bookReveal(Int)
         case genres
         case insight(BookBlend.Insight)
-        case rec(uid: String, index: Int)
+        case recs(uid: String)
         case freshPicks
         case outro
     }
@@ -63,9 +63,9 @@ struct BookBlendStoryView: View {
             list.append(.genres)
         }
         for insight in result.insights.prefix(2) { list.append(.insight(insight)) }
-        // One full slide per rec, so each pick's reason gets read, not skimmed.
-        for i in (result.recs[myUid] ?? []).prefix(3).indices { list.append(.rec(uid: myUid, index: i)) }
-        for i in (result.recs[otherUid] ?? []).prefix(3).indices { list.append(.rec(uid: otherUid, index: i)) }
+        // One slide per direction: all of a reader's picks together.
+        if !(result.recs[myUid] ?? []).isEmpty { list.append(.recs(uid: myUid)) }
+        if !(result.recs[otherUid] ?? []).isEmpty { list.append(.recs(uid: otherUid)) }
         if !result.freshPicks.isEmpty { list.append(.freshPicks) }
         list.append(.outro)
         return list
@@ -77,8 +77,8 @@ struct BookBlendStoryView: View {
         case .sharedIntro: return 4.0
         // Quick beats: cover in, my verdict, their verdict, agree/clash stamp.
         case .bookReveal: return 4.4
-        // Room to read the full pick reason (and hit Add to Queue).
-        case .rec: return 7.5
+        // Three titles to skim (and Add to Queue to hit on my page).
+        case .recs: return 8.0
         case .genres: return 9.0
         default: return 7.0
         }
@@ -254,7 +254,7 @@ struct BookBlendStoryView: View {
         case .bookReveal(let index): bookRevealPage(index)
         case .genres: genresPage
         case .insight(let insight): insightPage(insight)
-        case .rec(let uid, let index): recPage(uid: uid, index: index)
+        case .recs(let uid): recsPage(uid: uid)
         case .freshPicks: freshPicksPage
         case .outro: outroPage
         }
@@ -401,54 +401,16 @@ struct BookBlendStoryView: View {
     }
 
     private var genresPage: some View {
-        let shared = result?.sharedGenres ?? []
-        let mine = result?.distinctGenres[myUid] ?? []
-        let theirs = result?.distinctGenres[otherUid] ?? []
-        return VStack(alignment: .leading, spacing: 22) {
-            Spacer(minLength: 70)
-            pageHeader("The taste map", big: shared.first.map { "\($0) is your common ground" } ?? "Different shelves, same energy")
-            if !shared.isEmpty {
-                FlowLayout(spacing: 8) {
-                    ForEach(shared, id: \.self) { genre in
-                        Text(genre)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Theme.inkFixed)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 7)
-                            .background(Capsule().fill(Theme.paperFixed.opacity(0.85)))
-                    }
-                }
-            }
-            HStack(alignment: .top, spacing: 14) {
-                broughtColumn(name: myName, genres: mine)
-                broughtColumn(name: otherName, genres: theirs)
-            }
-            Spacer()
-        }
-        .padding(.horizontal, 24)
-    }
-
-    private func broughtColumn(name: String, genres: [String]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("\(name.uppercased()) BRINGS")
-                .font(.system(size: 10, weight: .heavy))
-                .tracking(1.4)
-                .foregroundStyle(Theme.paperFixed.opacity(0.55))
-            if genres.isEmpty {
-                Text("Pure overlap")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Theme.paperFixed.opacity(0.75))
-            } else {
-                ForEach(genres.prefix(3), id: \.self) { genre in
-                    Text(genre)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Theme.paperFixed)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(RoundedRectangle(cornerRadius: 16).fill(.white.opacity(0.09)))
+        BlendTasteMapPage(
+            sharedGenres: result?.sharedGenres ?? [],
+            myGenres: result?.distinctGenres[myUid] ?? [],
+            theirGenres: result?.distinctGenres[otherUid] ?? [],
+            myName: myName,
+            otherName: otherName,
+            myPhotoURL: blend.participants[myUid]?.photoURL,
+            otherPhotoURL: blend.participants[otherUid]?.photoURL,
+            progress: pageProgress
+        )
     }
 
     private func insightPage(_ insight: BookBlend.Insight) -> some View {
@@ -472,60 +434,69 @@ struct BookBlendStoryView: View {
         }
     }
 
-    /// One rec, one slide — the full reason gets read, and mine end in an
-    /// Add to Queue button.
-    private func recPage(uid: String, index: Int) -> some View {
+    /// All of one reader's picks on a single slide — quick rows that land one
+    /// by one. The header names whose shelf they came from, and the AI reasons
+    /// stay off-screen entirely (better gone than truncated).
+    private func recsPage(uid: String) -> some View {
         let recs = Array((result?.recs[uid] ?? []).prefix(3))
-        let rec = recs[min(index, max(0, recs.count - 1))]
         let isMine = uid == myUid
         let shelfOwner = isMine ? otherName : myName
-        let counter = recs.count > 1 ? " · \(index + 1) of \(recs.count)" : ""
         return VStack(spacing: 0) {
             Spacer(minLength: 86)
+            Spacer()
             VStack(spacing: 6) {
-                Text((isMine ? "For you, \(myName)\(counter)" : "And for \(otherName)\(counter)").uppercased())
+                Text((isMine ? "Picked for you, \(myName)" : "Picked for \(otherName)").uppercased())
                     .font(.system(size: 11, weight: .heavy))
                     .tracking(2)
                     .foregroundStyle(Theme.paperFixed.opacity(0.55))
-                Text("Steal this from \(shelfOwner)'s shelf")
-                    .font(.system(size: 22, weight: .bold))
+                Text(recs.count == 1 ? "A book off \(shelfOwner)'s shelf" : "\(recs.count) books off \(shelfOwner)'s shelf")
+                    .font(.system(size: 26, weight: .bold))
                     .foregroundStyle(Theme.paperFixed)
                     .multilineTextAlignment(.center)
             }
             .padding(.horizontal, 28)
-            Spacer()
-            VStack(spacing: 16) {
-                BookCoverView(book: bookFor(rec: rec), size: 140)
-                    .shadow(color: Theme.shadowInk.opacity(0.5), radius: 18, y: 10)
-                VStack(spacing: 3) {
-                    Text(rec.title)
-                        .font(.system(size: 24, weight: .bold))
-                        .foregroundStyle(Theme.paperFixed)
-                        .multilineTextAlignment(.center)
-                        .lineLimit(2)
-                    Text(rec.author)
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(Theme.paperFixed.opacity(0.65))
-                        .lineLimit(1)
-                }
-                .padding(.horizontal, 32)
-                if !rec.reason.isEmpty {
-                    Text(rec.reason)
-                        .font(.system(size: 17, weight: .medium).italic())
-                        .multilineTextAlignment(.center)
-                        .lineSpacing(4)
-                        .foregroundStyle(Theme.paperFixed.opacity(0.85))
-                        .padding(.horizontal, 36)
+            VStack(spacing: 12) {
+                ForEach(Array(recs.enumerated()), id: \.offset) { i, rec in
+                    recRow(rec, isMine: isMine, revealed: pageProgress > 0.06 + Double(i) * 0.13)
                 }
             }
+            .padding(.horizontal, 24)
+            .padding(.top, 30)
             Spacer()
-            if isMine {
-                addToQueueButton(for: rec)
-                    .padding(.horizontal, 44)
-            }
             Spacer(minLength: 44)
         }
         .sensoryFeedback(.success, trigger: queuedRecKeys)
+        .sensoryFeedback(.impact(weight: .light), trigger: recs.indices.filter { pageProgress > 0.06 + Double($0) * 0.13 }.count)
+    }
+
+    private func recRow(_ rec: BookBlend.Rec, isMine: Bool, revealed: Bool) -> some View {
+        HStack(spacing: 14) {
+            BookCoverView(book: bookFor(rec: rec), size: 64)
+                .shadow(color: Theme.shadowInk.opacity(0.4), radius: 8, y: 4)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(rec.title)
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(Theme.paperFixed)
+                    .lineLimit(2)
+                Text(rec.author)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Theme.paperFixed.opacity(0.65))
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            if isMine {
+                addToQueueButton(for: rec)
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 18)
+                .fill(.white.opacity(0.10))
+                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.12), lineWidth: 1))
+        )
+        .opacity(revealed ? 1 : 0)
+        .offset(y: revealed ? 0 : 24)
+        .animation(.spring(response: 0.4, dampingFraction: 0.75), value: revealed)
     }
 
     // MARK: Steal-page queueing
@@ -535,15 +506,15 @@ struct BookBlendStoryView: View {
         return Button {
             addRecToQueue(rec)
         } label: {
-            HStack(spacing: 6) {
+            HStack(spacing: 5) {
                 Image(systemName: queued ? "checkmark" : "plus")
-                    .font(.system(size: 12, weight: .heavy))
-                Text(queued ? "In Queue" : "Add to Queue")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.system(size: 11, weight: .heavy))
+                Text(queued ? "Queued" : "Queue")
+                    .font(.system(size: 13, weight: .bold))
             }
             .foregroundStyle(queued ? Theme.paperFixed.opacity(0.75) : Theme.inkFixed)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
             .background(Capsule().fill(queued ? AnyShapeStyle(.white.opacity(0.14)) : AnyShapeStyle(Theme.paperFixed)))
         }
         .buttonStyle(.springPress)
@@ -708,7 +679,7 @@ private struct BlendBookRevealPage: View {
                 .foregroundStyle(Theme.paperFixed.opacity(0.55))
             Spacer()
             VStack(spacing: 16) {
-                BookCoverView(book: coverBook, size: 128)
+                BookCoverView(book: coverBook, size: 170)
                     .shadow(color: Theme.shadowInk.opacity(0.5), radius: 18, y: 10)
                 VStack(spacing: 3) {
                     Text(book.title)
@@ -830,6 +801,157 @@ private struct BlendBookRevealPage: View {
         .animation(.spring(response: 0.3, dampingFraction: 0.6), value: visible)
         .offset(y: -34)
         .allowsHitTesting(false)
+    }
+}
+
+// MARK: - Taste map
+
+/// The genre-overlap slide as a live reveal: shared genres slap down one by one
+/// like stickers (each keeps its tilt), then each reader's "brings" card swings
+/// in from its own side like a polaroid. Beats key off page progress, so
+/// hold-to-pause freezes mid-reveal and tapping forward skips the wait.
+private struct BlendTasteMapPage: View {
+    let sharedGenres: [String]
+    let myGenres: [String]
+    let theirGenres: [String]
+    let myName: String
+    let otherName: String
+    let myPhotoURL: String?
+    let otherPhotoURL: String?
+    let progress: Double
+
+    private var showHeader: Bool { progress > 0.02 }
+    private var showMyCard: Bool { progress > 0.52 }
+    private var showTheirCard: Bool { progress > 0.64 }
+    private var showFooter: Bool { progress > 0.74 }
+
+    /// Chips land one at a time; the stagger compresses so long lists still
+    /// finish before the cards arrive.
+    private func chipVisible(_ index: Int) -> Bool {
+        progress > min(0.10 + Double(index) * 0.055, 0.46)
+    }
+
+    private var visibleChipCount: Int {
+        sharedGenres.indices.filter { chipVisible($0) }.count
+    }
+
+    private func chipTilt(_ index: Int) -> Double {
+        [-3, 2.5, -2, 3, -1.5, 2][index % 6]
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            Spacer(minLength: 70)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("THE TASTE MAP")
+                    .font(.system(size: 11, weight: .heavy))
+                    .tracking(2)
+                    .foregroundStyle(Theme.paperFixed.opacity(0.6))
+                Text(sharedGenres.first.map { "\($0) is your common ground" } ?? "Different shelves, same energy")
+                    .font(.system(size: 27, weight: .bold))
+                    .foregroundStyle(Theme.paperFixed)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .opacity(showHeader ? 1 : 0)
+            .offset(y: showHeader ? 0 : 14)
+            .animation(.spring(response: 0.45, dampingFraction: 0.8), value: showHeader)
+
+            if !sharedGenres.isEmpty {
+                FlowLayout(spacing: 10) {
+                    ForEach(Array(sharedGenres.enumerated()), id: \.offset) { i, genre in
+                        stickerChip(genre, index: i, revealed: chipVisible(i))
+                    }
+                }
+            }
+
+            HStack(alignment: .top, spacing: 14) {
+                bringsCard(
+                    name: myName, photoURL: myPhotoURL, genres: myGenres,
+                    revealed: showMyCard, tilt: -1.8, slideFrom: -60
+                )
+                bringsCard(
+                    name: otherName, photoURL: otherPhotoURL, genres: theirGenres,
+                    revealed: showTheirCard, tilt: 1.8, slideFrom: 60
+                )
+            }
+            .padding(.top, 4)
+
+            Text("Put it all together and that's some serious range.")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(Theme.paperFixed.opacity(0.75))
+                .frame(maxWidth: .infinity, alignment: .center)
+                .opacity(showFooter ? 1 : 0)
+                .offset(y: showFooter ? 0 : 10)
+                .animation(.spring(response: 0.45, dampingFraction: 0.8), value: showFooter)
+
+            Spacer()
+        }
+        .padding(.horizontal, 24)
+        .sensoryFeedback(.impact(weight: .light), trigger: visibleChipCount)
+        .sensoryFeedback(.impact(weight: .medium), trigger: showMyCard)
+        .sensoryFeedback(.impact(weight: .medium), trigger: showTheirCard)
+    }
+
+    /// A shared genre as a physical sticker: paper fill, permanent tilt, and a
+    /// stamp-down landing (scales from oversized, like the AGREED! stamp).
+    private func stickerChip(_ genre: String, index: Int, revealed: Bool) -> some View {
+        Text(genre)
+            .font(.system(size: 14, weight: .bold))
+            .foregroundStyle(Theme.inkFixed)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .background(Capsule().fill(Theme.paperFixed))
+            .shadow(color: Theme.shadowInk.opacity(0.35), radius: 6, y: 3)
+            .rotationEffect(.degrees(chipTilt(index)))
+            .opacity(revealed ? 1 : 0)
+            .scaleEffect(revealed ? 1 : 1.8)
+            .animation(.spring(response: 0.32, dampingFraction: 0.62), value: revealed)
+    }
+
+    private func bringsCard(
+        name: String, photoURL: String?, genres: [String],
+        revealed: Bool, tilt: Double, slideFrom: CGFloat
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                BlendAvatar(urlString: photoURL, name: name, size: 26)
+                Text("\(name.uppercased()) BRINGS")
+                    .font(.system(size: 10, weight: .heavy))
+                    .tracking(1.4)
+                    .foregroundStyle(Theme.paperFixed.opacity(0.6))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            if genres.isEmpty {
+                Text("Pure overlap")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Theme.paperFixed.opacity(0.75))
+            } else {
+                ForEach(genres.prefix(3), id: \.self) { genre in
+                    Text(genre)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.paperFixed)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Capsule().strokeBorder(Theme.paperFixed.opacity(0.45), lineWidth: 1.5))
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 18)
+                .fill(.white.opacity(0.10))
+                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.14), lineWidth: 1))
+        )
+        .shadow(color: Theme.shadowInk.opacity(0.3), radius: 10, y: 6)
+        .rotationEffect(.degrees(revealed ? tilt : tilt * 3))
+        .opacity(revealed ? 1 : 0)
+        .offset(x: revealed ? 0 : slideFrom, y: revealed ? 0 : 26)
+        .animation(.spring(response: 0.45, dampingFraction: 0.7), value: revealed)
     }
 }
 

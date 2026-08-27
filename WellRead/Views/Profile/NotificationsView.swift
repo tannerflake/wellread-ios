@@ -146,6 +146,7 @@ struct NotificationsView: View {
         case "review_mentioned", "comment_mentioned": return "at"
         case "blend_request", "blend_ready": return "sparkles"
         case "friend_review_posted": return "book.fill"
+        case "book_recommended": return "paperplane.fill"
         default: return "bell.fill"
         }
     }
@@ -206,6 +207,7 @@ struct NotificationsView: View {
             UserNotification(id: "3", type: "blend_request", title: "Jordan wants to make a Book Blend with you", body: "Merge your libraries into one taste match. Tap to accept.", postId: nil, commentId: nil, blendId: "demo", actorId: "demo", coverURL: nil, createdAt: now.addingTimeInterval(-86400), read: true),
             UserNotification(id: "4", type: "review_commented", title: "Sam commented on your review of The Overstory", body: "Great take on chapter three...", postId: "demo", commentId: nil, blendId: nil, actorId: "demo", coverURL: nil, createdAt: now.addingTimeInterval(-3 * 86400), read: true),
             UserNotification(id: "5", type: "friend_review_posted", title: "Riley gave Project Hail Mary a 9.0", body: "Smart, ambitious, and way more readable than...", postId: "demo", commentId: nil, blendId: nil, actorId: "demo", coverURL: nil, createdAt: now.addingTimeInterval(-9 * 86400), read: true),
+            UserNotification(id: "6", type: "book_recommended", title: "Maya recommended Piranesi to you", body: "You'd love this one", postId: nil, commentId: nil, blendId: nil, actorId: "demo", coverURL: nil, createdAt: now.addingTimeInterval(-12 * 86400), read: true),
         ]
     }
     #endif

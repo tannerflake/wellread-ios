@@ -147,6 +147,14 @@ struct SearchView: View {
             .navigationDestination(item: $selectedUser) { selection in
                 UserLibraryDetailView(userId: selection.id)
             }
+            .onReceive(NotificationCenter.default.publisher(for: .spineSearchTabTappedAgain)) { _ in
+                // Re-tap on the Search tab item: pop any pushed book/user profile
+                // back to the search root. Only the tab instance responds; modal
+                // copies (shelf "Add" tiles) have `onClose` set.
+                guard onClose == nil else { return }
+                selectedBookForProfile = nil
+                selectedUser = nil
+            }
         }
     }
 

@@ -161,6 +161,14 @@ struct ProfileLibraryView: View {
                     canEditReadReview: true
                 )
             }
+            .onReceive(NotificationCenter.default.publisher(for: .spineProfileTabTappedAgain)) { _ in
+                // Re-tap on the Profile tab item: pop any pushed page (notifications,
+                // year list, user feed, book profile) back to the library root.
+                showNotifications = false
+                showYearList = false
+                showUserFeed = false
+                selectedBookForProfile = nil
+            }
             .sheet(isPresented: $showEditProfile, onDismiss: {
                 editProfileFocusesBookGoal = false
             }) {
@@ -333,7 +341,7 @@ struct ProfileLibraryView: View {
                 )
                 if Self.isNotificationsBellVisible {
                     notificationsBell
-                        .padding(.trailing, 8)
+                        .padding(.trailing, 4)
                 }
                 toolbarProfilePhoto
             }
@@ -589,17 +597,19 @@ struct ProfileLibraryView: View {
             Image(systemName: "bell")
                 .font(.system(size: 22, weight: .semibold))
                 .foregroundStyle(Theme.textPrimary)
-                .frame(width: 40, height: 40)
-                .contentShape(Circle())
+                // Badge anchors to the glyph, not the tap frame, so it hugs the
+                // bell's top-right shoulder.
                 .overlay(alignment: .topTrailing) {
                     if hasUnreadNotifications {
                         Circle()
                             .fill(Theme.danger)
                             .frame(width: 10, height: 10)
                             .overlay(Circle().strokeBorder(Theme.background, lineWidth: 1.5))
-                            .offset(x: 1, y: -1)
+                            .offset(x: -2, y: 3)
                     }
                 }
+                .frame(width: 34, height: 34)
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(hasUnreadNotifications ? "Notifications, new activity" : "Notifications")

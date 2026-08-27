@@ -70,6 +70,9 @@ enum PushNotificationService {
     /// (comment_liked): the thread scrolls to and flashes it.
     private static var pendingOpenPostCommentsCommentId: String?
     private static var pendingProfileUserId: String?
+    /// Book-recommendation push tapped on a cold start: the tap lands on the
+    /// queue (Recommended shelf), no id needed — just "go there" once mounted.
+    private static var pendingOpenQueue = false
 
     static func consumePendingScrollToFeedPostTap() -> String? {
         defer { pendingScrollToFeedPostId = nil }
@@ -89,6 +92,11 @@ enum PushNotificationService {
     static func consumePendingProfileUserTap() -> String? {
         defer { pendingProfileUserId = nil }
         return pendingProfileUserId
+    }
+
+    static func consumePendingOpenQueueTap() -> Bool {
+        defer { pendingOpenQueue = false }
+        return pendingOpenQueue
     }
 
     /// Registers with APNs without showing the permission dialog (for users who already granted alerts, or after cold start).
@@ -254,6 +262,13 @@ enum PushNotificationService {
             }
             return
         }
+        /// Book-recommendation pushes land on the queue, whose Recommended shelf
+        /// holds the pending recommendation.
+        if type == "book_recommended" {
+            pendingOpenQueue = true
+            NotificationCenter.default.post(name: .spineOpenQueue, object: nil)
+            return
+        }
         /// Everything else (review_commented, comment_replied, thread_commented,
         /// comment_liked) opens the post's comment thread. comment_liked also
         /// carries `commentId` so the thread scrolls to the liked comment.
@@ -287,4 +302,10 @@ extension Notification.Name {
     static let spineOpenUserProfile = Notification.Name("spineOpenUserProfile")
     /// Feed tab tapped while already selected: FeedView scrolls to top if scrolled down, or refreshes if already at top.
     static let spineFeedTabTappedAgain = Notification.Name("spineFeedTabTappedAgain")
+    /// Discover tab tapped while already selected: DiscoverView pops any pushed pages back to its root.
+    static let spineDiscoverTabTappedAgain = Notification.Name("spineDiscoverTabTappedAgain")
+    /// Search tab tapped while already selected: SearchView pops any pushed pages back to its root.
+    static let spineSearchTabTappedAgain = Notification.Name("spineSearchTabTappedAgain")
+    /// Profile tab tapped while already selected: ProfileLibraryView pops any pushed pages back to its root.
+    static let spineProfileTabTappedAgain = Notification.Name("spineProfileTabTappedAgain")
 }

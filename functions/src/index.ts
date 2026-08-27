@@ -650,6 +650,44 @@ export const onPostCaptionMentions = onDocumentWritten(
 );
 
 /**
+ * A member recommended a book to another (`recommendations/{recId}` created as
+ * pending by RecommendationRepository.send): push + bell entry to the recipient.
+ * The tap deep-links to the queue, where the Recommended shelf holds the book.
+ * Repeat sends are already a client-side no-op (send reuses the pending doc),
+ * so every created doc is a genuinely new recommendation.
+ */
+export const onRecommendationCreated = onDocumentCreated(
+  {
+    document: "recommendations/{recId}",
+    database: DATABASE_ID,
+  },
+  async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+    const data = snap.data();
+    if (data.status !== "pending") return;
+    const fromUserId = data.fromUserId as string | undefined;
+    const toUserId = data.toUserId as string | undefined;
+    if (!fromUserId || !toUserId || fromUserId === toUserId) return;
+    if (!hiddenAccountCanNotify(fromUserId, toUserId)) return;
+
+    const sender = (await db.collection("users").doc(fromUserId).get()).data();
+    const first = firstNameFromUser(sender);
+    const { title: book, coverURL } = await bookInfo(data.bookId as string | undefined);
+    const bookPart = book ?? "a book";
+    const note = ((data.note as string | undefined) ?? "").trim();
+    const title = `${first} recommended ${bookPart} to you`;
+    const body = note ? teaser8Words(note) : "It's waiting on the Recommended shelf of your queue.";
+    const payload: Record<string, string> = {
+      type: "book_recommended",
+      recommendationId: event.params.recId as string,
+      ...(typeof data.bookId === "string" && data.bookId ? { bookId: data.bookId } : {}),
+    };
+    await notifyUser(toUserId, title, body, payload, fromUserId, coverURL);
+  }
+);
+
+/**
  * Book Blend pair doc (`bookBlends/{uidLow_uidHigh}`) changed:
  * - created as pending, or re-requested (declined → pending): blend_request push to the recipient.
  * - pending → ready (the accepter's device saved the generated result): blend_ready push to the requester.

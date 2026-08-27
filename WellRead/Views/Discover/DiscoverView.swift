@@ -82,6 +82,16 @@ struct DiscoverView: View {
                     }
                 }
             }
+            .onReceive(NotificationCenter.default.publisher(for: .spineDiscoverTabTappedAgain)) { _ in
+                // Re-tap on the Discover tab item: pop back to the suggestion root,
+                // restoring the suggestion the user navigated away from (same as
+                // the pushed book profile's back chevron).
+                if let prev = bookWeCameFrom {
+                    appState.returnToDiscoverBook(prev)
+                }
+                bookWeCameFrom = nil
+                selectedBookForProfile = nil
+            }
             .onAppear {
                 if appState.discoverCurrentSuggestion == nil, !appState.discoverSuggestionQueue.isEmpty {
                     appState.advanceDiscoverSuggestion()

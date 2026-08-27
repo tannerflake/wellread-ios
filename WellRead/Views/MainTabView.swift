@@ -43,6 +43,17 @@ struct MainTabView: View {
         case discover
         case search
         case profile
+
+        /// Posted when this tab's bar item is tapped while already selected; each
+        /// tab's root view listens and pops any pushed pages back to its root.
+        var tappedAgainNotification: Notification.Name {
+            switch self {
+            case .feed: return .spineFeedTabTappedAgain
+            case .discover: return .spineDiscoverTabTappedAgain
+            case .search: return .spineSearchTabTappedAgain
+            case .profile: return .spineProfileTabTappedAgain
+            }
+        }
     }
 
     /// Tab switch + tab bar (split out of `body`: the full modifier chain became
@@ -167,7 +178,6 @@ struct MainTabView: View {
             )
             .environmentObject(authService)
             .environmentObject(appState)
-            .presentationDetents([.medium])
             .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showCurrentlyReadingPrompt, onDismiss: {
@@ -267,6 +277,7 @@ struct MainTabView: View {
             selectedTab = .profile
         }
         .onReceive(NotificationCenter.default.publisher(for: .spineOpenQueue)) { _ in
+            _ = PushNotificationService.consumePendingOpenQueueTap()
             selectedTab = .profile
         }
         // Blend pushes (invite / ready) present the Book Blend landing full-screen.
@@ -318,6 +329,14 @@ struct MainTabView: View {
             }
             if let uid = PushNotificationService.consumePendingProfileUserTap() {
                 presentDeepLinkProfile(userId: uid)
+            }
+            if PushNotificationService.consumePendingOpenQueueTap() {
+                selectedTab = .profile
+                // Re-post once the profile tab (and LibraryView's observer) is
+                // mounted so the segment lands on Queue, not the default.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    NotificationCenter.default.post(name: .spineOpenQueue, object: nil)
+                }
             }
             if appState.pendingGoodreadsImportRows != nil || appState.pendingGoodreadsImportError != nil || appState.pendingGoodreadsImportURL != nil {
                 selectedTab = .profile
@@ -558,10 +577,10 @@ struct MainTabView: View {
                 withAnimation(.snappy(duration: 0.3, extraBounce: 0.12)) {
                     selectedTab = tab
                 }
-            } else if tab == .feed {
-                // Already on Feed: FeedView pops any pushed profile/book back to the
-                // feed root, else scrolls to top or refreshes.
-                NotificationCenter.default.post(name: .spineFeedTabTappedAgain, object: nil)
+            } else {
+                // Already on this tab: its root view pops any pushed pages back to
+                // the tab root (Feed additionally scrolls to top or refreshes).
+                NotificationCenter.default.post(name: tab.tappedAgainNotification, object: nil)
             }
         } label: {
             tabItemLabel(icon: icon, label: label, isSelected: selectedTab == tab)

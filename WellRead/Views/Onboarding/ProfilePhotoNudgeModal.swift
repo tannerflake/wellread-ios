@@ -29,6 +29,9 @@ struct ProfilePhotoNudgeModal: View {
     @State private var showPhotoPicker = false
     @State private var isUploadingPhoto = false
     @State private var photoUploadError: String?
+    /// Measured content height (plus the bottom safe area) so the sheet detent hugs the
+    /// content instead of stretching to a half-screen `.medium`.
+    @State private var contentHeight: CGFloat = 0
 
     var body: some View {
         VStack(spacing: 24) {
@@ -83,7 +86,14 @@ struct ProfilePhotoNudgeModal: View {
                 .disabled(isUploadingPhoto)
             }
         }
-        .padding(24)
+        .padding(.horizontal, 24)
+        .padding(.top, 28)
+        .padding(.bottom, 8)
+        .frame(maxWidth: .infinity)
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.height + proxy.safeAreaInsets.bottom
+        } action: { contentHeight = $0 }
+        .presentationDetents(contentHeight > 0 ? [.height(contentHeight)] : [.medium])
         .photosPicker(isPresented: $showPhotoPicker, selection: $selectedPhotoItem, matching: .images, photoLibrary: .shared())
         .onChange(of: selectedPhotoItem) { _, newItem in
             showPhotoPicker = false
