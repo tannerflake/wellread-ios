@@ -153,6 +153,16 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Cover regeneration log: one doc per "wrong cover?" session, recording who
+    // changed which book's cover and where they settled ("applied" vs "no_change"
+    // after an undo). Create/update own entries only; never deleted.
+    match /coverRegenerations/{logId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow update: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow delete: if false;
+    }
+
     // Cross-user cache of user-independent AI content (summary, tags, quote,
     // "about" page, refresher), one doc per book, fields filled lazily. Any
     // signed-in user may fill it — accepted tradeoff (same as bookSearchCache):

@@ -373,6 +373,18 @@ final class PostRepository {
     /// two viewers racing the very first interaction on the same read is rare
     /// enough that an off-by-one likeCount is an accepted tradeoff.
     func ensureReadDiscussionPost(readerUid: String, bookId: String) async throws -> Post {
+        // Query-first: dedup merges remap a read's bookId, which changes the
+        // deterministic id below — the original stub (with its comments and
+        // likes) is found by its fields, never forked by a stale hash.
+        if let existing = try? await db.collection(posts)
+            .whereField("userId", isEqualTo: readerUid)
+            .whereField("bookId", isEqualTo: bookId)
+            .whereField("type", isEqualTo: PostType.readRecord.rawValue)
+            .limit(to: 1)
+            .getDocuments().documents.first,
+           let post = parsePost(from: existing.data(), docId: existing.documentID) {
+            return post
+        }
         let id = Self.readDiscussionPostId(readerUid: readerUid, bookId: bookId)
         let ref = db.collection(posts).document(id.uuidString)
         if let snapshot = try? await ref.getDocument(), snapshot.exists,

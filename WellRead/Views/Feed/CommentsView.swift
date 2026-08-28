@@ -2,10 +2,12 @@
 //  CommentsView.swift
 //  Spine
 //
-//  Comments thread for a post. Listens to Firestore live updates; posts are
-//  optimistically merged so a freshly-sent comment doesn't disappear before
-//  the snapshot catches up. New comments spring in and auto-scroll into view,
-//  the reply flow highlights its target, and the input bar reacts to focus.
+//  Comments thread for a post, headed by the post itself (author, book, review
+//  text) so the discussion always shows what it's about. Listens to Firestore
+//  live updates; posts are optimistically merged so a freshly-sent comment
+//  doesn't disappear before the snapshot catches up. New comments spring in
+//  and auto-scroll into view, the reply flow highlights its target, and the
+//  input bar reacts to focus.
 //
 
 import SwiftUI
@@ -14,7 +16,8 @@ import FirebaseFirestore
 struct CommentsView: View {
     let post: Post
     /// Comment (UUID string) to scroll to and flash once loaded — set when a
-    /// comment-liked push/bell tap deep-links into this thread.
+    /// comment push/bell tap (liked, replied, mentioned, commented) deep-links
+    /// into this thread.
     var scrollToCommentId: String? = nil
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var appState: AppState
@@ -47,13 +50,7 @@ struct CommentsView: View {
             ZStack {
                 Theme.background.ignoresSafeArea()
                 VStack(spacing: 0) {
-                    if viewModel.isLoading && viewModel.comments.isEmpty {
-                        loadingPlaceholder
-                    } else if viewModel.comments.isEmpty {
-                        emptyState
-                    } else {
-                        commentsList
-                    }
+                    commentsList
                     commentInputBar
                 }
             }
@@ -185,6 +182,12 @@ struct CommentsView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
+                    reviewContextHeader
+                    if viewModel.isLoading && viewModel.comments.isEmpty {
+                        loadingPlaceholder
+                    } else if viewModel.comments.isEmpty {
+                        emptyState
+                    }
                     ForEach(Array(viewModel.threadedComments.enumerated()), id: \.element.comment.id) { index, item in
                         VStack(alignment: .leading, spacing: 0) {
                             if index > 0 && !item.isReply {
@@ -247,6 +250,73 @@ struct CommentsView: View {
         }
     }
 
+    /// The post under discussion, at the top of the thread — author, book, and
+    /// review text — so a reader (especially one deep-linked from a push or the
+    /// bell) can see what the comments are about without leaving the sheet.
+    private var reviewContextHeader: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 10) {
+                UserAvatarView(
+                    urlString: post.user?.profileImageURL,
+                    displayName: post.user?.displayName,
+                    firstName: post.user?.firstName,
+                    lastName: post.user?.lastName,
+                    size: 36
+                )
+                .overlay(
+                    Circle()
+                        .strokeBorder(Theme.chrome.opacity(0.5), lineWidth: 1)
+                )
+                .overlay(
+                    NavigationLink(value: post.userId) { EmptyView() }
+                        .opacity(0)
+                )
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(post.user?.displayName ?? "User")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(Theme.textPrimary)
+                    Text(Theme.feedRelativeTimestamp(post.createdAt))
+                        .font(.system(size: 10, weight: .regular))
+                        .tracking(0.5)
+                        .foregroundStyle(Theme.chrome)
+                }
+                .overlay(
+                    NavigationLink(value: post.userId) { EmptyView() }
+                        .opacity(0)
+                )
+                Spacer(minLength: 0)
+            }
+            if let book = post.book {
+                HStack(alignment: .top, spacing: 12) {
+                    BookCoverView(book: book, size: 56)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(book.title)
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(Theme.textPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(book.author)
+                            .font(.system(size: 13))
+                            .foregroundStyle(Theme.textSecondary)
+                            .lineLimit(1)
+                        if let t = post.tier {
+                            TierBadge(tier: t, size: .small)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+            if let caption = post.caption, !caption.isEmpty {
+                ExpandableReviewText(text: caption, collapsedLineLimit: 6)
+            }
+            Rectangle()
+                .fill(Theme.chrome.opacity(0.35))
+                .frame(height: Theme.chromeHairline)
+        }
+        .padding(.horizontal)
+        .padding(.top, 10)
+        .padding(.bottom, 4)
+    }
+
     /// Push/bell tap on "liked your comment" lands here: once the target comment is
     /// in the list, scroll to it and flash it the same way a fresh post flashes.
     private func scrollToDeepLinkTargetIfNeeded(proxy: ScrollViewProxy) {
@@ -299,7 +369,8 @@ struct CommentsView: View {
                 .font(.system(size: 12, weight: .regular))
                 .foregroundStyle(Theme.textTertiary.opacity(0.7))
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 48)
         .scaleEffect(emptyStateShown ? 1 : 0.85)
         .opacity(emptyStateShown ? 1 : 0)
         .animation(.spring(response: 0.45, dampingFraction: 0.7), value: emptyStateShown)

@@ -93,14 +93,19 @@ class AppDelegate: NSObject, UIApplicationDelegate, MessagingDelegate, UNUserNot
         Messaging.messaging().delegate = self
         UNUserNotificationCenter.current().delegate = self
         #if DEBUG
-        // `-uiPreviewPushTap <type>[:<id>]` simulates a push tap at launch (before the
-        // UI mounts — the cold-start path) for simulator verification, e.g.
-        // `-uiPreviewPushTap new_follower:<uid>` or `-uiPreviewPushTap review_liked:<postId>`.
+        // `-uiPreviewPushTap <type>[:<id>[:<commentId>]]` simulates a push tap at
+        // launch (before the UI mounts — the cold-start path) for simulator
+        // verification, e.g. `-uiPreviewPushTap new_follower:<uid>`,
+        // `-uiPreviewPushTap review_liked:<postId>`, or
+        // `-uiPreviewPushTap comment_replied:<postId>:<commentId>`.
         if let raw = UserDefaults.standard.string(forKey: "uiPreviewPushTap") {
-            let parts = raw.split(separator: ":", maxSplits: 1).map(String.init)
+            let parts = raw.split(separator: ":", maxSplits: 2).map(String.init)
             var userInfo: [AnyHashable: Any] = ["type": parts[0]]
             if parts.count > 1 {
                 userInfo[parts[0] == "new_follower" ? "followerId" : "postId"] = parts[1]
+            }
+            if parts.count > 2 {
+                userInfo["commentId"] = parts[2]
             }
             PushNotificationService.handleRemoteNotificationTap(userInfo: userInfo)
         }

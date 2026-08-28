@@ -98,6 +98,7 @@ struct BookBlendPushPresenter: ViewModifier {
 
     private struct Presentation: Identifiable {
         let id: String
+        var autoAccept = false
     }
 
     func body(content: Content) -> some View {
@@ -124,11 +125,14 @@ struct BookBlendPushPresenter: ViewModifier {
                 if let blendId = note.userInfo?["blendId"] as? String {
                     // Consume the cold-start stash too, so onAppear doesn't re-present.
                     _ = PushNotificationService.consumePendingBlendTap()
-                    presented = Presentation(id: blendId)
+                    presented = Presentation(
+                        id: blendId,
+                        autoAccept: note.userInfo?["autoAccept"] as? Bool ?? false
+                    )
                 }
             }
             .fullScreenCover(item: $presented) { presentation in
-                BookBlendLandingView(blendId: presentation.id)
+                BookBlendLandingView(blendId: presentation.id, autoAccept: presentation.autoAccept)
                     .environmentObject(authService)
                     .environmentObject(appState)
             }
@@ -148,6 +152,10 @@ extension View {
 /// drops straight into the story.
 struct BookBlendLandingView: View {
     let blendId: String
+    /// Set when the user already said "Let's Blend" (launch invite modal):
+    /// a pending invite accepts immediately instead of re-pitching. Consumed
+    /// once, so an accept failure still falls back to the invite screen.
+    var autoAccept = false
 
     @EnvironmentObject var authService: AuthService
     @Environment(\.dismiss) private var dismiss
@@ -165,6 +173,7 @@ struct BookBlendLandingView: View {
     @State private var listener: ListenerRegistration?
     @State private var phase: Phase = .loading
     @State private var acceptError: String?
+    @State private var autoAcceptConsumed = false
 
     private var myUid: String { authService.firebaseUser?.uid ?? "" }
 
@@ -267,7 +276,16 @@ struct BookBlendLandingView: View {
                 phase = .gone
             }
         case .pending:
-            phase = updated.recipientId == myUid ? .invite : .waiting
+            if updated.recipientId == myUid {
+                if autoAccept && !autoAcceptConsumed {
+                    autoAcceptConsumed = true
+                    accept(updated)
+                } else {
+                    phase = .invite
+                }
+            } else {
+                phase = .waiting
+            }
         case .declined:
             phase = .gone
         }

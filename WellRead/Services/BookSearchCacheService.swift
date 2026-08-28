@@ -38,13 +38,16 @@ final class BookSearchCacheService {
     /// Bumped when ranking/filtering changes enough that old entries can be
     /// wrong in ways read-time filtering can't repair (v2: ISBN-implied language
     /// joined the ranking, so a legacy entry may have dedup-merged a foreign
-    /// edition over the English one). Entries written before the field exists
-    /// read as version 1.
-    static let currentSchemaVersion = 2
+    /// edition over the English one; v3: results are canonicalized against the
+    /// community catalog — older entries carry pre-dedup ids and get upgraded
+    /// in place on first read). Entries written before the field exists read
+    /// as version 1.
+    static let currentSchemaVersion = 3
 
     struct CachedEntry {
         let books: [Book]
         let schemaVersion: Int
+        let source: Source
     }
 
     private init() {}
@@ -79,7 +82,7 @@ final class BookSearchCacheService {
         guard let raw = data["books"] as? [[String: Any]] else { return nil }
         let books = raw.compactMap(book(from:))
         guard !books.isEmpty else { return nil }
-        return CachedEntry(books: books, schemaVersion: data["schemaVersion"] as? Int ?? 1)
+        return CachedEntry(books: books, schemaVersion: data["schemaVersion"] as? Int ?? 1, source: source)
     }
 
     /// Fire-and-forget write-through after a successful API fetch.

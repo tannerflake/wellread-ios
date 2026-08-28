@@ -251,7 +251,9 @@ struct MainTabView: View {
                         NotificationCenter.default.post(
                             name: .spineOpenBookBlend,
                             object: nil,
-                            userInfo: ["blendId": invite.id]
+                            // They already said "Let's Blend" — the landing
+                            // accepts immediately instead of re-pitching.
+                            userInfo: ["blendId": invite.id, "autoAccept": true]
                         )
                     }
                 },

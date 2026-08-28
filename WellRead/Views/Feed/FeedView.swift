@@ -22,7 +22,7 @@ struct FeedView: View {
     /// pinned and highlighted on the book profile.
     @State private var bookProfileSourceUid: String? = nil
     @State private var postForComments: Post? = nil
-    /// Comment the next-presented comments sheet should scroll to (comment-liked deep link).
+    /// Comment the next-presented comments sheet should scroll to (comment-targeted deep link).
     @State private var commentsScrollTargetId: String? = nil
     @State private var editReviewFromFeed: EditReadReviewSheetPayload? = nil
     /// Paged roster behind the people strip. Owned here so pull to refresh can
@@ -368,6 +368,10 @@ struct FeedView: View {
         let targetCommentId = appState.deepLinkFeedCommentId
         appState.deepLinkFeedCommentId = nil
         commentsScrollTargetId = targetCommentId
+        // Position the feed on the review behind the sheet, so dismissing the
+        // thread lands on the post being discussed (no-op for posts not in the
+        // feed, e.g. hidden read-discussion carriers).
+        appState.scrollToFeedPostId = id
         if let p = appState.feedPosts.first(where: { $0.id.uuidString == id }) {
             postForComments = p
             return
@@ -529,6 +533,8 @@ struct FeedPostRow: View {
     @State private var previewComments: [Comment] = []
     /// Bumped on each comment-button tap so the bubble icon bounces like the heart.
     @State private var commentTapPulse = 0
+    /// Long-press the author's avatar to blow their photo up full screen.
+    @State private var showAvatarZoom = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -610,6 +616,14 @@ struct FeedPostRow: View {
             }
         }
         .padding(.top, 14)
+        .avatarZoom(
+            isPresented: $showAvatarZoom,
+            urlString: post.user?.profileImageURL,
+            displayName: post.user?.displayName,
+            firstName: post.user?.firstName,
+            lastName: post.user?.lastName,
+            caption: post.user?.displayName
+        )
         .task(id: "\(post.id.uuidString)-\(post.commentCount)") {
             guard post.commentCount > 0 else {
                 withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { previewComments = [] }
@@ -726,7 +740,16 @@ struct FeedPostRow: View {
             NavigationLink(value: post.userId) {
                 HStack(spacing: 10) {
                     HStack(spacing: 2) {
+                        // The hold lives on the avatar itself, a descendant of
+                        // the link's label, so it consumes the touch instead of
+                        // letting the release push the author's library.
                         feedAvatar
+                            .contentShape(Circle())
+                            .onLongPressGesture(minimumDuration: 0.35) {
+                                WizardHaptics.step()
+                                AvatarZoomPresentation.present($showAvatarZoom)
+                            }
+                            .accessibilityHint("Touch and hold to see their photo full screen")
                         ReadingNowFanStack(books: readingNowBooks, coverWidth: 17)
                     }
                     VStack(alignment: .leading, spacing: 2) {
@@ -786,15 +809,21 @@ struct FeedPostRow: View {
     }
 }
 
-/// Review/caption text that collapses past 14 lines. Tapping the text or the
-/// "read more"/"show less" pill toggles expansion; short text renders plain.
+/// Review/caption text that collapses past `collapsedLineLimit` lines (14 by
+/// default). Tapping the text or the "read more"/"show less" pill toggles
+/// expansion; short text renders plain.
 struct ExpandableReviewText: View {
     let text: String
-    private static let collapsedLineLimit = 14
+    let collapsedLineLimit: Int
 
     @State private var expanded = false
-    /// True once measurement shows the full text is taller than 14 lines.
+    /// True once measurement shows the full text is taller than the collapsed limit.
     @State private var truncatable = false
+
+    init(text: String, collapsedLineLimit: Int = 14) {
+        self.text = text
+        self.collapsedLineLimit = collapsedLineLimit
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -805,7 +834,7 @@ struct ExpandableReviewText: View {
                 .foregroundStyle(Theme.textPrimary)
                 .tint(Theme.chrome)
                 .lineSpacing(Theme.bodyLineSpacing)
-                .lineLimit(expanded ? nil : Self.collapsedLineLimit)
+                .lineLimit(expanded ? nil : collapsedLineLimit)
                 // Full width so the reported size (which sizes the hidden
                 // measurer below) matches the wrap width — otherwise the
                 // measurer re-wraps at the longest-line width and misreports

@@ -56,7 +56,7 @@ final class AppState: ObservableObject {
     @Published var isFetchingGoodreadsFromURL = false
     /// Set when opening a feed post from a push or `wellread://` URL; Feed opens comments when resolved.
     @Published var deepLinkFeedPostId: String?
-    /// Set alongside `deepLinkFeedPostId` for comment-liked pushes; the comments sheet scrolls to and flashes this comment.
+    /// Set alongside `deepLinkFeedPostId` for comment-targeted pushes (liked, replied, mentioned, commented); the comments sheet scrolls to and flashes this comment.
     @Published var deepLinkFeedCommentId: String?
     /// Set when a friend-review push is tapped; Feed scrolls to the post (with a brief highlight) once it's loaded, then clears this.
     @Published var scrollToFeedPostId: String?

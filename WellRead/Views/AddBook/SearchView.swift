@@ -11,13 +11,13 @@ import SwiftUI
 /// Local-only recent activity for search (per signed-in uid, capped,
 /// never synced): submitted queries and book profiles the user opened.
 enum SearchRecents {
-    private static let queryCap = 8
+    private static let queryCap = 3
     private static let bookCap = 12
     private static func queriesKey(_ uid: String) -> String { "searchRecentQueries.\(uid)" }
     private static func booksKey(_ uid: String) -> String { "searchRecentBooks.\(uid)" }
 
     static func queries(uid: String) -> [String] {
-        UserDefaults.standard.stringArray(forKey: queriesKey(uid)) ?? []
+        Array((UserDefaults.standard.stringArray(forKey: queriesKey(uid)) ?? []).prefix(queryCap))
     }
 
     static func addQuery(_ q: String, uid: String) {
@@ -85,7 +85,21 @@ struct SearchView: View {
     @State private var searchTask: Task<Void, Never>?
     /// Recent search activity shown while the field is empty.
     @State private var recentQueries: [String] = []
-    @State private var recentBooks: [Book] = []
+    /// "Read by people you follow": a shuffled pool of finished-book ids from the
+    /// follow graph, hydrated into `followedReadBooks` a few covers at a time as
+    /// the shelf is scrolled.
+    @State private var followedReadPool: [String] = []
+    @State private var followedReadBooks: [Book] = []
+    /// Offset into `followedReadPool` of the next unhydrated id (tracked separately
+    /// from `followedReadBooks.count` because an id can fail to hydrate).
+    @State private var followedReadNextIndex = 0
+    @State private var hasLoadedFollowedReads = false
+    @State private var isLoadingMoreFollowedReads = false
+    /// Full-bleed width of the followed-reads shelf, for sizing covers so a
+    /// partial cover always peeks past the trailing edge.
+    @State private var followedShelfWidth: CGFloat = 0
+    private static let followedReadBatchSize = 4
+    private static let followedReadPoolCap = 24
     /// When set (opened from a queue shelf's "Add" tile), book profiles show a primary
     /// CTA that adds the book straight onto this shelf.
     var targetShelf: QueueShelf? = nil
@@ -266,7 +280,10 @@ struct SearchView: View {
         .padding(.top, 12)
         // Focus is not restored here: popping back from a book or member page
         // shouldn't shove the keyboard over the results the user came back to.
-        .onAppear { refreshRecents() }
+        .onAppear {
+            refreshRecents()
+            Task { await loadFollowedReadsIfNeeded() }
+        }
         .onChange(of: scope) { _, newScope in
             searchTask?.cancel()
             if newScope == .users {
@@ -463,7 +480,43 @@ struct SearchView: View {
 
     private func refreshRecents() {
         recentQueries = SearchRecents.queries(uid: recentsUid)
-        recentBooks = SearchRecents.books(uid: recentsUid)
+    }
+
+    // MARK: - Read by people you follow
+
+    /// Three full covers plus half of a fourth peeking past the trailing edge.
+    private var followedReadCoverSize: CGFloat {
+        guard followedShelfWidth > 0 else { return 92 }
+        return (followedShelfWidth - 16 - 3 * 12) / 3.5
+    }
+
+    /// Builds the shuffled pool of finished-book ids from the follow graph (books
+    /// already in the user's own library excluded) and hydrates the first batch.
+    /// Once per view instance so the random pick doesn't reshuffle on re-appear.
+    private func loadFollowedReadsIfNeeded() async {
+        guard !hasLoadedFollowedReads else { return }
+        hasLoadedFollowedReads = true
+        let following = authService.appUser?.following ?? []
+        guard !following.isEmpty else { return }
+        let ids = await UserBookRepository().fetchReadBookIds(forUserIds: following)
+        let ownBookIds = Set(appState.userBooks.map(\.bookId))
+        let pool = Array(ids.filter { !ownBookIds.contains($0) }.shuffled().prefix(Self.followedReadPoolCap))
+        await MainActor.run { followedReadPool = pool }
+        await loadMoreFollowedReads()
+    }
+
+    /// Hydrates the next batch of covers; the shelf's trailing placeholder calls
+    /// this when scrolled into view.
+    private func loadMoreFollowedReads() async {
+        guard followedReadNextIndex < followedReadPool.count, !isLoadingMoreFollowedReads else { return }
+        isLoadingMoreFollowedReads = true
+        let nextIds = Array(followedReadPool[followedReadNextIndex..<min(followedReadNextIndex + Self.followedReadBatchSize, followedReadPool.count)])
+        let books = await BookRepository.shared.getBooks(ids: nextIds)
+        await MainActor.run {
+            followedReadNextIndex += nextIds.count
+            followedReadBooks.append(contentsOf: nextIds.compactMap { books[$0] })
+            isLoadingMoreFollowedReads = false
+        }
     }
 
     /// Opens a book profile from search results or recents, recording both the book
@@ -476,7 +529,8 @@ struct SearchView: View {
         selectedBookForProfile = book
     }
 
-    /// Shown while the search field is empty: past queries and recently opened books.
+    /// Shown while the search field is empty: past queries and books finished by
+    /// people the user follows.
     @ViewBuilder
     private var recentsSection: some View {
         VStack(alignment: .leading, spacing: 22) {
@@ -511,18 +565,31 @@ struct SearchView: View {
                     }
                 }
             }
-            if !recentBooks.isEmpty {
+            if !followedReadBooks.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Recent books")
+                    Text("Read by people you follow")
                         .font(Theme.headline())
                         .foregroundStyle(Theme.textSecondary)
+                    // Full-bleed so covers slide under the screen edge, with cover
+                    // width computed from the shelf width so a partial fourth cover
+                    // always peeks past the trailing edge — the cut-off itself is
+                    // the "scroll for more" affordance.
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 12) {
-                            ForEach(recentBooks) { b in
-                                BookCoverView(book: b, size: 84, onTap: { openBookProfile(b) })
+                        LazyHStack(spacing: 12) {
+                            ForEach(followedReadBooks) { b in
+                                BookCoverView(book: b, size: followedReadCoverSize, onTap: { openBookProfile(b) })
+                            }
+                            if followedReadNextIndex < followedReadPool.count {
+                                ProgressView()
+                                    .tint(Theme.accent)
+                                    .frame(width: followedReadCoverSize, height: followedReadCoverSize * 1.5)
+                                    .onAppear { Task { await loadMoreFollowedReads() } }
                             }
                         }
+                        .padding(.horizontal, 16)
                     }
+                    .padding(.horizontal, -16)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { followedShelfWidth = $0 }
                 }
             }
         }

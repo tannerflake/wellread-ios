@@ -306,6 +306,7 @@ struct ProfileLibraryView: View {
                         .foregroundStyle(Theme.onChrome.opacity(0.5))
                 )
                 .shadow(color: Theme.shadowInk.opacity(0.25), radius: 8, y: 3)
+                .opacity(0.5)
         }
         .buttonStyle(.plain)
         .padding(.trailing, 20)

@@ -137,6 +137,8 @@ struct FeedDayGroupCarousel: View {
 
     /// Post id of the slide currently snapped into view.
     @State private var currentSlideId: String? = nil
+    /// Long-press the author's avatar to blow their photo up full screen.
+    @State private var showAvatarZoom = false
 
     /// Trailing sliver of the next card left visible so the swipe is discoverable.
     private static let nextCardPeek: CGFloat = 16
@@ -156,6 +158,14 @@ struct FeedDayGroupCarousel: View {
                 .padding(.horizontal, Theme.horizontalPadding)
         }
         .padding(.top, 14)
+        .avatarZoom(
+            isPresented: $showAvatarZoom,
+            urlString: group.user?.profileImageURL,
+            displayName: group.user?.displayName,
+            firstName: group.user?.firstName,
+            lastName: group.user?.lastName,
+            caption: group.user?.displayName
+        )
     }
 
     /// Avatar + "Name" + summary line, with the "1/7" position counter trailing.
@@ -259,6 +269,16 @@ struct FeedDayGroupCarousel: View {
             .overlay(
                 Circle().strokeBorder(Theme.chrome.opacity(0.55), lineWidth: 1)
             )
+            // The hold lives on the avatar circle itself, a descendant of the
+            // header link's label, so it consumes the touch instead of letting
+            // the release push the author's library. (Not on the enclosing
+            // HStack — that would put the press target over the fanned covers.)
+            .contentShape(Circle())
+            .onLongPressGesture(minimumDuration: 0.35) {
+                WizardHaptics.step()
+                AvatarZoomPresentation.present($showAvatarZoom)
+            }
+            .accessibilityHint("Touch and hold to see their photo full screen")
             ReadingNowFanStack(books: readingNowBooks, coverWidth: 17)
         }
     }

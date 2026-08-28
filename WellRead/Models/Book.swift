@@ -20,6 +20,28 @@ struct Book: Identifiable, Equatable, Hashable {
     var fallbackCoverURLs: [String]? = nil
     /// When true, `coverImageURLsToTry` is empty (e.g. Firestore metadata timed out — show title-only placeholder only).
     var suppressCoverImageFetch: Bool = false
+    /// Community-chosen cover (a member regenerated a bad cover and kept the result).
+    /// Tried before everything else so all users converge on it.
+    var coverOverrideURL: String? = nil
+    /// Cover URLs a member rejected via regeneration — skipped by the chain.
+    var coverRejectedURLs: [String]? = nil
+
+    /// Canonical ISBN-13 (digits only) for identity matching: an ISBN-13 passes
+    /// through, an ISBN-10 converts (978 prefix + recomputed EAN-13 check digit),
+    /// so the same edition arriving from different sources as ISBN-10 vs ISBN-13
+    /// resolves to one key. Nil for anything that isn't a valid-length ISBN.
+    static func canonicalISBN13(from isbn: String?) -> String? {
+        guard let isbn else { return nil }
+        let chars = isbn.uppercased().filter { $0.isNumber || $0 == "X" }
+        if chars.count == 13, chars.allSatisfy(\.isNumber) { return chars }
+        guard chars.count == 10 else { return nil }
+        let body = "978" + chars.prefix(9)
+        guard body.allSatisfy(\.isNumber) else { return nil }
+        let sum = body.enumerated().reduce(0) { acc, pair in
+            acc + (pair.element.wholeNumberValue ?? 0) * (pair.offset % 2 == 0 ? 1 : 3)
+        }
+        return body + String((10 - sum % 10) % 10)
+    }
 
     /// Open Library cover API: large then medium. `default=false` makes a missing
     /// cover a fast 404 instead of a blank image we'd have to download and sniff.
@@ -118,6 +140,15 @@ struct Book: Identifiable, Equatable, Hashable {
     var coverImageURLsToTry: [URL] {
         if suppressCoverImageFetch { return [] }
         var list: [String] = []
+        // Community override wins outright — first in the chain, exempt from the
+        // rejected filter (a stale rejection must never suppress the chosen cover).
+        // Used verbatim, no zoom-variant expansion: it's the exact URL whose image
+        // a member accepted, and variants could resurrect a rejected sibling.
+        var overrideVariants: [String] = []
+        if let override = coverOverrideURL?.trimmingCharacters(in: .whitespacesAndNewlines), !override.isEmpty {
+            overrideVariants = [override]
+            list.append(override)
+        }
         let trimmedCover = coverURL.trimmingCharacters(in: .whitespacesAndNewlines)
         /// Custom / CDN / Firebase covers — try these before Open Library so we don’t re-hit OL on every navigation.
         let tryNonGooglePrimaryFirst = !trimmedCover.isEmpty && !trimmedCover.contains("books.google.com")
@@ -143,6 +174,10 @@ struct Book: Identifiable, Equatable, Hashable {
             let idBased = Book.coverURLsFromBookId(id)
             for v in idBased where !list.contains(v) { list.append(v) }
         }
+        if let rejected = coverRejectedURLs, !rejected.isEmpty {
+            let banned = Set(rejected)
+            list.removeAll { banned.contains($0) && !overrideVariants.contains($0) }
+        }
         return list.compactMap { URL(string: $0) }.filter { !$0.absoluteString.isEmpty }
     }
 
@@ -166,6 +201,7 @@ struct Book: Identifiable, Equatable, Hashable {
 extension Book: Codable {
     enum CodingKeys: String, CodingKey {
         case id, title, author, coverURL, pageCount, publishedDate, description, genres, isbn
+        case coverOverrideURL, coverRejectedURLs
     }
 
     init(from decoder: Decoder) throws {
@@ -179,6 +215,8 @@ extension Book: Codable {
         description = try c.decodeIfPresent(String.self, forKey: .description)
         genres = try c.decode([String].self, forKey: .genres)
         isbn = try c.decodeIfPresent(String.self, forKey: .isbn)
+        coverOverrideURL = try c.decodeIfPresent(String.self, forKey: .coverOverrideURL)
+        coverRejectedURLs = try c.decodeIfPresent([String].self, forKey: .coverRejectedURLs)
         fallbackCoverURLs = nil
     }
 
@@ -193,6 +231,8 @@ extension Book: Codable {
         try c.encode(description, forKey: .description)
         try c.encode(genres, forKey: .genres)
         try c.encodeIfPresent(isbn, forKey: .isbn)
+        try c.encodeIfPresent(coverOverrideURL, forKey: .coverOverrideURL)
+        try c.encodeIfPresent(coverRejectedURLs, forKey: .coverRejectedURLs)
     }
 }
 

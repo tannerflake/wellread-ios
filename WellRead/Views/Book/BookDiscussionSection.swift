@@ -41,6 +41,8 @@ struct BookDiscussionSection: View {
     @State private var stubBusyUids: Set<String> = []
     @State private var commentSheetPost: Post? = nil
     @State private var showAllOthers = false
+    /// Long threads (10+ comments) the viewer chose to expand inline.
+    @State private var expandedThreadPostIds: Set<String> = []
     @State private var loadedKey: String = ""
 
     private static let readDateFormatter: DateFormatter = {
@@ -49,16 +51,17 @@ struct BookDiscussionSection: View {
         return f
     }()
 
-    /// Followed readers (plus the source reader who led here) sit on top.
+    /// Followed readers (plus your own read and the source reader who led
+    /// here) sit on top.
     private var followedReaders: [BookDiscussionReader] {
-        readers.filter { $0.isFollowed || $0.uid == sourceReaderUid }
+        readers.filter { $0.isFollowed || $0.uid == sourceReaderUid || $0.uid == appState.authUserId }
     }
 
     private var otherReaders: [BookDiscussionReader] {
-        readers.filter { !$0.isFollowed && $0.uid != sourceReaderUid }
+        readers.filter { !$0.isFollowed && $0.uid != sourceReaderUid && $0.uid != appState.authUserId }
     }
 
-    private static let collapsedOthersCount = 6
+    private static let collapsedOthersCount = 10
 
     private var visibleOthers: [BookDiscussionReader] {
         showAllOthers ? otherReaders : Array(otherReaders.prefix(Self.collapsedOthersCount))
@@ -272,10 +275,24 @@ struct BookDiscussionSection: View {
                             size: 36
                         )
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(reader.user.displayName)
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(Theme.textPrimary)
-                                .lineLimit(1)
+                            HStack(spacing: 6) {
+                                Text(reader.user.displayName)
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(Theme.textPrimary)
+                                    .lineLimit(1)
+                                if reader.uid == appState.authUserId {
+                                    Text("YOU")
+                                        .font(.system(size: 8, weight: .bold))
+                                        .tracking(1)
+                                        .foregroundStyle(Theme.textTertiary)
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 2)
+                                        .background(
+                                            Capsule()
+                                                .stroke(Theme.chrome.opacity(0.4), lineWidth: 1)
+                                        )
+                                }
+                            }
                             if let finished = reader.entry.dateFinished {
                                 Text("read \(Self.readDateFormatter.string(from: finished))")
                                     .font(.system(size: 11, weight: .regular))
@@ -382,30 +399,37 @@ struct BookDiscussionSection: View {
         .padding(.top, 2)
     }
 
-    /// The last couple of top-level comments inline, then a tap-through to the
-    /// full thread.
+    /// Short threads render in full, Reddit-style (replies indented under a
+    /// thread line). Once a thread reaches `collapsedThreadCount` comments it
+    /// collapses to the last couple with a "Show all" tap that expands the
+    /// rest inline.
+    private static let collapsedThreadCount = 10
+
     @ViewBuilder
     private func commentPreview(post: Post) -> some View {
         let all = commentsByPostId[post.id.uuidString] ?? []
-        let topLevel = all.filter { $0.parentCommentId == nil }
-        let shown = Array(topLevel.suffix(2))
-        if !shown.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach(shown) { comment in
-                    (
-                        Text(comment.displayName ?? "Someone")
-                            .font(.system(size: 12, weight: .bold))
-                        + Text("  \(comment.text)")
-                            .font(.system(size: 12, weight: .regular))
-                    )
-                    .foregroundStyle(Theme.textSecondary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                }
-                if post.commentCount > shown.count {
-                    Text("View all \(post.commentCount) comments")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Theme.chrome)
+        let pid = post.id.uuidString
+        if !all.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                if all.count < Self.collapsedThreadCount || expandedThreadPostIds.contains(pid) {
+                    ForEach(threaded(all), id: \.comment.id) { item in
+                        inlineCommentRow(item.comment, isReply: item.isReply)
+                    }
+                } else {
+                    let topLevel = all.filter { $0.parentCommentId == nil }
+                    ForEach(Array(topLevel.suffix(2))) { comment in
+                        inlineCommentRow(comment, isReply: false)
+                    }
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            _ = expandedThreadPostIds.insert(pid)
+                        }
+                    } label: {
+                        Text("Show all \(max(post.commentCount, all.count)) comments")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Theme.chrome)
+                    }
+                    .buttonStyle(.springPress)
                 }
             }
             .padding(10)
@@ -421,6 +445,79 @@ struct BookDiscussionSection: View {
                 }
             }
         }
+    }
+
+    /// One comment, Reddit-style: avatar beside a name/timestamp header with
+    /// the body under it; replies indent behind a vertical thread line.
+    private func inlineCommentRow(_ comment: Comment, isReply: Bool) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            UserAvatarView(
+                urlString: comment.profileImageURL,
+                displayName: comment.displayName,
+                size: isReply ? 20 : 24
+            )
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(comment.displayName ?? "Someone")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Theme.textPrimary)
+                    Text(Theme.commentRelativeTimestamp(comment.createdAt, now: Date()))
+                        .font(.system(size: 10, weight: .regular))
+                        .tracking(0.5)
+                        .foregroundStyle(Theme.textTertiary)
+                }
+                Text(MentionScanner.attributed(comment.text, mentionColor: Theme.chrome))
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundStyle(Theme.textSecondary)
+                    .tint(Theme.chrome)
+                    .lineSpacing(Theme.bodyLineSpacing)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, isReply ? 28 : 0)
+        .overlay(alignment: .leading) {
+            if isReply {
+                Capsule()
+                    .fill(Theme.chrome.opacity(0.25))
+                    .frame(width: 2)
+                    .padding(.leading, 11)
+                    .padding(.vertical, 1)
+            }
+        }
+    }
+
+    /// Display order: top-level chronological, each followed by its replies
+    /// (replies-to-replies flatten under the same top-level ancestor). Mirrors
+    /// CommentsViewModel.threadedComments so the inline thread and the sheet
+    /// agree.
+    private func threaded(_ comments: [Comment]) -> [(comment: Comment, isReply: Bool)] {
+        let byId = Dictionary(uniqueKeysWithValues: comments.map { ($0.id.uuidString, $0) })
+
+        func rootId(of comment: Comment) -> String {
+            var current = comment
+            var hops = 0
+            while let pid = current.parentCommentId, let parent = byId[pid], hops < 20 {
+                current = parent
+                hops += 1
+            }
+            return current.id.uuidString
+        }
+
+        let topLevel = comments
+            .filter { $0.parentCommentId == nil || byId[$0.parentCommentId!] == nil }
+            .sorted { $0.createdAt < $1.createdAt }
+        let replies = comments.filter { $0.parentCommentId != nil && byId[$0.parentCommentId!] != nil }
+        let repliesByRoot = Dictionary(grouping: replies, by: rootId(of:))
+
+        var result: [(Comment, Bool)] = []
+        for c in topLevel {
+            result.append((c, false))
+            for r in (repliesByRoot[c.id.uuidString] ?? []).sorted(by: { $0.createdAt < $1.createdAt }) {
+                result.append((r, true))
+            }
+        }
+        return result
     }
 }
 

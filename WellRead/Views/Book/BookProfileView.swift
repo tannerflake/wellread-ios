@@ -91,6 +91,22 @@ struct BookProfileView: View {
     @State private var cantSendTextAlert = false
     @State private var recommendProfileToView: RecommendReader?
 
+    // Cover regeneration ("wrong cover?" under the hero cover).
+    private enum CoverFixState: Equatable {
+        /// No resolved cover image yet (shimmer or title placeholder) — show nothing.
+        case hidden
+        case idle
+        case working
+        /// A regeneration is showing; offer "try another" and "undo".
+        case regenerated
+        /// Transient: the chain had nothing new to offer.
+        case exhausted
+    }
+    @State private var coverFixState: CoverFixState = .hidden
+    /// Bumped after a regenerate/undo so BookCoverView recreates and hydrates
+    /// the new locked cover from cache (instant — the image is already local).
+    @State private var coverEpoch = 0
+
     private var showActionBar: Bool {
         onNotInterested != nil || onWantToRead != nil || onStartReading != nil || onConfirmRead != nil || onRemoveFromQueue != nil || onAddToShelf != nil
     }
@@ -148,6 +164,9 @@ struct BookProfileView: View {
 
                     hero
 
+                    summaryWindow
+                        .padding(.horizontal)
+
                     if showReviewSection, let ub = readEntryForReview {
                         reviewWindow(ub: ub)
                             .padding(.horizontal)
@@ -163,9 +182,6 @@ struct BookProfileView: View {
                         refresherWindow
                             .padding(.horizontal)
                     }
-
-                    summaryWindow
-                        .padding(.horizontal)
 
                     if !showReviewSection {
                         recommendSection
@@ -290,8 +306,7 @@ struct BookProfileView: View {
                     let entries = await UserBookRepository().fetchReadEntries(bookId: bookId)
                     var seen = Set<String>()
                     let included = entries.filter {
-                        $0.userId != myUid
-                            && !HiddenAccounts.isHiddenFromCurrentViewer(uid: $0.userId)
+                        !HiddenAccounts.isHiddenFromCurrentViewer(uid: $0.userId)
                             && seen.insert($0.userId).inserted
                     }
                     guard !included.isEmpty else { return }
@@ -306,7 +321,7 @@ struct BookProfileView: View {
                         )
                     }
                     let sorted = readers.sorted {
-                        Self.readByPrecedes($0, $1, sourceUid: sourceUid)
+                        Self.readByPrecedes($0, $1, sourceUid: sourceUid, myUid: myUid)
                     }
                     await MainActor.run {
                         guard bookId == book.id else { return }
@@ -421,6 +436,13 @@ struct BookProfileView: View {
                             .offset(x: -14, y: 12)
                     }
                 }
+                .id(coverEpoch)
+
+            if coverFixState != .hidden {
+                coverFixControl
+                    // Tuck up under the cover — this is a whisper, not a section.
+                    .padding(.top, -4)
+            }
 
             VStack(spacing: 4) {
                 Text(book.title)
@@ -452,6 +474,102 @@ struct BookProfileView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 12)
+        .task(id: coverEpoch) { await refreshCoverFixAvailability() }
+    }
+
+    // MARK: - Cover regeneration
+
+    /// Deliberately quiet: 11pt tertiary ink under the cover. It reads as a
+    /// caption until you need it.
+    @ViewBuilder
+    private var coverFixControl: some View {
+        Group {
+            switch coverFixState {
+            case .hidden:
+                EmptyView()
+            case .idle:
+                Button { runCoverRegenerate() } label: {
+                    coverFixLabel("wrong cover?", icon: "arrow.triangle.2.circlepath")
+                }
+                .buttonStyle(.plain)
+            case .working:
+                coverFixLabel("finding another cover…", icon: nil)
+            case .regenerated:
+                HStack(spacing: 12) {
+                    Button { runCoverRegenerate() } label: {
+                        coverFixLabel("try another", icon: "arrow.triangle.2.circlepath")
+                    }
+                    .buttonStyle(.plain)
+                    Text("·")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Theme.textTertiary)
+                    Button { runCoverUndo() } label: {
+                        coverFixLabel("undo", icon: "arrow.uturn.backward")
+                    }
+                    .buttonStyle(.plain)
+                }
+            case .exhausted:
+                coverFixLabel("that's the only cover we could find", icon: nil)
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: coverFixState)
+    }
+
+    private func coverFixLabel(_ text: String, icon: String?) -> some View {
+        HStack(spacing: 3) {
+            if let icon {
+                Image(systemName: icon)
+                    .font(.system(size: 8.5, weight: .semibold))
+            }
+            Text(text)
+                .font(.system(size: 11, weight: .medium))
+        }
+        .foregroundStyle(Theme.textTertiary)
+        .contentShape(Rectangle())
+    }
+
+    /// The control appears only once a real cover image has resolved — polling a
+    /// few times covers the first-ever load, which can take several seconds.
+    private func refreshCoverFixAvailability() async {
+        if CoverRegenerationService.shared.hasActiveSession(bookId: book.id) {
+            coverFixState = .regenerated
+            return
+        }
+        guard coverFixState == .hidden else { return }
+        for delay in [0.0, 1.0, 2.5, 5.0, 6.0] {
+            if delay > 0 { try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) }
+            if Task.isCancelled { return }
+            if CoverRegenerationService.shared.canRegenerate(book: book) {
+                coverFixState = .idle
+                return
+            }
+        }
+    }
+
+    private func runCoverRegenerate() {
+        guard let uid = appState.authUserId else { return }
+        coverFixState = .working
+        Task {
+            let outcome = await CoverRegenerationService.shared.regenerate(book: book, userId: uid)
+            switch outcome {
+            case .applied:
+                coverEpoch += 1
+                coverFixState = .regenerated
+            case .exhausted:
+                coverFixState = .exhausted
+                try? await Task.sleep(nanoseconds: 2_500_000_000)
+                coverFixState = CoverRegenerationService.shared.hasActiveSession(bookId: book.id) ? .regenerated : .idle
+            case .failed:
+                coverFixState = .idle
+            }
+        }
+    }
+
+    private func runCoverUndo() {
+        guard let uid = appState.authUserId else { return }
+        CoverRegenerationService.shared.undo(book: book, userId: uid)
+        coverEpoch += 1
+        coverFixState = .idle
     }
 
     // MARK: - Match score
@@ -868,11 +986,15 @@ struct BookProfileView: View {
     }
 
     /// "Read by" ordering: the source reader (whose tier list or feed post led
-    /// here) pins to the top, then people you follow, then best-ranked first
-    /// (S → F, unranked last), most recently finished breaking ties.
-    private static func readByPrecedes(_ a: BookDiscussionReader, _ b: BookDiscussionReader, sourceUid: String?) -> Bool {
+    /// here) pins to the top, then your own read, then people you follow, then
+    /// best-ranked first (S → F, unranked last), most recently finished
+    /// breaking ties.
+    private static func readByPrecedes(_ a: BookDiscussionReader, _ b: BookDiscussionReader, sourceUid: String?, myUid: String?) -> Bool {
         if let sourceUid, (a.uid == sourceUid) != (b.uid == sourceUid) {
             return a.uid == sourceUid
+        }
+        if let myUid, (a.uid == myUid) != (b.uid == myUid) {
+            return a.uid == myUid
         }
         if a.isFollowed != b.isFollowed { return a.isFollowed }
         let aRank = a.entry.normalizedTier.flatMap(spineTierLabels.firstIndex(of:)) ?? spineTierLabels.count
@@ -892,7 +1014,8 @@ struct BookProfileView: View {
 
     // MARK: - Recommend window
 
-    /// Windowed section (below My Review, or Summary when there's no review):
+    /// Windowed section (below My Review, or the Read by/Refresher cards when
+    /// there's no review):
     /// people you follow, each with a Send button to recommend this book;
     /// tapping the avatar opens their profile. The dashed tile texts an
     /// invite to someone who isn't on Spine yet. Only offered for books the

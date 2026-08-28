@@ -173,8 +173,17 @@ final class GoogleBooksService {
                     return implied != nil && device != nil && implied != device
                 } == true
             if !cleaned.isEmpty, !staleForeignTop {
-                storeInMemory(cacheKey: cacheKey, books: cleaned)
-                return cleaned
+                // Entries from before canonicalization (v3) carry pre-dedup ids.
+                // Upgrade in place: swap to community canonical docs and re-store —
+                // two Firestore queries once per entry, no API refetch.
+                var served = cleaned
+                if shared.schemaVersion < BookSearchCacheService.currentSchemaVersion,
+                   !includeAllEditions, !isISBNQuery {
+                    served = await BookRepository.shared.canonicalizeSearchResults(cleaned)
+                    BookSearchCacheService.shared.store(cacheKey: cacheKey, books: served, source: shared.source)
+                }
+                storeInMemory(cacheKey: cacheKey, books: served)
+                return served
             }
         }
         // Works 2+ SPINE members have shelved get a large ranking boost.
@@ -194,9 +203,10 @@ final class GoogleBooksService {
                     searchAuthors: searchAuthors
                 )
                 if !books.isEmpty {
-                    storeInMemory(cacheKey: cacheKey, books: books)
-                    BookSearchCacheService.shared.store(cacheKey: cacheKey, books: books, source: .isbndb)
-                    return books
+                    let canonical = await canonicalized(books, includeAllEditions: includeAllEditions, isISBNQuery: isISBNQuery)
+                    storeInMemory(cacheKey: cacheKey, books: canonical)
+                    BookSearchCacheService.shared.store(cacheKey: cacheKey, books: canonical, source: .isbndb)
+                    return canonical
                 }
             } catch is CancellationError {
                 throw CancellationError()
@@ -222,9 +232,10 @@ final class GoogleBooksService {
             do {
                 let books = try await OpenLibraryService.shared.search(query: query)
                 guard !books.isEmpty else { throw googleError }
-                storeInMemory(cacheKey: cacheKey, books: books)
-                BookSearchCacheService.shared.store(cacheKey: cacheKey, books: books, source: .openLibrary)
-                return books
+                let canonical = await canonicalized(books, includeAllEditions: includeAllEditions, isISBNQuery: isISBNQuery)
+                storeInMemory(cacheKey: cacheKey, books: canonical)
+                BookSearchCacheService.shared.store(cacheKey: cacheKey, books: canonical, source: .openLibrary)
+                return canonical
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
@@ -266,9 +277,20 @@ final class GoogleBooksService {
                 popularKeys: popularKeys
             )
         }
-        storeInMemory(cacheKey: cacheKey, books: books)
-        BookSearchCacheService.shared.store(cacheKey: cacheKey, books: books, source: .google)
-        return books
+        let canonical = await canonicalized(books, includeAllEditions: includeAllEditions, isISBNQuery: isISBNQuery)
+        storeInMemory(cacheKey: cacheKey, books: canonical)
+        BookSearchCacheService.shared.store(cacheKey: cacheKey, books: canonical, source: .google)
+        return canonical
+    }
+
+    /// Dedup phase 3: swap fresh results for the community's canonical docs
+    /// before caching, so search hands out the ids friends' reviews and
+    /// discussions already live on (see BookRepository.canonicalizeSearchResults).
+    /// Skipped for "all editions" (distinct editions are the point there) and
+    /// strict `isbn:` lookups (the user asked for one exact edition).
+    private func canonicalized(_ books: [Book], includeAllEditions: Bool, isISBNQuery: Bool) async -> [Book] {
+        guard !includeAllEditions, !isISBNQuery, !books.isEmpty else { return books }
+        return await BookRepository.shared.canonicalizeSearchResults(books)
     }
 
     /// ISBNdb tier of the search chain, shaped to match the Google path:

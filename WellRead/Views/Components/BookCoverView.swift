@@ -216,6 +216,24 @@ final class CoverImageCache {
         return pixels
     }
 
+    /// Whether two covers are the same artwork (rescales/re-encodes included) —
+    /// used by cover regeneration so "try another" never lands on a visually
+    /// identical image from a different source. 8×10 luminance grid comparison;
+    /// real distinct covers measure ≥0.078 MAD in the placeholder corpus, so
+    /// 0.03 keeps clear margin.
+    func visuallyIdentical(_ a: UIImage, _ b: UIImage) -> Bool {
+        let w = 8, h = 10
+        guard let pa = sampledPixels(image: a, w: w, h: h),
+              let pb = sampledPixels(image: b, w: w, h: h) else { return false }
+        var mad = 0.0
+        for i in 0..<(w * h) {
+            let la = (0.299 * Double(pa[i * 4]) + 0.587 * Double(pa[i * 4 + 1]) + 0.114 * Double(pa[i * 4 + 2])) / 255.0
+            let lb = (0.299 * Double(pb[i * 4]) + 0.587 * Double(pb[i * 4 + 1]) + 0.114 * Double(pb[i * 4 + 2])) / 255.0
+            mad += abs(la - lb)
+        }
+        return mad / Double(w * h) < 0.03
+    }
+
     /// ISBNdb's “BOOK COVER NOT AVAILABLE” card. Exact byte hash first (network
     /// fetches), luminance-grid match as the re-encode/rescale-proof fallback.
     private func isISBNdbNoCoverPlaceholder(data: Data?, image: UIImage, url: URL) -> Bool {
@@ -684,12 +702,17 @@ private struct FallbackCoverImage: View {
         // outcome is already known.
         let identity = Self.identity(bookId: bookId, urls: urls)
         let signature = Self.signature(urls: urls, isbn: isbn)
-        var cached = CoverImageCache.shared.firstMemoryImage(forURLs: urls)
-        if cached == nil,
-           let locked = CoverResolutionStore.shared.resolvedURL(bookId: bookId, signature: signature) {
-            // Locked winner may be an iTunes artwork URL that isn't in `urls`; the disk
-            // read here is one small file — cheaper than a shimmer flash on every scroll.
+        // Locked winner first — after a cover regeneration the OLD image is still in
+        // the memory cache under an earlier candidate URL, so a generic first-hit
+        // scan would resurrect it. The locked winner may also be an iTunes artwork
+        // URL that isn't in `urls`; the disk read here is one small file — cheaper
+        // than a shimmer flash on every scroll.
+        var cached: UIImage? = nil
+        if let locked = CoverResolutionStore.shared.resolvedURL(bookId: bookId, signature: signature) {
             cached = CoverImageCache.shared.imageSyncFromCache(for: locked)
+        }
+        if cached == nil {
+            cached = CoverImageCache.shared.firstMemoryImage(forURLs: urls)
         }
         _loadedImage = State(initialValue: cached)
         _loadedIdentity = State(initialValue: cached != nil ? identity : nil)
@@ -791,6 +814,13 @@ private struct FallbackCoverImage: View {
             let store = CoverResolutionStore.shared
             // Cheap re-check: cover may have landed in the cache since init (a sibling cell
             // finished downloading it), or this slot was reused for a different book.
+            // Locked winner first — see the matching ordering note in init.
+            if let locked = store.resolvedURL(bookId: bookId, signature: signature),
+               let img = CoverImageCache.shared.imageSyncFromCache(for: locked) {
+                loadedImage = img
+                loadedIdentity = identity
+                return
+            }
             if let mem = CoverImageCache.shared.firstMemoryImage(forURLs: urls) {
                 loadedImage = mem
                 loadedIdentity = identity

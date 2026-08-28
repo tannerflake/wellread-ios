@@ -24,7 +24,9 @@ final class RecommendationRepository {
     /// the existing one) so repeat taps don't pile up on the recipient.
     @discardableResult
     func send(fromUserId: String, toUserId: String, book: Book, note: String?) async throws -> BookRecommendation {
-        try await bookRepo.ensureBook(book)
+        // Recommend the community's canonical doc so the recipient's add lands on
+        // the same book their friends shelved (see BookRepository.ensureCanonicalBook).
+        let book = try await bookRepo.ensureCanonicalBook(book)
         if let existing = try? await db.collection(collection)
             .whereField("fromUserId", isEqualTo: fromUserId)
             .whereField("toUserId", isEqualTo: toUserId)

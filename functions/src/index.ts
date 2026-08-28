@@ -866,6 +866,9 @@ export const onCommentCreated = onDocumentCreated(
     const d = snap.data();
     const commenterId = d.userId as string;
     const postId = d.postId as string;
+    // Every payload below carries the new comment's id so the tap can scroll
+    // the thread to (and flash) the exact comment, like comment_liked does.
+    const commentId = event.params.commentId;
     const commentText = (d.text as string | undefined)?.trim() ?? "";
     if (!commenterId || !postId) return;
 
@@ -895,7 +898,7 @@ export const onCommentCreated = onDocumentCreated(
           replyTargetUid,
           replyTitle,
           replyBody,
-          { type: "comment_replied", postId },
+          { type: "comment_replied", postId, commentId },
           commenterId,
           coverURL
         );
@@ -915,7 +918,7 @@ export const onCommentCreated = onDocumentCreated(
         authorId,
         title,
         body,
-        { type: "review_commented", postId },
+        { type: "review_commented", postId, commentId },
         commenterId,
         coverURL
       );
@@ -937,7 +940,7 @@ export const onCommentCreated = onDocumentCreated(
         uid,
         mentionTitle,
         mentionBody,
-        { type: "comment_mentioned", postId },
+        { type: "comment_mentioned", postId, commentId },
         commenterId,
         coverURL
       );
@@ -966,7 +969,7 @@ export const onCommentCreated = onDocumentCreated(
         uid,
         threadTitle,
         threadBody,
-        { type: "thread_commented", postId },
+        { type: "thread_commented", postId, commentId },
         commenterId,
         coverURL
       );
@@ -1066,6 +1069,43 @@ export const onUserBookWritten = onDocumentWritten(
       if (after && afterBook) await adjustBookPopularity(afterUser, afterBook, true);
     } catch (err) {
       logger.error("bookStats update failed", { beforeBook, afterBook, err });
+    }
+  }
+);
+
+/**
+ * Dedup backstop: old app versions shelve whatever book id their search source
+ * produced. When that doc is a tombstone (`mergedInto` pointer left by a dedup
+ * merge), remap the new userBook to the canonical doc. Current clients resolve
+ * before writing (BookRepository.ensureCanonicalBook); this catches the rest.
+ * The bookId update re-fires onUserBookWritten, which moves the popularity
+ * count to the canonical book.
+ */
+export const onUserBookCreatedDedup = onDocumentCreated(
+  {
+    document: "userBooks/{userBookId}",
+    database: DATABASE_ID,
+  },
+  async (event) => {
+    const bookId = event.data?.data()?.bookId as string | undefined;
+    if (!bookId) return;
+    try {
+      let canonicalId = bookId;
+      for (let hops = 0; hops < 3; hops++) {
+        const snap = await db.collection("books").doc(canonicalId).get();
+        const target = snap.exists ? (snap.data()?.mergedInto as string | undefined) : undefined;
+        if (!target) break;
+        canonicalId = target;
+      }
+      if (canonicalId === bookId) return;
+      await event.data!.ref.update({ bookId: canonicalId });
+      logger.info("Remapped userBook to canonical book", {
+        userBookId: event.params.userBookId,
+        from: bookId,
+        to: canonicalId,
+      });
+    } catch (err) {
+      logger.error("userBook dedup remap failed", { bookId, err });
     }
   }
 );

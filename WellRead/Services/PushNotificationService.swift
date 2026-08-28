@@ -30,8 +30,9 @@ enum WellreadDeepLink {
         return nil
     }
 
-    /// Reads `commentId` from FCM `data` — set on comment_liked pushes so the tap
-    /// can scroll the thread to the exact comment.
+    /// Reads `commentId` from FCM `data` — set on comment-targeted pushes (liked,
+    /// replied, mentioned, commented) so the tap can scroll the thread to the
+    /// exact comment.
     static func commentId(fromNotificationUserInfo userInfo: [AnyHashable: Any]) -> String? {
         for key in ["commentId", "comment_id"] {
             if let s = userInfo[AnyHashable(key)] as? String, !s.isEmpty { return s }
@@ -67,7 +68,7 @@ enum PushNotificationService {
     private static var pendingScrollToFeedPostId: String?
     private static var pendingOpenPostCommentsId: String?
     /// Set alongside `pendingOpenPostCommentsId` when the push targets one comment
-    /// (comment_liked): the thread scrolls to and flashes it.
+    /// (liked, replied, mentioned, commented): the thread scrolls to and flashes it.
     private static var pendingOpenPostCommentsCommentId: String?
     private static var pendingProfileUserId: String?
     /// Book-recommendation push tapped on a cold start: the tap lands on the
@@ -270,8 +271,9 @@ enum PushNotificationService {
             return
         }
         /// Everything else (review_commented, comment_replied, thread_commented,
-        /// comment_liked) opens the post's comment thread. comment_liked also
-        /// carries `commentId` so the thread scrolls to the liked comment.
+        /// comment_mentioned, comment_liked) opens the post's comment thread.
+        /// Each carries `commentId` so the thread scrolls to the exact comment
+        /// (legacy payloads without it just open the thread).
         guard let postId = WellreadDeepLink.postId(fromNotificationUserInfo: userInfo) else { return }
         let commentId = WellreadDeepLink.commentId(fromNotificationUserInfo: userInfo)
         pendingOpenPostCommentsId = postId

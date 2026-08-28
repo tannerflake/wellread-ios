@@ -136,6 +136,37 @@ final class UserBookRepository {
         }
     }
 
+    /// Distinct bookIds finished by any of the given readers ("Read by people
+    /// you follow" on the search page). Books left unhydrated so the caller can
+    /// shuffle the pool and hydrate covers a few at a time.
+    func fetchReadBookIds(forUserIds uids: [String]) async -> [String] {
+        let wanted = Array(Set(uids))
+        guard !wanted.isEmpty else { return [] }
+        let chunks = stride(from: 0, to: wanted.count, by: 30).map {
+            Array(wanted[$0..<min($0 + 30, wanted.count)])
+        }
+        let rows = await withTaskGroup(of: [String].self) { group in
+            for chunk in chunks {
+                group.addTask { [self] in
+                    do {
+                        let snapshot = try await db.collection(userBooks)
+                            .whereField("userId", in: chunk)
+                            .whereField("status", isEqualTo: ReadingStatus.read.rawValue)
+                            .getDocuments()
+                        return snapshot.documents.compactMap { $0.data()["bookId"] as? String }
+                    } catch {
+                        return []
+                    }
+                }
+            }
+            var all: [String] = []
+            for await chunkIds in group { all.append(contentsOf: chunkIds) }
+            return all
+        }
+        var seen = Set<String>()
+        return rows.filter { seen.insert($0).inserted }
+    }
+
     /// "Reading now" covers for a specific set of readers: uid → books in shelf
     /// order. Scoped version of `fetchAllReadingNowBooks` for surfaces that only
     /// need the people currently on screen (the feed people strip loads these a
@@ -209,7 +240,24 @@ final class UserBookRepository {
     /// `targetShelf`/`targetOrder` (wantToRead only) place the book directly on a specific queue
     /// shelf at a specific position — used by the shelf "Add" tiles. Default: top of backlog.
     func addUserBook(userId: String, book: Book, status: ReadingStatus, rating: Double?, reviewText: String?, dateStarted: Date?, dateFinished: Date?, targetShelf: QueueShelf? = nil, targetOrder: Int? = nil) async throws -> UserBook {
-        try await bookRepo.ensureBook(book)
+        // Resolve to the community's canonical book doc — the id actually shelved
+        // can differ from the tapped search result's id (same work under another
+        // source's id). See BookRepository.ensureCanonicalBook.
+        let resolved = try await bookRepo.ensureCanonicalBook(book)
+        if resolved.id != book.id,
+           let existingDoc = try? await db.collection(userBooks)
+               .whereField("userId", isEqualTo: userId)
+               .whereField("bookId", isEqualTo: resolved.id)
+               .whereField("status", isEqualTo: status.rawValue)
+               .limit(to: 1)
+               .getDocuments().documents.first,
+           var existing = userBook(from: existingDoc.data(), docId: existingDoc.documentID) {
+            // The user already shelved this work under the canonical id — the UI's
+            // in-library check compares raw ids and couldn't see it. Reuse the row.
+            existing.book = resolved
+            return existing
+        }
+        let book = resolved
         let id = UUID()
         let now = Date()
         let ref = db.collection(userBooks).document(id.uuidString)

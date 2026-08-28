@@ -97,6 +97,7 @@
 		B0010101 /* GoodreadsWizardSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010101 /* GoodreadsWizardSession.swift */; };
 		B0010102 /* GoodreadsExportWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010102 /* GoodreadsExportWebView.swift */; };
 		B0010103 /* CoverResolutionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010103 /* CoverResolutionStore.swift */; };
+		B0017747 /* CoverRegenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0017747 /* CoverRegenerationService.swift */; };
 		B0010104 /* ITunesCoverService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010104 /* ITunesCoverService.swift */; };
 		B0010105 /* BookSearchRanker.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010105 /* BookSearchRanker.swift */; };
 		B0010106 /* DiscoverCriteria.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010106 /* DiscoverCriteria.swift */; };
@@ -278,6 +279,7 @@
 		F0010101 /* GoodreadsWizardSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoodreadsWizardSession.swift; sourceTree = "<group>"; };
 		F0010102 /* GoodreadsExportWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoodreadsExportWebView.swift; sourceTree = "<group>"; };
 		F0010103 /* CoverResolutionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverResolutionStore.swift; sourceTree = "<group>"; };
+		F0017747 /* CoverRegenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverRegenerationService.swift; sourceTree = "<group>"; };
 		F0010104 /* ITunesCoverService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ITunesCoverService.swift; sourceTree = "<group>"; };
 		F0010105 /* BookSearchRanker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookSearchRanker.swift; sourceTree = "<group>"; };
 		F0010106 /* DiscoverCriteria.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoverCriteria.swift; sourceTree = "<group>"; };
@@ -524,6 +526,7 @@
 				F0010033 /* GoodreadsImportService.swift */,
 				F0010101 /* GoodreadsWizardSession.swift */,
 				F0010103 /* CoverResolutionStore.swift */,
+				F0017747 /* CoverRegenerationService.swift */,
 				F0010104 /* ITunesCoverService.swift */,
 				F0010105 /* BookSearchRanker.swift */,
 				F0010202 /* ContactSyncService.swift */,
@@ -989,6 +992,7 @@
 				B0010033 /* GoodreadsImportService.swift in Sources */,
 				B0010101 /* GoodreadsWizardSession.swift in Sources */,
 				B0010103 /* CoverResolutionStore.swift in Sources */,
+				B0017747 /* CoverRegenerationService.swift in Sources */,
 				B0010104 /* ITunesCoverService.swift in Sources */,
 				B0010105 /* BookSearchRanker.swift in Sources */,
 				B0010106 /* DiscoverCriteria.swift in Sources */,
