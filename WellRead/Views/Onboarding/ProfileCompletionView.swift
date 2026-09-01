@@ -206,9 +206,10 @@ struct ProfileCompletionView: View {
                         }
                     }
                     .id(Self.bookGoalFieldID)
-                    // Onboarding must not ask for a phone number (App Store guideline
-                    // 5.1.1(v): personal info that isn't core functionality can't look
-                    // required). Offered only in Edit profile, clearly optional.
+                    // This legacy onboarding fallback doesn't ask for a phone number;
+                    // the wizard's own phone step does, with a full-size skip. Either
+                    // way the ask must never look required (App Store guideline
+                    // 5.1.1(v)). Here it's offered only in Edit profile.
                     if mode == .edit {
                         VStack(alignment: .leading, spacing: 4) {
                             labeledField(title: "Phone number (optional)") {

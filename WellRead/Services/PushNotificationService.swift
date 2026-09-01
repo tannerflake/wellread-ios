@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftUI
 import UIKit
 import UserNotifications
 import FirebaseAuth
@@ -65,7 +66,6 @@ enum PushNotificationService {
     /// Cold-start stashes for the non-blend pushes (same problem as `pendingBlendId`:
     /// the tap fires before MainTabView mounts, so the NotificationCenter post is lost).
     /// Warm taps are handled by the observers, which also consume the stash.
-    private static var pendingScrollToFeedPostId: String?
     private static var pendingOpenPostCommentsId: String?
     /// Set alongside `pendingOpenPostCommentsId` when the push targets one comment
     /// (liked, replied, mentioned, commented): the thread scrolls to and flashes it.
@@ -74,11 +74,6 @@ enum PushNotificationService {
     /// Book-recommendation push tapped on a cold start: the tap lands on the
     /// queue (Recommended shelf), no id needed — just "go there" once mounted.
     private static var pendingOpenQueue = false
-
-    static func consumePendingScrollToFeedPostTap() -> String? {
-        defer { pendingScrollToFeedPostId = nil }
-        return pendingScrollToFeedPostId
-    }
 
     static func consumePendingOpenPostCommentsTap() -> String? {
         defer { pendingOpenPostCommentsId = nil }
@@ -217,8 +212,77 @@ enum PushNotificationService {
         return Date().timeIntervalSince(t) < 30
     }
 
+    /// How long to wait after a modal teardown before routing. UIKit's dismissal
+    /// completion fires before SwiftUI has written `false`/`nil` back into the
+    /// `isPresented`/`item` bindings behind it, and a sheet asked for inside that
+    /// window is silently dropped ("only one sheet can be presented").
+    private static let postDismissRoutingDelay: TimeInterval = 0.35
+
+    /// The frontmost window's root controller (single-scene app).
+    private static func activeRootViewController() -> UIViewController? {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .first(where: { $0.isKeyWindow })?
+            .rootViewController
+    }
+
+    /// A tapped deep link outranks whatever sheet/drawer the user left open: only
+    /// one sheet can present at a time, so routing straight into a target while a
+    /// drawer is up used to do nothing visible until they closed the drawer by
+    /// hand. Tear the presented stack down first, then route.
+    static func routeAfterClearingPresentedModals(_ route: @escaping () -> Void) {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { routeAfterClearingPresentedModals(route) }
+            return
+        }
+        guard let root = activeRootViewController(), root.presentedViewController != nil else {
+            // Nothing in the way (cold start included) — unchanged behavior.
+            route()
+            return
+        }
+        var chain: [UIViewController] = []
+        var next = root.presentedViewController
+        while let current = next {
+            chain.append(current)
+            next = current.presentedViewController
+        }
+        // An unsent draft (a half-typed comment, review, or note) keeps the screen
+        // for the same reason: the teardown can't give the typing back. Holding
+        // the screen isn't enough on its own — routing underneath would swap the
+        // comments sheet's post out from under the composer — so the link waits
+        // for the draft to be sent or abandoned, then lands.
+        guard !ComposerDraftGuard.hasLiveDraft else {
+            ComposerDraftGuard.deferUntilDraftsClear(route)
+            return
+        }
+        // Flows that deliberately block swipe-to-dismiss (profile completion, the
+        // push permission prompt, a mid-flight Goodreads import) keep the screen;
+        // the deep link routes underneath and lands when that flow finishes.
+        guard !chain.contains(where: { $0.isModalInPresentation }) else {
+            route()
+            return
+        }
+        // Already on its way out (a bell row calls SwiftUI's `dismiss()` first):
+        // let that finish rather than dismissing on top of it.
+        guard !chain.contains(where: { $0.isBeingDismissed }) else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + postDismissRoutingDelay, execute: route)
+            return
+        }
+        // Dismissing on the root takes the whole presented stack with it.
+        root.dismiss(animated: true) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + postDismissRoutingDelay, execute: route)
+        }
+    }
+
     static func handleRemoteNotificationTap(userInfo: [AnyHashable: Any]) {
         lastDeepLinkTapAt = Date()
+        routeAfterClearingPresentedModals {
+            routeRemoteNotificationTap(userInfo: userInfo)
+        }
+    }
+
+    private static func routeRemoteNotificationTap(userInfo: [AnyHashable: Any]) {
         let type = WellreadDeepLink.pushNotificationType(from: userInfo)
         /// Book Blend pushes (invite or ready) land on the blend landing screen,
         /// which routes by the doc's status — both types carry `blendId`.
@@ -233,24 +297,24 @@ enum PushNotificationService {
             }
             return
         }
-        /// Friend-review, review-liked, and review-mention pushes land on the feed
-        /// scrolled to that review (highlighted, no comment thread).
+        /// Friend-review, review-liked, and review-mention pushes open the review's
+        /// drawer (the comment thread, whose header is the review itself). They
+        /// used to scroll the feed to the post instead, which silently did nothing
+        /// when the post was outside the feed's listener window or never on the
+        /// feed at all (a liked read with no post): the tap just landed on the
+        /// feed. The drawer fetches the post by id, so it always lands.
         if type == "friend_review_posted" || type == "review_liked" || type == "review_mentioned" {
-            if let postId = WellreadDeepLink.postId(fromNotificationUserInfo: userInfo) {
-                pendingScrollToFeedPostId = postId
-                NotificationCenter.default.post(
-                    name: .wellreadOpenFeedScrollToPost,
-                    object: nil,
-                    userInfo: ["postId": postId]
-                )
-            } else {
+            guard let postId = WellreadDeepLink.postId(fromNotificationUserInfo: userInfo) else {
                 NotificationCenter.default.post(name: .wellreadOpenFeed, object: nil)
+                return
             }
+            openPostComments(postId: postId, commentId: nil)
             return
         }
-        /// New-follower pushes land on the follower's profile (their tier list).
-        /// Legacy payloads without `followerId` fall back to the feed.
-        if type == "new_follower" {
+        /// New-follower and contact-joined pushes both land on that person's
+        /// profile (their tier list), where the Follow button is. Both carry the
+        /// uid as `followerId`. Legacy payloads without it fall back to the feed.
+        if type == "new_follower" || type == "contact_joined" {
             if let followerId = userInfo[AnyHashable("followerId")] as? String, !followerId.isEmpty {
                 pendingProfileUserId = followerId
                 NotificationCenter.default.post(
@@ -275,7 +339,13 @@ enum PushNotificationService {
         /// Each carries `commentId` so the thread scrolls to the exact comment
         /// (legacy payloads without it just open the thread).
         guard let postId = WellreadDeepLink.postId(fromNotificationUserInfo: userInfo) else { return }
-        let commentId = WellreadDeepLink.commentId(fromNotificationUserInfo: userInfo)
+        openPostComments(postId: postId, commentId: WellreadDeepLink.commentId(fromNotificationUserInfo: userInfo))
+    }
+
+    /// Opens the post's comment drawer (review-context header + thread), scrolled
+    /// to `commentId` when given. Stashes for the cold-start replay, then posts
+    /// for the warm-tap observers.
+    private static func openPostComments(postId: String, commentId: String?) {
         pendingOpenPostCommentsId = postId
         pendingOpenPostCommentsCommentId = commentId
         var info: [AnyHashable: Any] = ["postId": postId]
@@ -288,12 +358,81 @@ enum PushNotificationService {
     }
 }
 
+/// Screens where the user is mid-sentence (a comment box, review thoughts, a
+/// recommendation note) register their unsent draft here. A tapped deep link
+/// tears down whatever is presented, and typed text is the one thing that
+/// teardown can't give back — so a live draft holds the screen, exactly like the
+/// deliberately non-dismissible onboarding flows. The link still routes
+/// underneath and lands when the user is done, which is the pre-teardown
+/// behavior. Main-thread only (registered from SwiftUI, read from the tap).
+enum ComposerDraftGuard {
+    private static var draftIds: Set<String> = []
+    /// A deep link that arrived mid-draft, waiting for the composer to clear.
+    /// Only the newest is kept — a second tap supersedes the first.
+    private static var pendingRoute: (() -> Void)?
+
+    /// True while any registered composer holds text the user hasn't sent.
+    static var hasLiveDraft: Bool { !draftIds.isEmpty }
+
+    /// Runs `route` once every composer draft is gone (sent or abandoned), back
+    /// through the normal teardown so the link still clears whatever is open by
+    /// then. If nothing ever clears, nothing routes — which is the point.
+    static func deferUntilDraftsClear(_ route: @escaping () -> Void) {
+        pendingRoute = route
+    }
+
+    static func set(_ id: String, hasDraft: Bool) {
+        let hadDrafts = !draftIds.isEmpty
+        if hasDraft {
+            draftIds.insert(id)
+        } else {
+            draftIds.remove(id)
+        }
+        guard hadDrafts, draftIds.isEmpty, let waiting = pendingRoute else { return }
+        pendingRoute = nil
+        // A beat, because this often fires from `onDisappear` mid-dismissal.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            PushNotificationService.routeAfterClearingPresentedModals(waiting)
+        }
+    }
+}
+
+private struct ComposerDraftGuardModifier: ViewModifier {
+    let text: String
+    /// What the field started with. Edit sheets open pre-filled, so "has text"
+    /// isn't the question — "has unsaved changes" is (clearing an existing review
+    /// counts too).
+    let baseline: String
+    @State private var id = UUID().uuidString
+
+    private var hasDraft: Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed != baseline.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear { ComposerDraftGuard.set(id, hasDraft: hasDraft) }
+            .onChange(of: text) { _, _ in ComposerDraftGuard.set(id, hasDraft: hasDraft) }
+            .onDisappear { ComposerDraftGuard.set(id, hasDraft: false) }
+    }
+}
+
+extension View {
+    /// Marks this screen as holding an unsent draft while `text` is non-blank, so
+    /// a deep-link tap leaves it standing instead of throwing the draft away.
+    /// Attach to the composer's outermost view, not the field itself — the whole
+    /// sheet is what would be torn down.
+    func composerDraftGuard(_ text: String, baseline: String = "") -> some View {
+        modifier(ComposerDraftGuardModifier(text: text, baseline: baseline))
+    }
+}
+
 extension Notification.Name {
     /// Opens the Feed tab without scrolling to a post or opening comments.
     static let wellreadOpenFeed = Notification.Name("wellreadOpenFeed")
+    /// Opens the Feed tab and the post's comment drawer (review header + thread). `userInfo["postId"]` is the post UUID string; optional `userInfo["commentId"]` scrolls the thread to that comment.
     static let wellreadOpenFeedPost = Notification.Name("wellreadOpenFeedPost")
-    /// Opens the Feed tab and scrolls to the post (briefly highlighted) without opening its comment thread. `userInfo["postId"]` is the post UUID string.
-    static let wellreadOpenFeedScrollToPost = Notification.Name("wellreadOpenFeedScrollToPost")
     /// After a user marks a book as read: switch to Profile tab → Read segment, scroll the tier list to Unranked, and pulse-glow the just-reviewed book until they tier it. `userInfo["bookId"]` is the `Book.id`.
     static let spineHighlightTierBook = Notification.Name("spineHighlightTierBook")
     /// After a user adds a book to their queue from the search flow: switch to Profile tab → Queue segment so they land on the queue and see it was added.

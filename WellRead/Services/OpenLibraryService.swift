@@ -25,6 +25,8 @@ struct OpenLibraryDoc: Codable {
     let numberOfPagesMedian: Int?
     let subject: [String]?
     let editions: OpenLibraryEditions?
+    let ratingsCount: Int?
+    let readinglogCount: Int?
 
     enum CodingKeys: String, CodingKey {
         case key, title, subject, editions
@@ -32,6 +34,8 @@ struct OpenLibraryDoc: Codable {
         case coverI = "cover_i"
         case firstPublishYear = "first_publish_year"
         case numberOfPagesMedian = "number_of_pages_median"
+        case ratingsCount = "ratings_count"
+        case readinglogCount = "readinglog_count"
     }
 }
 
@@ -104,20 +108,89 @@ final class OpenLibraryService {
         }
     }
 
+    /// A mapped book plus the work's community-popularity counters — the search
+    /// hub feeds these to `BookSearchRanker` (its only popularity signal on the
+    /// ISBNdb and OL tiers; Google carries its own ratingsCount).
+    struct Match {
+        let book: Book
+        let popularityCount: Int?
+    }
+
     /// Free-text search. Results are work-level (one row per book, editions already
     /// collapsed), in Open Library's relevance order with covered books surfaced first.
     func search(query: String, limit: Int = 30) async throws -> [Book] {
+        try await searchMatches(query: query, limit: limit).map(\.book)
+    }
+
+    /// `search` with each work's popularity counter attached.
+    func searchMatches(query: String, limit: Int = 30) async throws -> [Match] {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return [] }
         if trimmed.lowercased().hasPrefix("isbn:") {
             let digits = String(trimmed.dropFirst(5)).filter(\.isNumber)
             guard let book = try await lookupISBN(digits) else { return [] }
-            return [book]
+            return [Match(book: book, popularityCount: nil)]
         }
         let docs = try await fetchDocs(q: trimmed, limit: limit)
-        let books = docs.compactMap { map(doc: $0, isbn: nil) }
-        return books.filter { !$0.coverURL.isEmpty } + books.filter { $0.coverURL.isEmpty }
+        let matches = docs.compactMap { doc in
+            map(doc: doc, isbn: nil).map { book in
+                // readinglog (want-to-read + reading + read shelvings) dwarfs
+                // ratings and is the stronger canonical-work signal.
+                Match(book: book, popularityCount: max(doc.ratingsCount ?? 0, doc.readinglogCount ?? 0))
+            }
+        }
+        return matches.filter { !$0.book.coverURL.isEmpty } + matches.filter { $0.book.coverURL.isEmpty }
     }
+
+    /// One catalog row reduced to the words a query completion can be drawn
+    /// from, plus the popularity counter that decides between candidates.
+    struct PrefixMatch {
+        let title: String
+        let author: String
+        let popularity: Int
+    }
+
+    /// Which index a prefix probe searches. `.title` answers in about a second;
+    /// `.everything` also matches author names but can take several seconds on a
+    /// long query with a short trailing prefix, so callers race the two.
+    enum PrefixIndex {
+        case title
+        case everything
+
+        var parameter: String { self == .title ? "title" : "q" }
+    }
+
+    /// The same free-text search with a trailing `*` appended, so Open Library's
+    /// Solr index matches a half-typed last word: "lord of the rin*" returns
+    /// "The Lord of the Rings" (2,747 shelvings) where the unstarred query
+    /// returns only literal "rin" oddities. Feeds `SearchQueryCompletion`; it
+    /// wants words and popularity, not books, so nothing is mapped to `Book`
+    /// and the response is trimmed to four fields (asking for the `editions`
+    /// join costs a wildcard search several seconds).
+    /// Returns empty for queries carrying Solr syntax characters — escaping them
+    /// correctly is not worth it when the fallback is simply no completion.
+    func prefixMatches(query: String, index: PrefixIndex = .everything, limit: Int = 10) async throws -> [PrefixMatch] {
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, let last = trimmed.unicodeScalars.last,
+              CharacterSet.alphanumerics.contains(last),
+              trimmed.rangeOfCharacter(from: Self.solrSyntaxCharacters) == nil else { return [] }
+        let docs = try await fetchDocs(
+            q: trimmed + "*",
+            limit: limit,
+            parameter: index.parameter,
+            fields: "title,author_name,ratings_count,readinglog_count"
+        )
+        return docs.compactMap { doc in
+            guard let title = doc.title, !title.isEmpty else { return nil }
+            return PrefixMatch(
+                title: title,
+                author: doc.authorName?.first ?? "",
+                popularity: max(doc.ratingsCount ?? 0, doc.readinglogCount ?? 0)
+            )
+        }
+    }
+
+    private static let solrSyntaxCharacters = CharacterSet(charactersIn: #"+-&|!(){}[]^"~*?:\/"#)
 
     /// Exact ISBN lookup (10 or 13 digits); the queried ISBN becomes the book's
     /// canonical id so the same edition matches across lookups.
@@ -136,16 +209,28 @@ final class OpenLibraryService {
         Locale.current.language.languageCode?.identifier.lowercased() ?? "en"
     }
 
-    private func fetchDocs(q: String, limit: Int) async throws -> [OpenLibraryDoc] {
+    private static let fullSearchFields =
+        "key,title,author_name,cover_i,first_publish_year,number_of_pages_median,subject,ratings_count,readinglog_count,editions,editions.title,editions.cover_i,editions.language"
+
+    /// `parameter` picks the index: "q" searches everything, "title" only titles
+    /// (far cheaper — the `editions` join and the all-fields match are what make
+    /// a wildcard search slow). `fields` trims the response to what the caller
+    /// reads; the default carries everything `map(doc:isbn:)` needs.
+    private func fetchDocs(
+        q: String,
+        limit: Int,
+        parameter: String = "q",
+        fields: String = fullSearchFields
+    ) async throws -> [OpenLibraryDoc] {
         guard !breakerOpen else {
             throw NSError(domain: "OpenLibrary", code: 429, userInfo: [NSLocalizedDescriptionKey: "Open Library is busy right now."])
         }
         var comp = URLComponents(string: "https://openlibrary.org/search.json")!
         comp.queryItems = [
-            URLQueryItem(name: "q", value: q),
+            URLQueryItem(name: parameter, value: q),
             URLQueryItem(name: "limit", value: "\(limit)"),
             URLQueryItem(name: "lang", value: preferredLanguage),
-            URLQueryItem(name: "fields", value: "key,title,author_name,cover_i,first_publish_year,number_of_pages_median,subject,editions,editions.title,editions.cover_i,editions.language")
+            URLQueryItem(name: "fields", value: fields)
         ]
         guard let url = comp.url else { return [] }
         let (data, response): (Data, URLResponse)

@@ -73,6 +73,9 @@ final class GoogleBooksService {
     private let baseURL = "https://www.googleapis.com/books/v1/volumes"
     private let session: URLSession
     private let cacheMaxQueries = 10
+    /// Curated searches serve at most this many ranked results — matches what
+    /// BookSearchCacheService stores per entry.
+    private static let rankedResultCap = 30
     private var searchCache: [String: [Book]] = [:]
     private let cacheQueue = DispatchQueue(label: "com.wellread.googlebooks.cache")
 
@@ -121,6 +124,57 @@ final class GoogleBooksService {
         session = URLSession(configuration: config)
     }
 
+    /// A better answer than the literal query got, found after the fact.
+    struct CompletedSearch {
+        let books: [Book]
+        /// The completed query these results came from — "lord of the rings"
+        /// for a typed "lord of the rin".
+        let query: String
+    }
+
+    /// The half-typed-last-word repair, run *after* the literal results are
+    /// already on screen. Every catalog API matches whole words, so "lord of
+    /// the rin" can only ever return literal-"rin" listings; ranking can't
+    /// rescue a result set the book isn't in. `SearchQueryCompletion` finishes
+    /// the word (an Open Library wildcard probe), and this re-runs the chain
+    /// against the finished query.
+    ///
+    /// Deliberately a second call rather than part of `search`: the probe can
+    /// take a couple of seconds, and nobody should watch a spinner for it. The
+    /// caller shows the literal results immediately and swaps them for these if
+    /// and when they arrive. Returns nil — cheaply, in the common case — when
+    /// the query was already whole or nothing better was found.
+    func completedSearch(
+        for query: String,
+        literalResults: [Book],
+        includeAllEditions: Bool = false,
+        libraryAuthors: Set<String> = [],
+        languageRestriction: String? = nil,
+        searchAuthors: Bool = true
+    ) async throws -> CompletedSearch? {
+        let normalized = query.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !normalized.hasPrefix("isbn:") else { return nil }
+        // When a top result's own title or author already is the query, it was
+        // whole; skip the probe entirely rather than confirming the obvious.
+        guard !BookSearchRanker.anyResultMatchesQuery(literalResults, query: query) else { return nil }
+        guard let completed = await SearchQueryCompletion.completedQuery(for: query),
+              BookSearchRanker.normalize(completed) != BookSearchRanker.normalize(query),
+              // The literal results may already hold the work the completion
+              // names, in which case finishing the word would only churn them.
+              !BookSearchRanker.anyResultMatchesQuery(literalResults, query: completed) else { return nil }
+        try Task.checkCancellation()
+        let books = try await search(
+            query: completed,
+            includeAllEditions: includeAllEditions,
+            libraryAuthors: libraryAuthors,
+            languageRestriction: languageRestriction,
+            searchAuthors: searchAuthors
+        )
+        // A completion that finds nothing is worse than the literal results.
+        guard !books.isEmpty else { return nil }
+        return CompletedSearch(books: books, query: completed)
+    }
+
     /// Searches Google Books, then re-ranks and de-duplicates results client-side
     /// (see `BookSearchRanker`). `includeAllEditions` skips the junk-title filter
     /// and edition dedup for the "can't find it?" fallback. `libraryAuthors` are
@@ -135,6 +189,9 @@ final class GoogleBooksService {
     /// only matches titles; Google and Open Library already match authors). Bulk
     /// title lookups (Goodreads import, Discover, Blend) pass false — they know
     /// the title and shouldn't spend a second paced ISBNdb request per book.
+    ///
+    /// Searches the query exactly as given. Interactive search calls
+    /// `searchDetailed` instead, which also finishes a half-typed last word.
     func search(query: String, includeAllEditions: Bool = false, libraryAuthors: Set<String> = [], languageRestriction: String? = nil, searchAuthors: Bool = true) async throws -> [Book] {
         let normalized = query.trimmingCharacters(in: .whitespaces).lowercased()
         guard !normalized.isEmpty else { return [] }
@@ -160,7 +217,7 @@ final class GoogleBooksService {
         if let shared = await BookSearchCacheService.shared.lookup(cacheKey: cacheKey) {
             let cleaned = (includeAllEditions || isISBNQuery)
                 ? shared.books
-                : shared.books.filter { !BookSearchRanker.isJunkListing(title: $0.title, query: query) }
+                : shared.books.filter { !BookSearchRanker.isJunkListing(title: $0.title, query: query, author: $0.author) }
             // Entries ranked before ISBN-implied language joined the scorer can have
             // a foreign edition dedup-merged as the winner — the English sibling is
             // gone from the stored list, so it can't be repaired on read. Treat such
@@ -173,13 +230,34 @@ final class GoogleBooksService {
                     return implied != nil && device != nil && implied != device
                 } == true
             if !cleaned.isEmpty, !staleForeignTop {
-                // Entries from before canonicalization (v3) carry pre-dedup ids.
-                // Upgrade in place: swap to community canonical docs and re-store —
-                // two Firestore queries once per entry, no API refetch.
+                // Legacy-entry upgrade in place, no API refetch. Pre-v4: re-rank —
+                // older entries were ordered before article-insensitive title
+                // matching and companion penalties, so tie-in books can sit above
+                // the actual work (stored books carry no API signals, but the
+                // ranker's title/author/metadata scoring is what these fixes
+                // changed). Pre-v3 entries additionally carry pre-dedup ids, which
+                // canonicalization swaps for community canonical docs.
                 var served = cleaned
                 if shared.schemaVersion < BookSearchCacheService.currentSchemaVersion,
                    !includeAllEditions, !isISBNQuery {
-                    served = await BookRepository.shared.canonicalizeSearchResults(cleaned)
+                    let popularKeys = await BookPopularityService.shared.popularKeys()
+                    let candidates = cleaned.map {
+                        BookSearchRanker.Candidate(
+                            book: $0,
+                            signals: BookSearchSignals(ratingsCount: nil, averageRating: nil, language: nil)
+                        )
+                    }
+                    // Deduplicate again even though the entry was deduped when stored:
+                    // pre-v6 entries were collapsed under the weaker workKey and can
+                    // still carry edition duplicates ("…And Other Essays", "…Lib/E").
+                    let reranked = BookSearchRanker.rank(
+                        candidates,
+                        query: query,
+                        deduplicate: true,
+                        libraryAuthors: libraryAuthors,
+                        popularKeys: popularKeys
+                    )
+                    served = await BookRepository.shared.canonicalizeSearchResults(reranked)
                     BookSearchCacheService.shared.store(cacheKey: cacheKey, books: served, source: shared.source)
                 }
                 storeInMemory(cacheKey: cacheKey, books: served)
@@ -229,8 +307,27 @@ final class GoogleBooksService {
         } catch let googleError as NSError where Self.isRetryableWithFallback(googleError) {
             // Both Google pools are dry — serve Open Library results instead of an error.
             // Cached with a short TTL so a later search upgrades to Google ranking.
+            // Same junk filter and ranker as the other tiers: this path is what every
+            // user sees on quota-dry days, and its output lands in the shared cache.
             do {
-                let books = try await OpenLibraryService.shared.search(query: query)
+                let matches = try await OpenLibraryService.shared.searchMatches(query: query)
+                let applyJunk = !includeAllEditions && !isISBNQuery
+                let candidates: [BookSearchRanker.Candidate] = matches.compactMap { match in
+                    if applyJunk, BookSearchRanker.isJunkListing(title: match.book.title, query: query, author: match.book.author) { return nil }
+                    return BookSearchRanker.Candidate(
+                        book: match.book,
+                        signals: BookSearchSignals(ratingsCount: match.popularityCount, averageRating: nil, language: nil)
+                    )
+                }
+                let books = isISBNQuery
+                    ? candidates.map(\.book)
+                    : BookSearchRanker.rank(
+                        candidates,
+                        query: query,
+                        deduplicate: !includeAllEditions,
+                        libraryAuthors: libraryAuthors,
+                        popularKeys: popularKeys
+                    )
                 guard !books.isEmpty else { throw googleError }
                 let canonical = await canonicalized(books, includeAllEditions: includeAllEditions, isISBNQuery: isISBNQuery)
                 storeInMemory(cacheKey: cacheKey, books: canonical)
@@ -255,7 +352,7 @@ final class GoogleBooksService {
         let applyJunkFilter = !includeAllEditions && !isISBNQuery
         let candidates: [BookSearchRanker.Candidate] = (decoded.items ?? []).compactMap { item in
             guard let book = mapToBook(item: item) else { return nil }
-            if applyJunkFilter, BookSearchRanker.isJunkListing(title: book.title, query: query) { return nil }
+            if applyJunkFilter, BookSearchRanker.isJunkListing(title: book.title, query: query, author: book.author) { return nil }
             return BookSearchRanker.Candidate(
                 book: book,
                 signals: BookSearchSignals(
@@ -290,7 +387,11 @@ final class GoogleBooksService {
     /// strict `isbn:` lookups (the user asked for one exact edition).
     private func canonicalized(_ books: [Book], includeAllEditions: Bool, isISBNQuery: Bool) async -> [Book] {
         guard !includeAllEditions, !isISBNQuery, !books.isEmpty else { return books }
-        return await BookRepository.shared.canonicalizeSearchResults(books)
+        // Ranked lists can run 50–130 books after the title+author merge, but the
+        // shared cache stores 30 and nobody scrolls past the top handful, so cap
+        // before canonicalization — its Firestore `in` queries scale with count.
+        // "Show all results" (includeAllEditions) bypasses via the guard above.
+        return await BookRepository.shared.canonicalizeSearchResults(Array(books.prefix(Self.rankedResultCap)))
     }
 
     /// ISBNdb tier of the search chain, shaped to match the Google path:
@@ -321,12 +422,29 @@ final class GoogleBooksService {
         let authorTask: Task<[ISBNdbService.Match], Never>? = (searchAuthors && authorShaped)
             ? Task { (try? await ISBNdbService.shared.searchByAuthor(name: trimmedQuery)) ?? [] }
             : nil
+        // ISBNdb records carry no ratings data, so nothing separates the canonical
+        // work from tie-in merch that also matches the query. Open Library's free
+        // search API does (readinglog shelvings) — harvest counts concurrently
+        // (OL answers within ISBNdb's own paced latency) and join them onto
+        // ISBNdb records by work identity. Best-effort: an OL failure just means
+        // no popularity signal, which is where this path already was.
+        let olSignalsTask: Task<[String: Int], Never> = Task {
+            guard let olMatches = try? await OpenLibraryService.shared.searchMatches(query: query, limit: 20) else { return [:] }
+            var counts: [String: Int] = [:]
+            for olMatch in olMatches {
+                let key = BookSearchRanker.collapseKey(title: olMatch.book.title, author: olMatch.book.author).full
+                let count = olMatch.popularityCount ?? 0
+                if count > 0 { counts[key] = max(counts[key] ?? 0, count) }
+            }
+            return counts
+        }
         var matches: [ISBNdbService.Match] = []
         var titleError: Error?
         do {
             matches = try await ISBNdbService.shared.search(query: query)
         } catch is CancellationError {
             authorTask?.cancel()
+            olSignalsTask.cancel()
             throw CancellationError()
         } catch {
             titleError = error
@@ -338,7 +456,10 @@ final class GoogleBooksService {
                 matches.append(match)
             }
         }
-        if matches.isEmpty, let titleError { throw titleError }
+        if matches.isEmpty, let titleError {
+            olSignalsTask.cancel()
+            throw titleError
+        }
         if let lang = languageRestriction?.lowercased(), !lang.isEmpty {
             // ISBNdb records often omit language; the ISBN registration group
             // fills the gap (978-602 = Indonesia, etc). Records with neither
@@ -349,11 +470,13 @@ final class GoogleBooksService {
             }
         }
         let applyJunkFilter = !includeAllEditions
+        let olCounts = await olSignalsTask.value
         let candidates: [BookSearchRanker.Candidate] = matches.compactMap { match in
-            if applyJunkFilter, BookSearchRanker.isJunkListing(title: match.book.title, query: query) { return nil }
+            if applyJunkFilter, BookSearchRanker.isJunkListing(title: match.book.title, query: query, author: match.book.author) { return nil }
+            let popularity = olCounts[BookSearchRanker.collapseKey(title: match.book.title, author: match.book.author).full]
             return BookSearchRanker.Candidate(
                 book: match.book,
-                signals: BookSearchSignals(ratingsCount: nil, averageRating: nil, language: match.languageCode)
+                signals: BookSearchSignals(ratingsCount: popularity, averageRating: nil, language: match.languageCode)
             )
         }
         return BookSearchRanker.rank(

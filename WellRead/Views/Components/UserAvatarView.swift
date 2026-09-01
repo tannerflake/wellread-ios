@@ -135,7 +135,7 @@ struct AvatarZoomOverlay: View {
 
     var body: some View {
         GeometryReader { geo in
-            let side = min(geo.size.width - 48, geo.size.height * 0.62)
+            let side = max(0, min(geo.size.width - 48, geo.size.height * 0.62))
             ZStack {
                 Theme.shadowInk
                     .opacity(presented ? 0.9 * (1 - dragProgress * 0.7) : 0)

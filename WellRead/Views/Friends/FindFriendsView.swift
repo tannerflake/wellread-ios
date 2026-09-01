@@ -260,11 +260,14 @@ struct FindFriendsView: View {
 
     private var filteredMatched: [MatchedMember] {
         guard !searchText.isEmpty else { return matched }
-        return matched.filter {
-            $0.user.displayName.localizedCaseInsensitiveContains(searchText)
-                || $0.user.username.localizedCaseInsensitiveContains(searchText)
-                || $0.contact.displayName.localizedCaseInsensitiveContains(searchText)
+        // Name-first ranking on the SPINE profile, plus contact-name hits for
+        // people saved in Contacts under a different name than their profile.
+        let ranked = PersonSearch.ranked(matched, query: searchText, user: { $0.user })
+        let rankedIds = Set(ranked.map(\.id))
+        let contactOnly = matched.filter {
+            !rankedIds.contains($0.id) && $0.contact.displayName.localizedCaseInsensitiveContains(searchText)
         }
+        return ranked + contactOnly
     }
 
     private var filteredInvites: [SyncedContact] {
@@ -293,6 +296,9 @@ struct FindFriendsView: View {
         matched = result.onSpine
         inviteCandidates = result.toInvite
         isLoading = false
+        // Covers members who skipped contacts during onboarding and sync here
+        // instead: the server still only announces a genuinely new account.
+        ContactSyncService.announceJoinToMatchedContacts(result.onSpine)
     }
 
     private func openSettings() {

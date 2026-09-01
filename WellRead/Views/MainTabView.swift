@@ -20,6 +20,7 @@ struct MainTabView: View {
     @State private var showPushNotificationPromptSheet = false
     @State private var showPushNudgeModal = false
     @State private var showProfilePhotoNudgeModal = false
+    @State private var showPhoneNumberNudgeModal = false
     @State private var showCurrentlyReadingPrompt = false
     @State private var keyboardVisible = false
     /// New-follower push tapped: the follower's profile presented full-height over any tab.
@@ -83,10 +84,31 @@ struct MainTabView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
-            withAnimation(.easeOut(duration: 0.2)) { keyboardVisible = true }
+            setKeyboardVisible(true)
+            // Keyboard notifications lie on the way out of a full-screen cover:
+            // UIKit briefly restores the presenter's first responder, which posts
+            // a `willShow` whose matching `willHide` never arrives. Left alone the
+            // bar stays gone for the rest of the session (only a relaunch brings
+            // it back), so every show is re-checked against the real responder
+            // chain a beat later.
+            scheduleKeyboardReconcile()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
+            // A keyboard that slides off-screen without a `willHide` (interactive
+            // dismissal, responder torn down mid-transition) still reports its end
+            // frame here.
+            guard let end = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+            if end.isEmpty || end.minY >= UIScreen.main.bounds.height {
+                setKeyboardVisible(false)
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-            withAnimation(.easeOut(duration: 0.2)) { keyboardVisible = false }
+            setKeyboardVisible(false)
+        }
+        // Second backstop: whatever the "will" notifications claimed, once the
+        // keyboard is actually down the bar comes back.
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidHideNotification)) { _ in
+            setKeyboardVisible(false)
         }
         // BookProfileView reads `mainTabBarOverlapExtraHeight` and adds it as bottom padding so its action
         // bar clears the custom tab bar. With the parent safeAreaInset reserving the tab bar, this gives
@@ -180,6 +202,22 @@ struct MainTabView: View {
             .environmentObject(appState)
             .presentationDragIndicator(.visible)
         }
+        .sheet(isPresented: $showPhoneNumberNudgeModal, onDismiss: {
+            // "Later" and swipe-down both count toward the 4-dismissal cap; a
+            // successful save sets the number before closing, so it doesn't.
+            if let uid = authService.firebaseUser?.uid,
+               (authService.appUser?.phoneNumber ?? "").isEmpty {
+                PhoneNumberNudgeStorage.recordDismissal(uid: uid)
+            }
+        }) {
+            PhoneNumberNudgeModal(
+                onSaved: { showPhoneNumberNudgeModal = false },
+                onNotNow: { showPhoneNumberNudgeModal = false }
+            )
+            .environmentObject(authService)
+            .environmentObject(appState)
+            .presentationDragIndicator(.visible)
+        }
         .sheet(isPresented: $showCurrentlyReadingPrompt, onDismiss: {
             if let uid = authService.firebaseUser?.uid {
                 OnboardingCurrentlyReadingPromptStorage.markShown(for: uid)
@@ -207,13 +245,6 @@ struct MainTabView: View {
                 selectedTab = .feed
                 appState.deepLinkFeedCommentId = note.userInfo?["commentId"] as? String
                 appState.deepLinkFeedPostId = id
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .wellreadOpenFeedScrollToPost)) { note in
-            _ = PushNotificationService.consumePendingScrollToFeedPostTap()
-            if let id = note.userInfo?["postId"] as? String {
-                selectedTab = .feed
-                appState.scrollToFeedPostId = id
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .spineOpenUserProfile)) { note in
@@ -297,10 +328,13 @@ struct MainTabView: View {
                     selectedTab = t
                 }
             }
-            // `-uiPreviewPhotoNudge` / `-uiPreviewCurrentlyReading` force the launch
-            // modals open for simulator UI verification.
+            // `-uiPreviewPhotoNudge` / `-uiPreviewPhoneNudge` / `-uiPreviewCurrentlyReading`
+            // force the launch modals open for simulator UI verification.
             if ProcessInfo.processInfo.arguments.contains("-uiPreviewPhotoNudge") {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { showProfilePhotoNudgeModal = true }
+            }
+            if ProcessInfo.processInfo.arguments.contains("-uiPreviewPhoneNudge") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { showPhoneNumberNudgeModal = true }
             }
             if ProcessInfo.processInfo.arguments.contains("-uiPreviewCurrentlyReading") {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { showCurrentlyReadingPrompt = true }
@@ -320,10 +354,6 @@ struct MainTabView: View {
             // Push tapped on a cold start: the tap fired before this view mounted,
             // so its NotificationCenter post was lost — replay it from the stash.
             // (Blend taps are replayed the same way by bookBlendPushPresenter.)
-            if let postId = PushNotificationService.consumePendingScrollToFeedPostTap() {
-                selectedTab = .feed
-                appState.scrollToFeedPostId = postId
-            }
             if let postId = PushNotificationService.consumePendingOpenPostCommentsTap() {
                 selectedTab = .feed
                 appState.deepLinkFeedCommentId = PushNotificationService.consumePendingOpenPostCommentsCommentTap()
@@ -361,12 +391,16 @@ struct MainTabView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
                 considerShowingProfilePhotoNudge()
             }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+                considerShowingPhoneNumberNudge()
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                 considerShowingPushNudgeModal()
             }
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
+                reconcileKeyboardVisibility()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     PushNotificationService.syncFCMTokenToFirestoreIfSignedIn()
                 }
@@ -393,6 +427,31 @@ struct MainTabView: View {
         .onChange(of: appState.pendingGoodreadsImportURL) { _, u in
             if u != nil { selectedTab = .profile }
         }
+    }
+
+    // MARK: - Keyboard visibility
+
+    private func setKeyboardVisible(_ visible: Bool) {
+        guard keyboardVisible != visible else { return }
+        withAnimation(.easeOut(duration: 0.2)) { keyboardVisible = visible }
+    }
+
+    /// Re-checks a believed-visible keyboard against the responder chain: nothing
+    /// focused means no keyboard, whatever the notifications said.
+    private func reconcileKeyboardVisibility() {
+        guard keyboardVisible, !Self.hasActiveFirstResponder else { return }
+        setKeyboardVisible(false)
+    }
+
+    private func scheduleKeyboardReconcile() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: reconcileKeyboardVisibility)
+    }
+
+    private static var hasActiveFirstResponder: Bool {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .contains { $0.containsFirstResponder }
     }
 
     private func syncCompleteProfileSheet() {
@@ -455,7 +514,8 @@ struct MainTabView: View {
     private var isAnyLaunchModalUp: Bool {
         showCompleteProfileSheet || showPushNotificationPromptSheet || showWelcomeGoodreadsModal
             || showGoodreadsImportFromWelcome || showPushNudgeModal
-            || showProfilePhotoNudgeModal || showCurrentlyReadingPrompt || deepLinkProfile != nil
+            || showProfilePhotoNudgeModal || showPhoneNumberNudgeModal
+            || showCurrentlyReadingPrompt || deepLinkProfile != nil
             || incomingBlendInvite != nil
     }
 
@@ -496,6 +556,7 @@ struct MainTabView: View {
     /// sheet presents after a beat so the dismissal has finished.
     private func presentDeepLinkProfile(userId: String) {
         showProfilePhotoNudgeModal = false
+        showPhoneNumberNudgeModal = false
         showPushNudgeModal = false
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
             deepLinkProfile = DeepLinkUserProfile(id: userId)
@@ -531,6 +592,23 @@ struct MainTabView: View {
               ProfilePhotoNudgeStorage.isEligible(uid: uid) else { return }
         guard !isAnyLaunchModalUp, !isDeepLinkPending else { return }
         showProfilePhotoNudgeModal = true
+    }
+
+    /// Backfill reminder for accounts with no phone number on file (they
+    /// predate the wizard's phone step, or skipped it): shows each cold launch
+    /// until a number is saved or the user has dismissed it 4 times. Same
+    /// deal as the photo nudge, and it never blocks anything.
+    private func considerShowingPhoneNumberNudge() {
+        // The wizard just asked for the number in this session; asking again
+        // 1.6s after "Skip for now" would undercut it.
+        guard !OnboardingWizardModel.justCompletedThisLaunch else { return }
+        guard let uid = authService.firebaseUser?.uid,
+              let user = authService.appUser,
+              !user.needsProfileCompletion,
+              (user.phoneNumber ?? "").isEmpty,
+              PhoneNumberNudgeStorage.isEligible(uid: uid) else { return }
+        guard !isAnyLaunchModalUp, !isDeepLinkPending else { return }
+        showPhoneNumberNudgeModal = true
     }
 
     /// After profile completion sheet dismisses successfully, show the Goodreads welcome modal once per account.
@@ -624,5 +702,14 @@ struct MainTabView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 7)
         .foregroundStyle(isSelected ? Theme.accent : Theme.textSecondary)
+    }
+}
+
+private extension UIView {
+    /// Depth-first search for a live first responder — the only public way to ask
+    /// whether anything in the app is actually holding the keyboard up.
+    var containsFirstResponder: Bool {
+        if isFirstResponder { return true }
+        return subviews.contains { $0.containsFirstResponder }
     }
 }

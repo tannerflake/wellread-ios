@@ -28,7 +28,7 @@ final class BookProfileService {
             queue.sync { summaryCache[key] = shared }
             return shared
         }
-        let system = "You are a concise book summarizer. Reply with a very short summary of the book in at most two sentences. Maximum 200 characters total. No heading, no bullets, no extra text. If given a long description, condense it. If given only title and author, write a brief summary based on common knowledge. Stay under 200 characters."
+        let system = "You are a concise book summarizer. Reply with a very short summary of the book in at most two sentences. HARD LIMIT: 200 characters total, including spaces — count them, and cut a whole sentence rather than exceed it. Every sentence must be complete and end in a period. No heading, no bullets, no extra text. If given a long description, condense it. If given only title and author, write a brief summary based on common knowledge."
         let input: String
         if let d = book.description, !d.isEmpty {
             input = "Book: \(book.title) by \(book.author).\n\nDescription:\n\(d)\n\nSummarize in at most two sentences, under 200 characters."
@@ -38,12 +38,7 @@ final class BookProfileService {
         do {
             let response = try await ClaudeService.shared.sendMessageDetailed(system: system, userMessage: input, tier: .simple)
             var trimmed = response.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.count > summaryMaxCharacters {
-                trimmed = String(trimmed.prefix(summaryMaxCharacters)).trimmingCharacters(in: .whitespacesAndNewlines)
-                if let lastSpace = trimmed.lastIndex(of: " ") {
-                    trimmed = String(trimmed[..<lastSpace])
-                }
-            }
+            trimmed = Self.clampToSentence(trimmed, limit: summaryMaxCharacters)
             queue.sync { summaryCache[key] = trimmed }
             if !trimmed.isEmpty {
                 await AIContentCacheRepository.shared.storeSummary(trimmed, bookId: key, model: response.model)
@@ -52,6 +47,52 @@ final class BookProfileService {
         } catch {
             return nil
         }
+    }
+
+    /// Sentence-aware cap. Models overrun the character budget (Gemini more
+    /// than Claude did), and a raw prefix chop left summaries ending mid-clause.
+    /// Prefer dropping a whole trailing sentence; only ellipsize a single
+    /// sentence that is itself too long.
+    static func clampToSentence(_ text: String, limit: Int) -> String {
+        guard text.count > limit else { return text }
+        let window = String(text.prefix(limit))
+
+        // Walk back to the last sentence terminator that actually ends a sentence.
+        var cut: String.Index? = nil
+        var i = window.endIndex
+        while i > window.startIndex {
+            i = window.index(before: i)
+            guard ".!?".contains(window[i]) else { continue }
+            let after = window.index(after: i)
+            // A terminator at the very end of the window may be mid-sentence in
+            // the full string, so require a following space here.
+            guard after < window.endIndex, window[after] == " " else { continue }
+            if window[i] == ".", endsWithAbbreviation(window[..<i]) { continue }
+            cut = after
+            break
+        }
+        if let cut, !window[..<cut].trimmingCharacters(in: .whitespaces).isEmpty {
+            return String(window[..<cut]).trimmingCharacters(in: .whitespaces)
+        }
+
+        // One long sentence: trim to a word boundary and mark the elision.
+        var fallback = window.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let lastSpace = fallback.lastIndex(of: " ") {
+            fallback = String(fallback[..<lastSpace])
+        }
+        fallback = fallback.trimmingCharacters(in: CharacterSet(charactersIn: " ,;:-"))
+        return fallback.isEmpty ? fallback : fallback + "\u{2026}"
+    }
+
+    /// "…operative Mr." is not a sentence end. Guards the common title/abbrev cases.
+    private static let abbreviations: Set<String> = [
+        "mr", "mrs", "ms", "dr", "prof", "st", "jr", "sr", "vs", "etc",
+        "inc", "ltd", "co", "no", "vol", "ed", "eds", "approx", "e.g", "i.e"
+    ]
+
+    private static func endsWithAbbreviation(_ prefix: Substring) -> Bool {
+        let word = prefix.split(whereSeparator: { $0 == " " || $0 == "\n" }).last ?? ""
+        return abbreviations.contains(word.lowercased())
     }
 
     /// One impactful or notable quote from the book. Cached by book.id.

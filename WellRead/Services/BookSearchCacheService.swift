@@ -40,9 +40,13 @@ final class BookSearchCacheService {
     /// joined the ranking, so a legacy entry may have dedup-merged a foreign
     /// edition over the English one; v3: results are canonicalized against the
     /// community catalog — older entries carry pre-dedup ids and get upgraded
-    /// in place on first read). Entries written before the field exists read
-    /// as version 1.
-    static let currentSchemaVersion = 3
+    /// in place on first read; v4: leading-article-insensitive title matching
+    /// and companion/merch penalties; v5: bundle/excerpt junk widened and
+    /// blank-book merch penalized; v6: edition collapse widened to non-colon
+    /// subtitles, audio-format suffixes, and authorless records — pre-current
+    /// entries get re-ranked and re-deduped in place on first read). Entries
+    /// written before the field exists read as version 1.
+    static let currentSchemaVersion = 6
 
     struct CachedEntry {
         let books: [Book]
@@ -83,6 +87,38 @@ final class BookSearchCacheService {
         let books = raw.compactMap(book(from:))
         guard !books.isEmpty else { return nil }
         return CachedEntry(books: books, schemaVersion: data["schemaVersion"] as? Int ?? 1, source: source)
+    }
+
+    /// Which of `cacheKeys` already have fresh, non-empty entries — one batched
+    /// documentID `in` query per 30 keys instead of a read per key. Used by the
+    /// Goodreads import to decide which ISBNs actually need the bulk API fetch.
+    /// Best-effort: a failed batch just reports its keys as missing (worst case
+    /// a redundant API fetch, whose write-through then repairs the entry).
+    func freshKeys(cacheKeys: [String]) async -> Set<String> {
+        guard !cacheKeys.isEmpty else { return [] }
+        var keyByDocId: [String: String] = [:]
+        for key in cacheKeys { keyByDocId[docId(for: key)] = key }
+        let ids = Array(keyByDocId.keys)
+        var fresh: Set<String> = []
+        var start = 0
+        while start < ids.count {
+            let chunk = Array(ids[start..<min(start + 30, ids.count)])
+            start += 30
+            guard let snapshot = try? await db.collection(collection)
+                .whereField(FieldPath.documentID(), in: chunk)
+                .getDocuments() else { continue }
+            for doc in snapshot.documents {
+                let data = doc.data()
+                guard let updated = (data["updatedAt"] as? Timestamp)?.dateValue() else { continue }
+                let source = Source(rawValue: data["source"] as? String ?? "") ?? .openLibrary
+                let ttl = source == .openLibrary ? openLibraryTTL : primaryTTL
+                guard Date().timeIntervalSince(updated) < ttl,
+                      let books = data["books"] as? [[String: Any]], !books.isEmpty,
+                      let key = keyByDocId[doc.documentID] else { continue }
+                fresh.insert(key)
+            }
+        }
+        return fresh
     }
 
     /// Fire-and-forget write-through after a successful API fetch.

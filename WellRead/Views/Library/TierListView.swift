@@ -208,6 +208,19 @@ struct TierYearFilter {
     let onSelect: (Int?) -> Void
 }
 
+/// Resolves the "Top N" badge/box size against how many books actually sit in the
+/// S tier. `target` (4 or 8, from `topBookCount`) is only honored if the S tier is
+/// big enough to fill it; otherwise this falls back to 4 so a user who's tiered
+/// 50+ books overall but kept a small, selective S tier still gets "Top 4" instead
+/// of no badge at all. Below 4, there's nothing meaningful to call out.
+/// Shared by TierListView's badge and TierRowView's highlight box so the two never
+/// drift out of lockstep.
+private func resolvedTopCount(target: Int, sTierCount: Int) -> Int? {
+    if sTierCount >= target { return target }
+    if target > 4 && sTierCount >= 4 { return 4 }
+    return nil
+}
+
 struct TierListView: View {
     let userBooks: [UserBook]
     /// (userBookId, tier, insertionIndex). Index 0 = first in row; nil = append at end.
@@ -218,6 +231,14 @@ struct TierListView: View {
     var readOnly: Bool = false
     /// `Book.id` of a book to pulse-glow + scroll into view (e.g. just-reviewed book sitting in Unranked).
     var highlightedBookId: String? = nil
+    /// One-shot gate for the highlight auto-scroll. The highlight lingers until the book
+    /// is tiered, but onAppear re-fires on every back-navigation and tab switch — only
+    /// the appearance right after the review may move the scroll position. False keeps
+    /// the glow and callout without any programmatic scrolling.
+    var autoScrollsToHighlight: Bool = true
+    /// Called once the auto-scroll has actually run against the present book, so the
+    /// owner can drop `autoScrollsToHighlight` for every later appearance.
+    var onHighlightAutoScrolled: (() -> Void)? = nil
     /// `Book.id`s to render with a selection check (Discover seed-book picker). Only used with `readOnly`.
     var selectedBookIds: Set<String> = []
     /// When set, the S tier box grows a header strip with this year dropdown in its top-right corner.
@@ -255,9 +276,9 @@ struct TierListView: View {
                             // so hide it while a year filter is narrowing the tier.
                             let topCount: Int? = (tier == "S" && yearFilter?.selectedYear == nil) ? topBookCount : nil
                             // Badge only once the tier is full enough for the first
-                            // slots to actually mean "absolute favorites" — must stay
-                            // in lockstep with TierRowView's activeTopCount gate.
-                            let activeTopCount: Int? = topCount.flatMap { books.count >= $0 ? $0 : nil }
+                            // slots to actually mean "absolute favorites"; falls back
+                            // to Top 4 rather than disappearing — see resolvedTopCount.
+                            let activeTopCount: Int? = topCount.flatMap { resolvedTopCount(target: $0, sTierCount: books.count) }
                             // spacing 0 so the S tier's header pieces (Top N badge on
                             // the left, year tab on the right) sit flush on the row's
                             // top edge, reading as one piece of folder furniture.
@@ -380,19 +401,19 @@ struct TierListView: View {
                     .onPreferenceChange(TierCalloutHeightKey.self) { calloutHeight = $0 }
                     .allowsHitTesting(false)
                 }
-                .onChange(of: highlightedBookId) { _, newValue in
-                    scrollToHighlight(proxy: proxy, isSet: newValue != nil, delay: 0.25)
+                .onChange(of: highlightedBookId) { _, _ in
+                    handleHighlightAppearance(proxy: proxy, delay: 0.25)
                 }
                 // A freshly marked-read book reaches `userBooks` only after the Firestore
                 // listener echoes it back — often after onAppear's scroll already ran and
                 // found nothing. Re-scroll the moment the highlighted book actually exists.
                 .onChange(of: highlightedBookIsPresent) { _, present in
                     if present {
-                        scrollToHighlight(proxy: proxy, isSet: true, delay: 0.15)
+                        handleHighlightAppearance(proxy: proxy, delay: 0.15)
                     }
                 }
                 .onAppear {
-                    scrollToHighlight(proxy: proxy, isSet: highlightedBookId != nil, delay: 0.35)
+                    handleHighlightAppearance(proxy: proxy, delay: 0.35)
                 }
             }
         }
@@ -417,14 +438,34 @@ struct TierListView: View {
         return userBooks.contains { $0.book?.id == highlightedBookId }
     }
 
-    /// Brings the freshly-reviewed book into view and fades the callout in once it settles.
-    /// Two-stage: scroll to the Unranked row first (its anchor always exists, and getting
-    /// it on screen builds the lazy book cells inside it), then center the exact book.
-    private func scrollToHighlight(proxy: ScrollViewProxy, isSet: Bool, delay: TimeInterval) {
-        guard isSet else {
+    /// Routes a highlight trigger (onAppear, highlight id change, Firestore echo) to
+    /// either the one-shot auto-scroll or, once that's consumed, just the callout —
+    /// a lingering highlight must never move the scroll position again.
+    private func handleHighlightAppearance(proxy: ScrollViewProxy, delay: TimeInterval) {
+        guard highlightedBookId != nil else {
             withAnimation(.easeOut(duration: 0.2)) { showCallout = false }
             return
         }
+        guard autoScrollsToHighlight else {
+            // No scrolling — but the "Rank me" bubble should still ride the glowing
+            // book whenever the user brings it on screen themselves.
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                guard highlightedBookId != nil else { return }
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) { showCallout = true }
+            }
+            return
+        }
+        // Consume only once the book actually exists in the list: onAppear can run
+        // before the Firestore echo delivers it, and the onChange re-scroll above
+        // must still get its one real shot at centering the book.
+        if highlightedBookIsPresent { onHighlightAutoScrolled?() }
+        scrollToHighlight(proxy: proxy, delay: delay)
+    }
+
+    /// Brings the freshly-reviewed book into view and fades the callout in once it settles.
+    /// Two-stage: scroll to the Unranked row first (its anchor always exists, and getting
+    /// it on screen builds the lazy book cells inside it), then center the exact book.
+    private func scrollToHighlight(proxy: ScrollViewProxy, delay: TimeInterval) {
         showCallout = false
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
             guard highlightedBookId != nil else { return }
@@ -613,8 +654,9 @@ struct TierRowView: View {
     private func tierContent(contentWidth: CGFloat, readOnly: Bool) -> some View {
         let w = contentWidth > 0 ? contentWidth : 280
         // The top-group callout only appears once the S tier is full enough for the
-        // first `topCount` slots to actually mean "your absolute favorites".
-        let activeTopCount: Int? = topCount.flatMap { books.count >= $0 ? $0 : nil }
+        // first slots to actually mean "your absolute favorites"; falls back to
+        // Top 4 rather than disappearing — see resolvedTopCount.
+        let activeTopCount: Int? = topCount.flatMap { resolvedTopCount(target: $0, sTierCount: books.count) }
         // Every tier reserves the same clearance (the top-favorites box's trailing
         // inset), so covers are one size everywhere and their columns line up
         // across tiers — and top-group rows always end inside the inset box.

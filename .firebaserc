@@ -3,5 +3,11 @@
     "production": "wellread-520f2"
   },
   "targets": {},
-  "etags": {}
+  "etags": {
+    "wellread-520f2": {
+      "extensionInstances": {
+        "firestore-bigquery-export": "87f01ba334d6467e852e94909bf5c6797dcec1961f7f47960324e19ab630506c"
+      }
+    }
+  }
 }

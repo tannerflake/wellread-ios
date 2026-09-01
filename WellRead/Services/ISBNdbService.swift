@@ -6,7 +6,7 @@
 //  ISBNdb → Google Books → Open Library, orchestrated in GoogleBooksService's
 //  search hub; this client only talks to ISBNdb.
 //
-//  The account is the Basic plan: 1 request/second, so every request is paced
+//  The account is the Premium plan: 3 requests/second, so every request is paced
 //  through a serial throttle — bursts (Goodreads-import prefetch, bulk import)
 //  queue up instead of tripping 429s. Failures open a short circuit breaker so
 //  the chain falls through to Google fast instead of stalling per lookup.
@@ -85,6 +85,11 @@ private struct ISBNdbSearchResponse: Decodable {
     let books: [ISBNdbBook]?
 }
 
+/// `POST /books` (bulk ISBN lookup) nests results under "data", not "books".
+private struct ISBNdbBulkResponse: Decodable {
+    let data: [ISBNdbBook]?
+}
+
 final class ISBNdbService {
     static let shared = ISBNdbService()
 
@@ -97,7 +102,8 @@ final class ISBNdbService {
 
     private let baseURL = "https://api2.isbndb.com"
     private let session: URLSession
-    private let pacer = ISBNdbRequestPacer(minInterval: 1.05)
+    // Premium = 3 req/s; 0.35s spacing stays just under it (was 1.05 on Basic).
+    private let pacer = ISBNdbRequestPacer(minInterval: 0.35)
 
     // Circuit breaker, same shape as OpenLibraryService's: two consecutive
     // failures fail lookups fast for a while so the Google fallback runs
@@ -178,6 +184,47 @@ final class ISBNdbService {
         return records.compactMap { map($0, queriedISBN: nil) }
     }
 
+    /// Bulk ISBN lookup via `POST /books`: one paced request resolves up to
+    /// 1,000 ISBNs (the Premium-plan cap; Basic allows 100). Each ISBN in the
+    /// body bills one search — same daily quota as single lookups, but N round
+    /// trips collapse into one. Returns books keyed by the *requested* digits
+    /// (which also become each Book's id, matching `lookupISBN`); ISBNs ISBNdb
+    /// doesn't know are simply absent. Throws only for service problems.
+    func lookupISBNs(_ isbns: [String]) async throws -> [String: Book] {
+        let requested = isbns
+            .map { $0.filter(\.isNumber) }
+            .filter { $0.count == 10 || $0.count == 13 }
+        guard !requested.isEmpty else { return [:] }
+        var results: [String: Book] = [:]
+        var start = 0
+        while start < requested.count {
+            let chunk = Array(requested[start..<min(start + Self.bulkChunkSize, requested.count)])
+            start += Self.bulkChunkSize
+            let body = "isbns=" + chunk.joined(separator: ",")
+            guard let data = try await getData(path: "/books", postBody: body) else { continue }
+            let records = (try? JSONDecoder().decode(ISBNdbBulkResponse.self, from: data).data) ?? []
+            // Index records under both ISBN forms so a requested ISBN-10 finds a
+            // record ISBNdb keyed by its ISBN-13 (and vice versa via equivalence).
+            var byDigits: [String: ISBNdbBook] = [:]
+            for record in records {
+                for key in [record.isbn13, record.isbn10].compactMap({ $0?.filter(\.isNumber) }) where !key.isEmpty {
+                    byDigits[key] = record
+                }
+            }
+            for digits in chunk where results[digits] == nil {
+                let record = byDigits[digits]
+                    ?? byDigits.first { ISBNMatcher.equivalent($0.key, digits) }?.value
+                if let record, let match = map(record, queriedISBN: digits) {
+                    results[digits] = match.book
+                }
+            }
+        }
+        return results
+    }
+
+    /// Premium-plan cap on ISBNs per bulk request (Basic: 100).
+    private static let bulkChunkSize = 1_000
+
     /// Books credited to the named author, via the dedicated `/author/{name}`
     /// endpoint. `/books/{query}` only matches titles — for "brandon sanderson"
     /// it returns bundles and books *about* him, never his actual catalog — so
@@ -198,7 +245,8 @@ final class ISBNdbService {
 
     /// Returns response data, nil for "not found" (400/404 — ISBNdb answers
     /// both for unknown ISBNs/queries), and throws for service failures.
-    private func getData(path: String, queryItems: [URLQueryItem] = []) async throws -> Data? {
+    /// A non-nil `postBody` makes it a form-encoded POST (the bulk endpoint).
+    private func getData(path: String, queryItems: [URLQueryItem] = [], postBody: String? = nil) async throws -> Data? {
         guard let key = apiKey else {
             throw NSError(domain: "ISBNdb", code: -3, userInfo: [NSLocalizedDescriptionKey: "ISBNdb API key is not configured."])
         }
@@ -210,6 +258,11 @@ final class ISBNdbService {
         guard let url = comp.url else { return nil }
         var request = URLRequest(url: url)
         request.setValue(key, forHTTPHeaderField: "Authorization")
+        if let postBody {
+            request.httpMethod = "POST"
+            request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+            request.httpBody = Data(postBody.utf8)
+        }
 
         var attempt = 0
         while true {

@@ -631,3 +631,91 @@ extension EnvironmentValues {
         set { self[MainTabBarOverlapKey.self] = newValue }
     }
 }
+
+// MARK: - Shimmer loading placeholders
+
+/// Skeleton placeholder: a paper surface with an ink band sweeping across,
+/// masked to the given shape. Same visual language as the cover shimmer in
+/// BookCoverView. Size skeletons to the content they stand in for so the
+/// layout doesn't jump when the real content lands.
+///
+/// The repeatForever animation is scoped to `animate` (not applied via
+/// `withAnimation` in onAppear) so it can't hijack sheet drag-dismiss tracking.
+struct ShimmerShape<S: Shape>: View {
+    let shape: S
+    @State private var animate = false
+
+    var body: some View {
+        shape
+            .fill(Theme.surface)
+            .overlay(
+                GeometryReader { geo in
+                    let width = geo.size.width
+                    let bandWidth = max(width * 0.6, 44)
+                    let startX = -bandWidth
+                    let endX = width + bandWidth
+                    LinearGradient(
+                        stops: [
+                            .init(color: .clear, location: 0.0),
+                            .init(color: Theme.chrome.opacity(0.22), location: 0.5),
+                            .init(color: .clear, location: 1.0)
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(width: bandWidth, height: geo.size.height)
+                    .offset(x: animate ? endX - bandWidth / 2 : startX - bandWidth / 2)
+                    .animation(
+                        .linear(duration: 1.4).repeatForever(autoreverses: false),
+                        value: animate
+                    )
+                }
+            )
+            .clipShape(shape)
+            .onAppear { animate = true }
+            .accessibilityHidden(true)
+    }
+}
+
+/// One text-line-shaped shimmer bar. Width comes from the caller's frame.
+struct ShimmerBar: View {
+    var height: CGFloat = 13
+    var cornerRadius: CGFloat = 5
+
+    var body: some View {
+        ShimmerShape(shape: RoundedRectangle(cornerRadius: cornerRadius))
+            .frame(height: height)
+    }
+}
+
+/// Circle shimmer for avatar placeholders.
+struct ShimmerCircle: View {
+    let size: CGFloat
+
+    var body: some View {
+        ShimmerShape(shape: Circle())
+            .frame(width: size, height: size)
+    }
+}
+
+/// Paragraph-shaped skeleton: full-width lines with a short last line, with
+/// bar height + gaps matching Theme.body() line pitch (~25pt) so the block
+/// occupies the same vertical space as the text it stands in for. Pick `lines`
+/// from the content's known character budget (~43 chars per line at body size
+/// on a section card).
+struct ShimmerTextBlock: View {
+    let lines: Int
+    /// Points trimmed off the last line so the block ends mid-line like real text.
+    var lastLineTrailingCut: CGFloat = 130
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(0..<lines, id: \.self) { index in
+                ShimmerBar()
+                    .frame(maxWidth: .infinity)
+                    .padding(.trailing, index == lines - 1 && lines > 1 ? lastLineTrailingCut : 0)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}

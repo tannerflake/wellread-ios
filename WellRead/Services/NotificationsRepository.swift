@@ -12,9 +12,9 @@ import Foundation
 import FirebaseFirestore
 
 /// One row in the notifications feed. `type` matches the push payload types
-/// (`new_follower`, `review_liked`, `review_commented`, `comment_replied`,
-/// `thread_commented`, `friend_review_posted`, `blend_request`, `blend_ready`,
-/// `book_recommended`),
+/// (`new_follower`, `contact_joined`, `review_liked`, `review_commented`,
+/// `comment_replied`, `thread_commented`, `friend_review_posted`,
+/// `blend_request`, `blend_ready`, `book_recommended`),
 /// and the deep-link ids carry the same keys the push data payload uses.
 struct UserNotification: Identifiable, Equatable {
     let id: String

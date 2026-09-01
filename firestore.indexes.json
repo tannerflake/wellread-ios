@@ -31,6 +31,22 @@
         { "fieldPath": "isTestAccount", "order": "ASCENDING" },
         { "fieldPath": "joinedAt", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "userBooks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "tier", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "founderBlendSchedules",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "dueAt", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

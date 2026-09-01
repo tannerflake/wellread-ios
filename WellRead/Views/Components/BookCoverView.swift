@@ -10,6 +10,14 @@ import UIKit
 import CoreGraphics
 import CryptoKit
 
+extension Notification.Name {
+    /// Posted (object = bookId) when a cover regeneration/undo changes a book's
+    /// locked cover. Live `FallbackCoverImage` instances re-hydrate on it — views
+    /// sitting behind the navigation stack (tier list, queue, feed) keep their
+    /// @State image otherwise and would show the old cover on pop.
+    static let bookCoverResolutionDidChange = Notification.Name("bookCoverResolutionDidChange")
+}
+
 /// Outcome of one cover URL attempt — lets the loader distinguish "this book has no
 /// cover here" (move on, maybe record a definitive failure) from "the network hiccuped"
 /// (don't poison the persistent store) and "Open Library is rate-limiting us" (back off).
@@ -484,8 +492,15 @@ final class CoverImageCache {
 
     /// First in-memory hit across a book's candidate URLs (for synchronous hydration).
     func firstMemoryImage(forURLs urls: [URL]) -> UIImage? {
+        firstMemoryHit(forURLs: urls)?.image
+    }
+
+    /// Same scan, but says *which* URL served the image — the caller needs it to
+    /// record a resolution lock (see `ensureResolutionLock`), so a cover painted
+    /// straight from the memory cache is still a known winner.
+    func firstMemoryHit(forURLs urls: [URL]) -> (url: URL, image: UIImage)? {
         for url in urls {
-            if let img = memoryImage(for: url) { return img }
+            if let img = memoryImage(for: url) { return (url, img) }
         }
         return nil
     }
@@ -584,7 +599,8 @@ struct BookCoverView: View {
                     size: size,
                     isbn: book.isbn,
                     placeholderTitle: book.title,
-                    placeholderAuthor: book.author
+                    placeholderAuthor: book.author,
+                    hasCommunityOverride: book.coverOverrideURL?.isEmpty == false
                 )
             }
         }
@@ -683,19 +699,24 @@ private struct FallbackCoverImage: View {
     var isbn: String? = nil
     var placeholderTitle: String? = nil
     var placeholderAuthor: String? = nil
+    /// A member fixed this book's cover (`coverOverrideURL`): skip the legacy
+    /// disk-cache heal, which is cache-only and runs before the chain — it could
+    /// resurrect and lock the very artwork the community rejected.
+    var hasCommunityOverride: Bool = false
     @State private var loadedImage: UIImage?
     /// The `taskIdentity` the `loadedImage` belongs to, so a slot reused for a different
     /// book (positional ForEach ids) reloads instead of showing a stale cover.
     @State private var loadedIdentity: String?
     @State private var useTitlePlaceholder = false
 
-    init(bookId: String, urls: [URL], size: CGFloat, isbn: String? = nil, placeholderTitle: String? = nil, placeholderAuthor: String? = nil) {
+    init(bookId: String, urls: [URL], size: CGFloat, isbn: String? = nil, placeholderTitle: String? = nil, placeholderAuthor: String? = nil, hasCommunityOverride: Bool = false) {
         self.bookId = bookId
         self.urls = urls
         self.size = size
         self.isbn = isbn
         self.placeholderTitle = placeholderTitle
         self.placeholderAuthor = placeholderAuthor
+        self.hasCommunityOverride = hasCommunityOverride
         // Paint the right thing on the very first frame. In a LazyVStack/LazyVGrid,
         // scrolling a cell offscreen tears down its @State; without this, scrolling back
         // would flash the shimmer (or re-generate the placeholder) even though the
@@ -732,6 +753,19 @@ private struct FallbackCoverImage: View {
     /// Resolution-store signature: invalidates locks/failures when cover inputs change.
     private static func signature(urls: [URL], isbn: String?) -> String {
         CoverResolutionStore.signature(coverURL: urls.first?.absoluteString ?? "", isbn: isbn)
+    }
+
+    /// A cover hydrated straight from the memory cache (init, or the early return
+    /// on a recreated cell) skips the chain, so nothing records which URL won.
+    /// Anything reading the resolution store then believes the cover never
+    /// resolved — that's what left "Bad cover?" tapping into the retry path and
+    /// appearing to do nothing. Memory-cache only: no disk, no network.
+    private func ensureResolutionLock() {
+        let signature = Self.signature(urls: urls, isbn: isbn)
+        let store = CoverResolutionStore.shared
+        guard store.resolvedURL(bookId: bookId, signature: signature) == nil else { return }
+        guard let hit = CoverImageCache.shared.firstMemoryHit(forURLs: urls) else { return }
+        store.lock(bookId: bookId, signature: signature, url: hit.url)
     }
 
     /// URLs the *previous* cover pipeline downloaded under, so covers already sitting in
@@ -809,7 +843,10 @@ private struct FallbackCoverImage: View {
             let identity = taskIdentity
             // Already showing the right cover (synchronous memory-cache hydrate from init) —
             // never blank it back to a shimmer just because the cell was recreated on scroll.
-            if loadedImage != nil, loadedIdentity == identity { return }
+            if loadedImage != nil, loadedIdentity == identity {
+                ensureResolutionLock()
+                return
+            }
             let signature = Self.signature(urls: urls, isbn: isbn)
             let store = CoverResolutionStore.shared
             // Cheap re-check: cover may have landed in the cache since init (a sibling cell
@@ -821,15 +858,21 @@ private struct FallbackCoverImage: View {
                 loadedIdentity = identity
                 return
             }
-            if let mem = CoverImageCache.shared.firstMemoryImage(forURLs: urls) {
-                loadedImage = mem
+            if let mem = CoverImageCache.shared.firstMemoryHit(forURLs: urls) {
+                // Record the winner: a cover painted from the memory cache never
+                // ran the chain, and without a lock everything keyed off the
+                // resolution store (notably "Bad cover?") thinks nothing resolved.
+                store.lock(bookId: bookId, signature: signature, url: mem.url)
+                loadedImage = mem.image
                 loadedIdentity = identity
                 return
             }
             // Holdover covers downloaded before resolution locking existed live in the
             // disk cache under old-scheme URLs. Reuse and lock them — cache-only, no
             // network — and let them heal books that were wrongly marked failed.
-            if store.resolvedURL(bookId: bookId, signature: signature) == nil {
+            // Skipped when a member fixed this cover: the heal would beat the
+            // override to the lock with possibly the rejected artwork.
+            if !hasCommunityOverride, store.resolvedURL(bookId: bookId, signature: signature) == nil {
                 for legacy in Self.legacyCacheURLs(from: urls) {
                     if let img = CoverImageCache.shared.imageSyncFromCache(for: legacy) {
                         store.lock(bookId: bookId, signature: signature, url: legacy)
@@ -910,6 +953,18 @@ private struct FallbackCoverImage: View {
             // said "no cover" — timeouts/rate limits just skip probing for this session.
             store.markFailed(bookId: bookId, signature: signature, definitive: !sawTransient)
             useTitlePlaceholder = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .bookCoverResolutionDidChange)) { note in
+            guard note.object as? String == bookId else { return }
+            let signature = Self.signature(urls: urls, isbn: isbn)
+            // The regenerating device always has the new winner in cache, so this
+            // is a synchronous repaint — no shimmer, no network.
+            if let locked = CoverResolutionStore.shared.resolvedURL(bookId: bookId, signature: signature),
+               let img = CoverImageCache.shared.imageSyncFromCache(for: locked) {
+                loadedImage = img
+                loadedIdentity = taskIdentity
+                useTitlePlaceholder = false
+            }
         }
     }
 

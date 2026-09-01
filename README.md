@@ -15,7 +15,8 @@ A modern, minimal book tracking app — dark-first, SwiftUI, designed to replace
 
 ### Secrets & test account (optional)
 
-- Copy `WellRead/Secrets.example.plist` to `WellRead/Secrets.plist` (same folder; `Secrets.plist` is gitignored).
+- Copy `Secrets.example.plist` to `Secrets.plist` **in the repo root** (`Secrets.plist` is gitignored).
+  The root `Secrets.plist` is the only one registered in the app target's Copy Resources phase, so it is the only one that gets bundled. A `Secrets.plist` placed in `WellRead/` is silently ignored at runtime, and missing keys fail quietly (the Gemini tier just falls through to Claude).
 - Add API keys and, for a **dev-only test login**, create an **Email/Password** user in Firebase Authentication with your chosen email and password, then set:
   - `TEST_ACCOUNT_EMAIL`
   - `TEST_ACCOUNT_PASSWORD`

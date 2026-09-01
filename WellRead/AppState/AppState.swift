@@ -62,10 +62,21 @@ final class AppState: ObservableObject {
     @Published var scrollToFeedPostId: String?
     /// `Book.id` of a freshly-reviewed book the tier list should pulse-glow until the user tiers it. Cleared automatically once the corresponding `UserBook.tier` becomes non-nil.
     @Published var pendingTierHighlightBookId: String?
+    /// One-shot companion to `pendingTierHighlightBookId`: the tier list may auto-scroll
+    /// to the highlighted book only while this is true (right after the review that set
+    /// it). The highlight itself lingers until the book is tiered, and TierListView's
+    /// onAppear re-fires on every back-navigation and tab switch — without this gate,
+    /// each of those yanked the list back to the Unranked row.
+    @Published var tierHighlightScrollPending = false
     /// Pending books friends sent me (Recommended shelf on the queue), newest first.
     @Published var incomingRecommendations: [BookRecommendation] = []
     /// Sender profiles for incoming recommendations, keyed by Firebase UID ("from {name}" labels).
     @Published var recommenderProfiles: [String: User] = [:]
+    /// Unread rows exist in `users/{uid}/notifications` — drives the bell's badge
+    /// dot on both the Feed and Profile tab bells. Shared here (rather than local
+    /// `@State` per screen) so the two bells never disagree about read state.
+    /// Refreshed via `refreshUnreadNotifications()`, cleared via `markNotificationsRead()`.
+    @Published var hasUnreadNotifications = false
 
     /// True only after we've loaded dismissed book IDs from Firestore, so discover suggestions exclude them from the first fetch.
     private var dismissedBookIdsLoaded = false
@@ -81,6 +92,7 @@ final class AppState: ObservableObject {
     private let dismissedRepo = DismissedSuggestionsRepository()
     private let userRepo = UserRepository()
     private let recommendationRepo = RecommendationRepository()
+    private let notificationsRepo = NotificationsRepository()
     private var userBooksListener: ListenerRegistration?
     private var feedListener: FeedListenerHandle?
     private var recommendationsListener: ListenerRegistration?
@@ -132,6 +144,10 @@ final class AppState: ObservableObject {
             BookRepository.shared.prewarmCache(with: cached.compactMap(\.book))
         }
 
+        Task { @MainActor [weak self] in
+            await self?.refreshLibraryBookMetadataIfStale(uid: uid)
+        }
+
         userBooksListener = userBookRepo.listenUserBooks(userId: uid) { [weak self] list in
             guard let self = self else { return }
             self.userBooks = list
@@ -173,6 +189,86 @@ final class AppState: ObservableObject {
         }
     }
 
+    private static let libraryBookFullRefreshInterval: TimeInterval = 7 * 24 * 60 * 60
+
+    /// Keeps the locally-cached library's book METADATA honest without ever
+    /// re-reading the whole library regularly. The library stays local-first:
+    /// cover images are never touched here, and book docs are re-fetched only when
+    /// there's a reason to believe they changed.
+    ///
+    /// Two tiers:
+    /// 1. Per launch: one tiny query against `coverRegenerations` — "did anyone
+    ///    fix a cover since I last checked?" Almost always empty; when it isn't,
+    ///    only the affected library books are re-fetched.
+    /// 2. Weekly: one full metadata revalidation (book docs only, batched 30 per
+    ///    query). Needed because the launch path prewarms BookRepository from the
+    ///    disk cache and the listener hydrates from that same cache, so dedup
+    ///    merges and metadata fixes would otherwise never reach existing holders.
+    @MainActor
+    private func refreshLibraryBookMetadataIfStale(uid: String) async {
+        // Give the disk-cache load / first listener delivery a moment to land so
+        // there are book ids to work with (first-ever launch fetches fresh anyway).
+        var waited = 0
+        while !userBooksLoaded && waited < 20 {
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            waited += 1
+        }
+        guard uid == currentUserId else { return }
+        let libraryIds = Set(userBooks.map(\.bookId))
+        guard !libraryIds.isEmpty else { return }
+
+        let defaults = UserDefaults.standard
+        let fullKey = "libraryBookMetadataRefreshedAt_\(uid)"
+        let deltaKey = "coverEditsCheckedAt_\(uid)"
+        let now = Date().timeIntervalSince1970
+
+        if now - defaults.double(forKey: fullKey) > Self.libraryBookFullRefreshInterval {
+            let fresh = await BookRepository.shared.refreshBooks(ids: Array(libraryIds))
+            guard uid == currentUserId, !fresh.isEmpty else { return }
+            applyRefreshedBooks(fresh, uid: uid)
+            defaults.set(now, forKey: fullKey)
+            defaults.set(now, forKey: deltaKey)
+            return
+        }
+
+        let lastDelta = defaults.double(forKey: deltaKey)
+        guard lastDelta > 0 else {
+            // No delta baseline yet (pre-existing install) — the weekly sweep just
+            // covered or will cover the backlog; start the delta clock now.
+            defaults.set(now, forKey: deltaKey)
+            return
+        }
+        // 5-minute overlap absorbs client/server clock skew on the log timestamps.
+        guard let edited = await CoverRegenerationService.shared.coverEditedBookIds(
+            since: Date(timeIntervalSince1970: lastDelta - 300)
+        ) else { return } // query failed (offline) — retry next launch, don't advance the clock
+        let stale = edited.intersection(libraryIds)
+        if !stale.isEmpty {
+            let fresh = await BookRepository.shared.refreshBooks(ids: Array(stale))
+            guard uid == currentUserId else { return }
+            guard !fresh.isEmpty else { return } // fetch failed — retry next launch
+            applyRefreshedBooks(fresh, uid: uid)
+        }
+        defaults.set(now, forKey: deltaKey)
+    }
+
+    /// Merges freshly-fetched book docs into the library; publishes and re-persists
+    /// only when something actually changed, so a no-op refresh costs nothing.
+    @MainActor
+    private func applyRefreshedBooks(_ fresh: [String: Book], uid: String) {
+        let updated = userBooks.map { ub -> UserBook in
+            var ub = ub
+            if let b = fresh[ub.bookId] { ub.book = b }
+            return ub
+        }
+        guard updated != userBooks else { return }
+        userBooks = updated
+        let copy = updated
+        Self.libraryCacheSaveQueue.async {
+            LocalLibraryCache.shared.saveLibrary(copy, userId: uid)
+        }
+    }
+
     /// Switches the feed between friends-only and everyone: persists the choice
     /// and restarts the feed listener under the new scope.
     func setFeedScope(_ scope: FeedScope) {
@@ -187,6 +283,38 @@ final class AppState: ObservableObject {
         canLoadMoreFeedPosts = false
         isLoadingMoreFeedPosts = false
         feedListener = makeFeedListener(uid: uid)
+    }
+
+    /// Refreshes the shared unread-notifications badge. Call whenever a bell
+    /// appears on screen (both Feed and Profile do this on `.task`) and after
+    /// sign-in, so the dot reflects real Firestore state rather than stale UI.
+    func refreshUnreadNotifications() {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-uiPreviewNotifications") {
+            hasUnreadNotifications = true
+            return
+        }
+        #endif
+        guard let uid = currentUserId else {
+            hasUnreadNotifications = false
+            return
+        }
+        Task { [weak self, notificationsRepo] in
+            let unread = await notificationsRepo.hasUnread(uid: uid)
+            await MainActor.run {
+                self?.hasUnreadNotifications = unread
+            }
+        }
+    }
+
+    /// Clears the badge immediately (optimistic) and marks every row read
+    /// server-side. Call when either bell opens the notifications feed.
+    func markNotificationsRead() {
+        hasUnreadNotifications = false
+        guard let uid = currentUserId else { return }
+        Task { [notificationsRepo] in
+            await notificationsRepo.markAllRead(uid: uid)
+        }
     }
 
     /// Reader reached the bottom of the feed: deepen the listener by one page.
@@ -286,6 +414,7 @@ final class AppState: ObservableObject {
         deepLinkFeedCommentId = nil
         scrollToFeedPostId = nil
         pendingTierHighlightBookId = nil
+        tierHighlightScrollPending = false
         BookRepository.shared.clearCache()
         Task { @MainActor in
             WidgetDataService.shared.writeSignedOutSnapshot()
@@ -297,12 +426,14 @@ final class AppState: ObservableObject {
         guard let bid = pendingTierHighlightBookId else { return }
         if let ub = userBooks.first(where: { $0.bookId == bid && $0.status == .read }), ub.tier != nil {
             pendingTierHighlightBookId = nil
+            tierHighlightScrollPending = false
         }
     }
 
     /// Switch to the Profile tab → Read segment, then pulse-glow this book in Unranked. Cleared once the user assigns a tier.
     func startTierHighlight(forBookId bookId: String) {
         pendingTierHighlightBookId = bookId
+        tierHighlightScrollPending = true
         NotificationCenter.default.post(name: .spineHighlightTierBook, object: nil, userInfo: ["bookId": bookId])
     }
 

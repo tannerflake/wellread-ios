@@ -63,6 +63,9 @@ struct SearchView: View {
 
     @EnvironmentObject var authService: AuthService
     @EnvironmentObject var appState: AppState
+    /// Height the floating tab bar overlaps content by; scrolling content pads
+    /// past it so the last rows never sit under the bar with the keyboard down.
+    @Environment(\.mainTabBarOverlapExtraHeight) private var mainTabBarOverlapExtraHeight
     /// Starts true so the field is focused in the very first frame. Flipping it in
     /// `onAppear` instead would land the Cancel button and the keyboard mid-appearance,
     /// animating the header row into place after the page had already drawn.
@@ -78,9 +81,15 @@ struct SearchView: View {
     @State private var results: [Book] = []
     @State private var isSearching = false
     @State private var hasSearched = false
-    /// True after the user taps "show every edition" — search re-runs without the junk filter and edition dedup.
+    /// True after the user taps "show all results" — search re-runs without the junk filter and edition dedup.
     @State private var showingAllEditions = false
     @State private var searchError: String?
+    /// Set when the last word of the query was half-typed and search completed it
+    /// (see `SearchQueryCompletion`): drives the "Showing results for…" banner.
+    @State private var completedQuery: String?
+    /// The exact text the user asked to be searched literally, via the banner's
+    /// "Search instead for" escape hatch. Suppresses completion for that query only.
+    @State private var literalQuery: String?
     @State private var selectedBookForProfile: Book?
     @State private var searchTask: Task<Void, Never>?
     /// Recent search activity shown while the field is empty.
@@ -95,6 +104,9 @@ struct SearchView: View {
     @State private var followedReadNextIndex = 0
     @State private var hasLoadedFollowedReads = false
     @State private var isLoadingMoreFollowedReads = false
+    /// True while the pool + first batch of covers are being fetched, so the shelf
+    /// shows its skeleton instead of popping in from nothing.
+    @State private var isLoadingFollowedReads = false
     /// Full-bleed width of the followed-reads shelf, for sizing covers so a
     /// partial cover always peeks past the trailing edge.
     @State private var followedShelfWidth: CGFloat = 0
@@ -300,12 +312,12 @@ struct SearchView: View {
     private var booksResults: some View {
         Group {
             if isSearching {
-                HStack {
-                    ProgressView().tint(Theme.accent)
+                VStack(spacing: 14) {
+                    SpinningSpineLogo(size: 72)
                     Text("Searching…").font(Theme.callout()).foregroundStyle(Theme.textSecondary)
                 }
                 .frame(maxWidth: .infinity)
-                .padding()
+                .padding(.vertical, 32)
             }
 
             if let err = searchError {
@@ -326,7 +338,7 @@ struct SearchView: View {
                         .font(Theme.callout())
                         .foregroundStyle(Theme.textSecondary)
                     if !showingAllEditions {
-                        Button("Show every edition") { showAllEditions() }
+                        Button("Show all results") { showAllEditions() }
                             .font(Theme.callout())
                             .foregroundStyle(Theme.accent)
                     }
@@ -339,8 +351,12 @@ struct SearchView: View {
                 if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     recentsSection
                         .padding()
+                        .padding(.bottom, mainTabBarOverlapExtraHeight + 12)
                 } else {
                     LazyVStack(spacing: 12) {
+                        if let completed = completedQuery, !isSearching {
+                            completionBanner(completed)
+                        }
                         ForEach(results) { book in
                             BookSearchRow(book: book) {
                                 openBookProfile(book)
@@ -351,7 +367,7 @@ struct SearchView: View {
                                 Text("Can't find what you're looking for?")
                                     .font(Theme.caption())
                                     .foregroundStyle(Theme.textSecondary)
-                                Button("Show every edition") { showAllEditions() }
+                                Button("Show all results") { showAllEditions() }
                                     .font(Theme.callout())
                                     .foregroundStyle(Theme.accent)
                             }
@@ -360,6 +376,7 @@ struct SearchView: View {
                         }
                     }
                     .padding()
+                    .padding(.bottom, mainTabBarOverlapExtraHeight + 12)
                 }
             }
         }
@@ -373,12 +390,12 @@ struct SearchView: View {
     private var usersStep: some View {
         Group {
             if isLoadingReaders {
-                HStack {
-                    ProgressView().tint(Theme.accent)
+                VStack(spacing: 14) {
+                    SpinningSpineLogo(size: 72)
                     Text("Loading readers…").font(Theme.callout()).foregroundStyle(Theme.textSecondary)
                 }
                 .frame(maxWidth: .infinity)
-                .padding()
+                .padding(.vertical, 32)
                 Spacer(minLength: 0)
             } else if filteredReaders.isEmpty {
                 Text(hasLoadedReaders && !readers.isEmpty
@@ -404,6 +421,7 @@ struct SearchView: View {
                         }
                     }
                     .padding()
+                    .padding(.bottom, mainTabBarOverlapExtraHeight + 12)
                 }
             }
         }
@@ -441,23 +459,11 @@ struct SearchView: View {
         .contentShape(RoundedRectangle(cornerRadius: Theme.cardCornerRadius))
     }
 
-    /// Name/handle matches, prefix hits first so typing a handle surfaces it immediately.
+    /// Name matches first, handle matches after (see `PersonSearch`).
     private var filteredReaders: [SearchedReader] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return readers }
-        let matches = readers.filter {
-            $0.user.displayName.localizedCaseInsensitiveContains(trimmed)
-                || $0.user.username.localizedCaseInsensitiveContains(trimmed)
-        }
-        func isPrefix(_ r: SearchedReader) -> Bool {
-            r.user.displayName.lowercased().hasPrefix(trimmed.lowercased())
-                || r.user.username.lowercased().hasPrefix(trimmed.lowercased())
-        }
-        return matches.sorted { a, b in
-            let (pa, pb) = (isPrefix(a), isPrefix(b))
-            if pa != pb { return pa }
-            return a.user.displayName.localizedCaseInsensitiveCompare(b.user.displayName) == .orderedAscending
-        }
+        return PersonSearch.ranked(readers, query: trimmed, user: { $0.user })
     }
 
     /// Fetches the member roster once per visit; filtering is local from there.
@@ -490,6 +496,13 @@ struct SearchView: View {
         return (followedShelfWidth - 16 - 3 * 12) / 3.5
     }
 
+    /// One cover-shaped shimmer at the shelf's cover metrics: stands in for both the
+    /// first batch (while the pool loads) and the next batch as the shelf is scrolled.
+    private var followedReadCoverSkeleton: some View {
+        ShimmerShape(shape: RoundedRectangle(cornerRadius: min(6, followedReadCoverSize * 0.12)))
+            .frame(width: followedReadCoverSize, height: followedReadCoverSize * 1.5)
+    }
+
     /// Builds the shuffled pool of finished-book ids from the follow graph (books
     /// already in the user's own library excluded) and hydrates the first batch.
     /// Once per view instance so the random pick doesn't reshuffle on re-appear.
@@ -498,11 +511,13 @@ struct SearchView: View {
         hasLoadedFollowedReads = true
         let following = authService.appUser?.following ?? []
         guard !following.isEmpty else { return }
+        await MainActor.run { isLoadingFollowedReads = true }
         let ids = await UserBookRepository().fetchReadBookIds(forUserIds: following)
         let ownBookIds = Set(appState.userBooks.map(\.bookId))
         let pool = Array(ids.filter { !ownBookIds.contains($0) }.shuffled().prefix(Self.followedReadPoolCap))
         await MainActor.run { followedReadPool = pool }
         await loadMoreFollowedReads()
+        await MainActor.run { isLoadingFollowedReads = false }
     }
 
     /// Hydrates the next batch of covers; the shelf's trailing placeholder calls
@@ -565,7 +580,7 @@ struct SearchView: View {
                     }
                 }
             }
-            if !followedReadBooks.isEmpty {
+            if isLoadingFollowedReads || !followedReadBooks.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Read by people you follow")
                         .font(Theme.headline())
@@ -576,14 +591,18 @@ struct SearchView: View {
                     // the "scroll for more" affordance.
                     ScrollView(.horizontal, showsIndicators: false) {
                         LazyHStack(spacing: 12) {
-                            ForEach(followedReadBooks) { b in
-                                BookCoverView(book: b, size: followedReadCoverSize, onTap: { openBookProfile(b) })
-                            }
-                            if followedReadNextIndex < followedReadPool.count {
-                                ProgressView()
-                                    .tint(Theme.accent)
-                                    .frame(width: followedReadCoverSize, height: followedReadCoverSize * 1.5)
-                                    .onAppear { Task { await loadMoreFollowedReads() } }
+                            if followedReadBooks.isEmpty {
+                                // Skeleton at the loaded shelf's exact footprint, so
+                                // nothing below shifts when the covers land.
+                                ForEach(0..<4, id: \.self) { _ in followedReadCoverSkeleton }
+                            } else {
+                                ForEach(followedReadBooks) { b in
+                                    BookCoverView(book: b, size: followedReadCoverSize, onTap: { openBookProfile(b) })
+                                }
+                                if followedReadNextIndex < followedReadPool.count {
+                                    followedReadCoverSkeleton
+                                        .onAppear { Task { await loadMoreFollowedReads() } }
+                                }
                             }
                         }
                         .padding(.horizontal, 16)
@@ -591,20 +610,58 @@ struct SearchView: View {
                     .padding(.horizontal, -16)
                     .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { followedShelfWidth = $0 }
                 }
+                .transition(.opacity)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(.easeInOut(duration: 0.2), value: followedReadBooks.isEmpty)
+        .animation(.easeInOut(duration: 0.2), value: isLoadingFollowedReads)
+    }
+
+    /// "Showing results for <completed query>" — search finished a half-typed
+    /// last word (see `SearchQueryCompletion`). The escape hatch below it re-runs
+    /// the text as typed, so the completion is never a dead end.
+    private func completionBanner(_ completed: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Showing results for \u{201C}\(completed)\u{201D}")
+                .font(Theme.caption())
+                .foregroundStyle(Theme.textSecondary)
+            Button("Search instead for \u{201C}\(query.trimmingCharacters(in: .whitespacesAndNewlines))\u{201D}") {
+                searchLiterally()
+            }
+            .font(Theme.caption())
+            .foregroundStyle(Theme.accent)
+            .multilineTextAlignment(.leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.bottom, 2)
+    }
+
+    /// Re-runs the current text with completion suppressed.
+    private func searchLiterally() {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        literalQuery = trimmed
+        completedQuery = nil
+        searchTask?.cancel()
+        searchTask = Task { await performSearch(trimmed) }
     }
 
     /// Debounces keystrokes so results populate automatically as the user types,
     /// without firing a request on every character.
     private func scheduleSearch(for value: String) {
         searchTask?.cancel()
-        // A new query goes back to curated results; "every edition" is per-search.
+        // A new query goes back to curated results; "every edition" is per-search,
+        // and so is any last-word completion or the opt-out from one.
         showingAllEditions = false
+        completedQuery = nil
+        literalQuery = nil
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            // Clear stale results when the field is emptied.
+        // 1–2 characters can't identify a book and every fired search costs paid
+        // API requests on a cache miss, so type-as-you-go waits for 3+. Explicit
+        // submit (runSearch) stays ungated for short real titles like "It".
+        guard trimmed.count >= 3 else {
+            // Clear stale results when the field is emptied or shortened.
             results = []
             hasSearched = false
             searchError = nil
@@ -612,7 +669,10 @@ struct SearchView: View {
             return
         }
         searchTask = Task {
-            try? await Task.sleep(nanoseconds: 350_000_000)
+            // 500ms of keyboard silence before firing: long enough to skip most
+            // mid-word hesitations (each fired search costs paid API requests on
+            // a cache miss), short enough to feel instant once typing stops.
+            try? await Task.sleep(nanoseconds: 500_000_000)
             guard !Task.isCancelled else { return }
             await performSearch(trimmed)
         }
@@ -645,8 +705,10 @@ struct SearchView: View {
             isSearching = true
             searchError = nil
         }
+        // The query exactly as typed, shown as soon as it lands.
+        var books: [Book] = []
         do {
-            let books = try await GoogleBooksService.shared.search(
+            books = try await GoogleBooksService.shared.search(
                 query: trimmed,
                 includeAllEditions: includeAll,
                 libraryAuthors: libraryAuthors
@@ -654,16 +716,42 @@ struct SearchView: View {
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 results = books
+                completedQuery = nil
                 hasSearched = true
                 isSearching = false
             }
         } catch {
             guard !Task.isCancelled else { return }
             await MainActor.run {
+                results = []
                 hasSearched = true
                 isSearching = false
+                completedQuery = nil
                 searchError = error.localizedDescription.isEmpty ? "Search failed. Check your connection and try again." : error.localizedDescription
             }
+        }
+        // Nothing above waited on the last-word repair: the literal outcome is
+        // on screen, and if finishing a half-typed word turns up something
+        // better a moment later, it replaces that. Runs after a failure too —
+        // a query the providers choke on is often exactly the half-typed one.
+        // The banner's "search instead for" pins one query as literal and skips
+        // this entirely.
+        guard literalQuery?.caseInsensitiveCompare(trimmed) != .orderedSame else { return }
+        guard let completion = try? await GoogleBooksService.shared.completedSearch(
+            for: trimmed,
+            literalResults: books,
+            includeAllEditions: includeAll,
+            libraryAuthors: libraryAuthors
+        ) else { return }
+        guard !Task.isCancelled else { return }
+        await MainActor.run {
+            // The field can have moved on while the probe ran, and a book the
+            // user already tapped shouldn't shuffle behind them.
+            guard query.trimmingCharacters(in: .whitespacesAndNewlines) == trimmed,
+                  selectedBookForProfile == nil else { return }
+            results = completion.books
+            completedQuery = completion.query
+            searchError = nil
         }
     }
 }

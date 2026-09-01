@@ -562,7 +562,8 @@ struct WizardGoalStep: View {
 
 // MARK: - Shared field chrome
 
-private extension View {
+// Not private: the phone step in WizardSocialSteps.swift uses the same chrome.
+extension View {
     /// Elevated text-field chrome whose hairline sharpens while focused.
     /// The whole chrome (padding, box, prefix glyphs) focuses the field on
     /// tap; the bare TextField's hit area is only its own text line, which

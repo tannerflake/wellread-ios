@@ -2,15 +2,16 @@
 //  NotificationsView.swift
 //  WellRead
 //
-//  Notification feed behind the bell on the profile page: follows, likes,
-//  comments, replies, blend invites/results, friend reviews. Rows deep-link to
-//  the same destinations as their push notifications.
+//  Notification feed behind the bell on the Feed and Profile tabs: follows,
+//  likes, comments, replies, blend invites/results, friend reviews. Rows
+//  deep-link to the same destinations as their push notifications.
 //
 
 import SwiftUI
 
 struct NotificationsView: View {
     @EnvironmentObject var authService: AuthService
+    @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) private var dismiss
     /// nil while loading; empty when the feed has nothing.
     @State private var notifications: [UserNotification]? = nil
@@ -141,6 +142,7 @@ struct NotificationsView: View {
     private static func glyph(for type: String) -> String {
         switch type {
         case "new_follower": return "person.badge.plus"
+        case "contact_joined": return "person.2.fill"
         case "review_liked", "comment_liked": return "heart.fill"
         case "review_commented", "comment_replied", "thread_commented": return "bubble.left.fill"
         case "review_mentioned", "comment_mentioned": return "at"
@@ -190,10 +192,12 @@ struct NotificationsView: View {
         }
         let items = await repo.fetchLatest(uid: uid)
         notifications = items
-        // Clear the bell badge only after the rows are on screen — the fetched
-        // snapshot above keeps this visit's unread styling intact.
+        // Clear the shared bell badge (both tabs) only after the rows are on
+        // screen — the fetched snapshot above keeps this visit's unread styling
+        // intact. Goes through AppState so whichever bell opened us, and the
+        // other one too, stay in sync.
         if items.contains(where: { !$0.read }) {
-            await repo.markAllRead(uid: uid)
+            appState.markNotificationsRead()
         }
     }
 
@@ -203,6 +207,7 @@ struct NotificationsView: View {
         let now = Date()
         return [
             UserNotification(id: "1", type: "new_follower", title: "Alex started following you", body: "See what they're reading on SPINE.", postId: nil, commentId: nil, blendId: nil, actorId: "demo", coverURL: nil, createdAt: now.addingTimeInterval(-300), read: false),
+            UserNotification(id: "1b", type: "contact_joined", title: "Your contact Katie joined SPINE.", body: "Follow them!", postId: nil, commentId: nil, blendId: nil, actorId: "demo", coverURL: nil, createdAt: now.addingTimeInterval(-900), read: false),
             UserNotification(id: "2", type: "review_liked", title: "Maya liked your review of Sapiens", body: "", postId: "demo", commentId: nil, blendId: nil, actorId: "demo", coverURL: "https://covers.openlibrary.org/b/isbn/9780062316097-L.jpg", createdAt: now.addingTimeInterval(-7200), read: false),
             UserNotification(id: "3", type: "blend_request", title: "Jordan wants to make a Book Blend with you", body: "Merge your libraries into one taste match. Tap to accept.", postId: nil, commentId: nil, blendId: "demo", actorId: "demo", coverURL: nil, createdAt: now.addingTimeInterval(-86400), read: true),
             UserNotification(id: "4", type: "review_commented", title: "Sam commented on your review of The Overstory", body: "Great take on chapter three...", postId: "demo", commentId: nil, blendId: nil, actorId: "demo", coverURL: nil, createdAt: now.addingTimeInterval(-3 * 86400), read: true),

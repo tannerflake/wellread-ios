@@ -32,6 +32,9 @@ struct EditReadReviewSheet: View {
     @State private var additionalReadDates: [Date]
     @State private var selectedTier: String?
     @State private var thoughts: String
+    /// What Thoughts held before the user touched it (see `composerDraftGuard`):
+    /// a deep-link tap leaves this sheet standing only if there are real edits.
+    @State private var thoughtsBaseline: String
     @State private var postToFeed: Bool
     @State private var loadedFeedToggle: Bool = false
     @State private var isSaving = false
@@ -48,7 +51,9 @@ struct EditReadReviewSheet: View {
         _dateFinished = State(initialValue: userBook.dateFinished ?? Date())
         _additionalReadDates = State(initialValue: userBook.additionalReadDates ?? [])
         _selectedTier = State(initialValue: userBook.tier)
-        _thoughts = State(initialValue: Self.initialThoughts(userBook: userBook, feedCaption: feedCaption))
+        let initialThoughts = Self.initialThoughts(userBook: userBook, feedCaption: feedCaption)
+        _thoughts = State(initialValue: initialThoughts)
+        _thoughtsBaseline = State(initialValue: initialThoughts)
         _postToFeed = State(initialValue: true)
     }
 
@@ -266,9 +271,15 @@ struct EditReadReviewSheet: View {
             }
             let trimmed = await MainActor.run { thoughts.trimmingCharacters(in: .whitespacesAndNewlines) }
             if trimmed.isEmpty, let caption = await appState.finishedBookPostCaption(forBookId: userBook.bookId) {
-                await MainActor.run { thoughts = caption }
+                await MainActor.run {
+                    thoughts = caption
+                    thoughtsBaseline = caption
+                }
             }
         }
+        // Unsaved edits survive a deep-link tap: the sheet stays, the link lands
+        // once they save or cancel.
+        .composerDraftGuard(thoughts, baseline: thoughtsBaseline)
         .confirmationDialog("Delete this review? This removes the book from your finished list and deletes your feed post if any.", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
                 Task { await deleteReview() }

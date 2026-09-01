@@ -32,17 +32,41 @@ struct CommentsView: View {
     /// Programmatic pushes (mention taps) share the same String destination as
     /// the avatar/name NavigationLinks.
     @State private var navPath: [String] = []
+    /// Tapping the book in the header pushes its profile inside this sheet.
+    @State private var selectedBookForProfile: Book? = nil
     /// Mention autocomplete roster + handle the reply flow auto-inserted (so
     /// canceling the reply can remove exactly what it added).
     @ObservedObject private var mentionCatalog = MentionCatalog.shared
     @State private var autoTaggedHandle: String? = nil
     /// Own comment awaiting delete confirmation (from the comment's ellipsis menu).
     @State private var commentPendingDelete: Comment? = nil
+    /// Like count for posts the feed doesn't hold (a book discussion's read
+    /// record, say) — seeded from the post we were handed and kept honest as
+    /// the viewer likes. Feed posts read their count off `appState` instead.
+    @State private var localPostLikeCount: Int
 
     init(post: Post, scrollToCommentId: String? = nil) {
         self.post = post
         self.scrollToCommentId = scrollToCommentId
         _viewModel = StateObject(wrappedValue: CommentsViewModel(postId: post.id.uuidString))
+        _localPostLikeCount = State(initialValue: post.likeCount)
+    }
+
+    private var isPostLiked: Bool {
+        appState.likedPostIds.contains(post.id.uuidString)
+    }
+
+    /// The feed's copy wins when it has one, so a like made out in the feed
+    /// shows here (and vice versa) without a refetch.
+    private var postLikeCount: Int {
+        appState.feedPosts.first(where: { $0.id == post.id })?.likeCount ?? localPostLikeCount
+    }
+
+    private func togglePostLike() {
+        let pid = post.id.uuidString
+        let nowLiked = !isPostLiked
+        appState.togglePostLike(postId: pid, liked: nowLiked)
+        localPostLikeCount = max(0, localPostLikeCount + (nowLiked ? 1 : -1))
     }
 
     var body: some View {
@@ -75,6 +99,26 @@ struct CommentsView: View {
                     .environmentObject(authService)
                     .environmentObject(appState)
             }
+            .navigationDestination(item: $selectedBookForProfile) { book in
+                BookProfileView(
+                    book: book,
+                    readBooksForSimilar: appState.readBooks,
+                    onWantToRead: { appState.addToWantToRead(book: book); selectedBookForProfile = nil },
+                    onStartReading: { appState.addToQueue(book: book, shelf: .readingNow); selectedBookForProfile = nil },
+                    onConfirmRead: { date, rating, postToFeed, caption, tier in
+                        appState.addAsRead(book: book, dateFinished: date, rating: rating, postToFeed: postToFeed, caption: caption, tier: tier)
+                        selectedBookForProfile = nil
+                    },
+                    isOnReadList: appState.isBookOnReadList(bookId: book.id),
+                    isInQueue: appState.isBookInQueue(bookId: book.id),
+                    onRemoveFromQueue: { appState.removeFromQueue(book: book); selectedBookForProfile = nil },
+                    readEntryForReview: appState.userReadBook(forBookId: book.id),
+                    canEditReadReview: true,
+                    sourceReaderUid: post.userId
+                )
+                .environmentObject(appState)
+                .environmentObject(authService)
+            }
             // Mention taps in comment text arrive as spine-mention:// URLs.
             .environment(\.openURL, OpenURLAction { url in
                 guard let handle = MentionScanner.handle(fromMentionURL: url) else { return .systemAction }
@@ -88,6 +132,9 @@ struct CommentsView: View {
         }
         .presentationDragIndicator(.visible)
         .presentationCornerRadius(24)
+        // A half-typed comment survives a deep-link tap: the sheet stays, the
+        // link lands once they send or close.
+        .composerDraftGuard(viewModel.commentText)
         .confirmationDialog(
             "Delete this comment?",
             isPresented: Binding(
@@ -123,6 +170,7 @@ struct CommentsView: View {
         .sensoryFeedback(.impact(weight: .light), trigger: viewModel.replyingTo?.id) { _, new in new != nil }
         // Likes only, not unlikes — and never the async liked-state load on open.
         .sensoryFeedback(.impact(weight: .light), trigger: viewModel.lastLikedCommentId) { _, new in new != nil }
+        .sensoryFeedback(.impact(weight: .light), trigger: isPostLiked) { old, new in new && !old }
         .onAppear {
             viewModel.startListening()
             viewModel.loadLikedComments(userId: appState.authUserId)
@@ -287,27 +335,37 @@ struct CommentsView: View {
                 Spacer(minLength: 0)
             }
             if let book = post.book {
-                HStack(alignment: .top, spacing: 12) {
-                    BookCoverView(book: book, size: 56)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(book.title)
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(Theme.textPrimary)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Text(book.author)
-                            .font(.system(size: 13))
-                            .foregroundStyle(Theme.textSecondary)
-                            .lineLimit(1)
-                        if let t = post.tier {
-                            TierBadge(tier: t, size: .small)
+                Button {
+                    selectedBookForProfile = book
+                } label: {
+                    HStack(alignment: .top, spacing: 12) {
+                        BookCoverView(book: book, size: 56)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(book.title)
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(Theme.textPrimary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .multilineTextAlignment(.leading)
+                            Text(book.author)
+                                .font(.system(size: 13))
+                                .foregroundStyle(Theme.textSecondary)
+                                .lineLimit(1)
+                            if let t = post.tier {
+                                TierBadge(tier: t, size: .small)
+                            }
                         }
+                        Spacer(minLength: 0)
                     }
-                    Spacer(minLength: 0)
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.springPress)
+                .accessibilityLabel("Open \(book.title)")
+                .accessibilityHint("Opens the book profile")
             }
             if let caption = post.caption, !caption.isEmpty {
                 ExpandableReviewText(text: caption, collapsedLineLimit: 6)
             }
+            postLikeRow
             Rectangle()
                 .fill(Theme.chrome.opacity(0.35))
                 .frame(height: Theme.chromeHairline)
@@ -315,6 +373,38 @@ struct CommentsView: View {
         .padding(.horizontal)
         .padding(.top, 10)
         .padding(.bottom, 4)
+    }
+
+    /// Like affordance for the post under discussion, so the thread can be
+    /// liked without backing out to the feed. Comment likes live on each row.
+    private var postLikeRow: some View {
+        HStack(spacing: 18) {
+            Button {
+                togglePostLike()
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: isPostLiked ? "heart.fill" : "heart")
+                        .font(.system(size: 14, weight: .bold))
+                        .contentTransition(.symbolEffect(.replace))
+                    if postLikeCount > 0 {
+                        Text("\(postLikeCount)")
+                            .font(.system(size: 13, weight: .bold))
+                            .monospacedDigit()
+                            .contentTransition(.numericText())
+                    } else {
+                        Text("Like")
+                            .font(.system(size: 13, weight: .bold))
+                    }
+                }
+                .foregroundStyle(isPostLiked ? Theme.textPrimary : Theme.textTertiary)
+                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isPostLiked)
+                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: postLikeCount)
+            }
+            .buttonStyle(.springPress)
+            .accessibilityLabel(isPostLiked ? "Unlike this post" : "Like this post")
+            Spacer(minLength: 0)
+        }
+        .padding(.top, 2)
     }
 
     /// Push/bell tap on "liked your comment" lands here: once the target comment is

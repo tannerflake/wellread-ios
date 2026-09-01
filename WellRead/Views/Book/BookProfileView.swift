@@ -106,6 +106,8 @@ struct BookProfileView: View {
     /// Bumped after a regenerate/undo so BookCoverView recreates and hydrates
     /// the new locked cover from cache (instant — the image is already local).
     @State private var coverEpoch = 0
+    /// Founder-only: which API the resolved cover came from (nil for everyone else).
+    @State private var coverSourceLabel: String?
 
     private var showActionBar: Bool {
         onNotInterested != nil || onWantToRead != nil || onStartReading != nil || onConfirmRead != nil || onRemoveFromQueue != nil || onAddToShelf != nil
@@ -393,6 +395,13 @@ struct BookProfileView: View {
 
     private var hero: some View {
         VStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 0) {
+            // Real layout slot (not an overlay hanging outside the cover's
+            // bounds — those don't hit-test reliably) with reserved height so
+            // the cover doesn't jump when the control appears.
+            coverFixControl
+                .frame(height: 22, alignment: .leading)
+                .opacity(coverFixState == .hidden ? 0 : 1)
             BookCoverView(book: book, size: 220)
                 .shadow(color: Theme.shadowInk.opacity(0.18), radius: 14, x: 0, y: 6)
                 .overlay(alignment: .topTrailing) {
@@ -436,12 +445,17 @@ struct BookProfileView: View {
                             .offset(x: -14, y: 12)
                     }
                 }
+                .overlay(alignment: .bottomTrailing) {
+                    // Founder-only debug caption: which API served this cover, for
+                    // judging source quality. Barely-there by request.
+                    if let source = coverSourceLabel {
+                        Text(source)
+                            .font(.system(size: 8, weight: .regular))
+                            .foregroundStyle(Theme.textTertiary.opacity(0.35))
+                            .offset(y: 14)
+                    }
+                }
                 .id(coverEpoch)
-
-            if coverFixState != .hidden {
-                coverFixControl
-                    // Tuck up under the cover — this is a whisper, not a section.
-                    .padding(.top, -4)
             }
 
             VStack(spacing: 4) {
@@ -488,28 +502,39 @@ struct BookProfileView: View {
             case .hidden:
                 EmptyView()
             case .idle:
-                Button { runCoverRegenerate() } label: {
-                    coverFixLabel("wrong cover?", icon: "arrow.triangle.2.circlepath")
-                }
-                .buttonStyle(.plain)
+                // Plain text + tap gesture (not Button): the accessibility
+                // "Button Shapes" setting underlines text buttons, which reads
+                // as clutter on something meant to whisper.
+                coverFixLabel("Bad cover?", icon: "arrow.triangle.2.circlepath")
+                    .onTapGesture { runCoverRegenerate() }
+                    .accessibilityAddTraits(.isButton)
             case .working:
                 coverFixLabel("finding another cover…", icon: nil)
             case .regenerated:
-                HStack(spacing: 12) {
-                    Button { runCoverRegenerate() } label: {
-                        coverFixLabel("try another", icon: "arrow.triangle.2.circlepath")
-                    }
-                    .buttonStyle(.plain)
+                HStack(spacing: 10) {
+                    coverFixLabel("try another", icon: "arrow.triangle.2.circlepath")
+                        .onTapGesture { runCoverRegenerate() }
+                        .accessibilityAddTraits(.isButton)
                     Text("·")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(Theme.textTertiary)
-                    Button { runCoverUndo() } label: {
-                        coverFixLabel("undo", icon: "arrow.uturn.backward")
-                    }
-                    .buttonStyle(.plain)
+                        .font(.system(size: 10, weight: .regular))
+                        .foregroundStyle(Theme.textTertiary.opacity(0.5))
+                    coverFixLabel("undo", icon: "arrow.uturn.backward")
+                        .onTapGesture { runCoverUndo() }
+                        .accessibilityAddTraits(.isButton)
                 }
             case .exhausted:
-                coverFixLabel("that's the only cover we could find", icon: nil)
+                HStack(spacing: 10) {
+                    coverFixLabel("None available.", icon: nil)
+                    // Undo only makes sense when an earlier regeneration is showing.
+                    if CoverRegenerationService.shared.hasActiveSession(bookId: book.id) {
+                        Text("·")
+                            .font(.system(size: 10, weight: .regular))
+                            .foregroundStyle(Theme.textTertiary.opacity(0.5))
+                        coverFixLabel("undo", icon: "arrow.uturn.backward")
+                            .onTapGesture { runCoverUndo() }
+                            .accessibilityAddTraits(.isButton)
+                    }
+                }
             }
         }
         .animation(.easeInOut(duration: 0.2), value: coverFixState)
@@ -519,18 +544,23 @@ struct BookProfileView: View {
         HStack(spacing: 3) {
             if let icon {
                 Image(systemName: icon)
-                    .font(.system(size: 8.5, weight: .semibold))
+                    .font(.system(size: 7.5, weight: .medium))
             }
             Text(text)
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: 10, weight: .regular))
         }
-        .foregroundStyle(Theme.textTertiary)
+        // Half-faded tertiary ink: legible when you look for it, invisible when
+        // you don't. The padding keeps the tap target usable at this size.
+        .foregroundStyle(Theme.textTertiary.opacity(0.5))
+        .padding(.vertical, 4)
+        .padding(.trailing, 6)
         .contentShape(Rectangle())
     }
 
     /// The control appears only once a real cover image has resolved — polling a
     /// few times covers the first-ever load, which can take several seconds.
     private func refreshCoverFixAvailability() async {
+        updateCoverSourceLabel()
         if CoverRegenerationService.shared.hasActiveSession(bookId: book.id) {
             coverFixState = .regenerated
             return
@@ -541,24 +571,70 @@ struct BookProfileView: View {
             if Task.isCancelled { return }
             if CoverRegenerationService.shared.canRegenerate(book: book) {
                 coverFixState = .idle
+                updateCoverSourceLabel()
+                return
+            }
+            // Chain already gave up (title placeholder showing) — offer the
+            // control immediately anyway; tapping it re-probes the APIs.
+            if CoverRegenerationService.shared.hasRecordedFailure(book: book) {
+                coverFixState = .idle
                 return
             }
         }
+        // Still nothing after the polling window (slow network, or a book with no
+        // candidate URLs at all). Show the control regardless: a tap runs the
+        // retry path, and iTunes can sometimes find artwork the chain can't.
+        if !Task.isCancelled, coverFixState == .hidden {
+            coverFixState = .idle
+        }
+    }
+
+    /// Founder-only ("@tan"): stamp the resolved cover's API under the cover so
+    /// Tanner can eyeball which sources produce good vs. bad covers.
+    private func updateCoverSourceLabel() {
+        guard appState.authUserId == SpineFounder.uid else {
+            coverSourceLabel = nil
+            return
+        }
+        coverSourceLabel = CoverRegenerationService.shared.resolvedCoverURL(for: book)
+            .map(CoverRegenerationService.coverSource(for:))
     }
 
     private func runCoverRegenerate() {
         guard let uid = appState.authUserId else { return }
         coverFixState = .working
         Task {
-            let outcome = await CoverRegenerationService.shared.regenerate(book: book, userId: uid)
+            let service = CoverRegenerationService.shared
+            // No cover ever resolved (title placeholder showing): the tap is a
+            // plain retry — re-ping the APIs, no override, no session.
+            if !service.canRegenerate(book: book), !service.hasActiveSession(bookId: book.id) {
+                let found = await service.retryResolve(book: book)
+                guard found, service.canRegenerate(book: book) else {
+                    coverFixState = .exhausted
+                    try? await Task.sleep(nanoseconds: 2_500_000_000)
+                    if coverFixState == .exhausted { coverFixState = .idle }
+                    return
+                }
+                // The retry just locked the cover that was already on screen (it
+                // came from the image cache, so the chain never recorded a
+                // winner). Stopping here would leave the tap looking dead, so
+                // fall through and do the regeneration the member asked for.
+                coverEpoch += 1
+            }
+            let outcome = await service.regenerate(book: book, userId: uid)
             switch outcome {
             case .applied:
                 coverEpoch += 1
                 coverFixState = .regenerated
             case .exhausted:
-                coverFixState = .exhausted
-                try? await Task.sleep(nanoseconds: 2_500_000_000)
-                coverFixState = CoverRegenerationService.shared.hasActiveSession(bookId: book.id) ? .regenerated : .idle
+                if service.hasActiveSession(bookId: book.id) {
+                    // "None available." stays up, with undo beside it.
+                    coverFixState = .exhausted
+                } else {
+                    coverFixState = .exhausted
+                    try? await Task.sleep(nanoseconds: 2_500_000_000)
+                    if coverFixState == .exhausted { coverFixState = .idle }
+                }
             case .failed:
                 coverFixState = .idle
             }
@@ -647,9 +723,10 @@ struct BookProfileView: View {
     private func whyLikeWindow(_ score: Int) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             if whyLikeLoading {
-                phosphorLoader(label: "reading your taste")
+                // Blurb runs up to three sentences — about five body lines here.
+                ShimmerTextBlock(lines: 5)
             } else if let t = whyLikeText, !t.isEmpty {
-                Text(t)
+                Text(markdown: t)
                     .font(Theme.body())
                     .foregroundStyle(Theme.textPrimary)
                     .lineSpacing(Theme.bodyLineSpacing)
@@ -828,9 +905,12 @@ struct BookProfileView: View {
     private var summaryWindow: some View {
         VStack(alignment: .leading, spacing: 12) {
             if summaryLoading {
-                phosphorLoader(label: "loading summary")
+                // Summary is hard-capped at 200 characters, which renders as
+                // ~5 body lines in this card — matching it keeps the card from
+                // jumping when the text arrives.
+                ShimmerTextBlock(lines: 5)
             } else if let s = summary, !s.isEmpty {
-                Text(s)
+                Text(markdown: s)
                     .font(Theme.body())
                     .foregroundStyle(Theme.textPrimary)
                     .lineSpacing(Theme.bodyLineSpacing)
@@ -840,8 +920,16 @@ struct BookProfileView: View {
             }
 
             if tagsLoading {
-                phosphorLoader(label: "loading tags", compact: true)
-                    .padding(.top, 4)
+                // Chip-shaped shimmers at tagChip dimensions, wrapped by the
+                // same FlowLayout as the real tags (~5 tags → two rows).
+                FlowLayout(spacing: 6) {
+                    ForEach(Array([96, 110, 82, 124, 74].enumerated()), id: \.offset) { _, width in
+                        ShimmerShape(shape: RoundedRectangle(cornerRadius: 4))
+                            .frame(width: CGFloat(width), height: 22)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 4)
             } else if !profileTags.isEmpty {
                 FlowLayout(spacing: 6) {
                     ForEach(profileTags, id: \.self) { tag in
@@ -892,18 +980,21 @@ struct BookProfileView: View {
     private var similarWindow: some View {
         VStack(alignment: .leading, spacing: 12) {
             if similarLoading {
-                HStack(spacing: 12) {
-                    ForEach(0..<3, id: \.self) { _ in
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Theme.surface)
-                            .frame(width: 52, height: 52 * 1.5)
-                            .overlay(
-                                Image(systemName: "book.closed")
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundStyle(Theme.chrome.opacity(0.5))
-                            )
+                // Cover + title-caption skeletons at the loaded tile's exact
+                // footprint (52pt cover, 64pt caption column) so the row keeps
+                // its height when real books swap in.
+                HStack(alignment: .top, spacing: 14) {
+                    ForEach(0..<4, id: \.self) { _ in
+                        VStack(spacing: 6) {
+                            ShimmerShape(shape: RoundedRectangle(cornerRadius: 6))
+                                .frame(width: 52, height: 52 * 1.5)
+                            ShimmerBar(height: 8, cornerRadius: 3)
+                                .frame(width: 48)
+                        }
+                        .frame(width: 64)
                     }
                 }
+                .padding(.vertical, 4)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(alignment: .top, spacing: 14) {
@@ -932,7 +1023,17 @@ struct BookProfileView: View {
     private var quoteWindow: some View {
         VStack(alignment: .leading, spacing: 12) {
             if quoteLoading {
-                phosphorLoader(label: "loading quote")
+                // Mirror the loaded layout (big quote mark + text) so only the
+                // shimmer swaps out when the quote lands.
+                HStack(alignment: .top, spacing: 8) {
+                    Text("\u{201C}")
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundStyle(Theme.chrome.opacity(0.35))
+                        .offset(y: -2)
+                        .accessibilityHidden(true)
+                    ShimmerTextBlock(lines: 2, lastLineTrailingCut: 90)
+                        .padding(.top, 6)
+                }
             } else if let q = notableQuote, !q.isEmpty {
                 HStack(alignment: .top, spacing: 8) {
                     Text("\u{201C}")
@@ -1031,7 +1132,22 @@ struct BookProfileView: View {
     private var recommendWindow: some View {
         VStack(alignment: .leading, spacing: 12) {
             if recommendLoading {
-                phosphorLoader(label: "loading readers")
+                // Placeholder tiles matching recommendReaderTile's footprint
+                // (52pt avatar, name line, 22pt SEND row) so the card holds
+                // its size instead of growing when readers load.
+                HStack(alignment: .top, spacing: 14) {
+                    ForEach(0..<4, id: \.self) { _ in
+                        VStack(spacing: 6) {
+                            ShimmerCircle(size: 52)
+                            ShimmerBar(height: 8, cornerRadius: 3)
+                                .frame(width: 40)
+                            ShimmerShape(shape: Capsule())
+                                .frame(width: 56, height: 22)
+                        }
+                        .frame(width: 64)
+                    }
+                }
+                .padding(.vertical, 4)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(alignment: .top, spacing: 14) {
@@ -1175,19 +1291,6 @@ struct BookProfileView: View {
     }
 
     // MARK: - Loading / empty helpers
-
-    private func phosphorLoader(label: String, compact: Bool = false) -> some View {
-        HStack(spacing: 8) {
-            ProgressView()
-                .controlSize(compact ? .mini : .small)
-                .tint(Theme.chrome)
-            Text(label)
-                .font(.system(size: compact ? 11 : 13, weight: .regular))
-                .foregroundStyle(Theme.textTertiary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, compact ? 0 : 8)
-    }
 
     private func emptyState(text: String) -> some View {
         Text(text)

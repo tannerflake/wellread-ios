@@ -85,6 +85,18 @@ final class CoverResolutionStore {
         }
     }
 
+    /// Wipe a recorded failure (persistent and session retry-after) so an explicit
+    /// user retry — "Bad cover?" on a title-placeholder book — re-probes immediately.
+    func clearFailure(bookId: String, signature: String) {
+        queue.sync {
+            sessionRetryAfter.removeValue(forKey: bookId + "|" + signature)
+            if let e = entries[bookId], e.failedAt != nil {
+                entries.removeValue(forKey: bookId)
+                scheduleSave()
+            }
+        }
+    }
+
     /// Drop a resolution that stopped working (e.g. remote image deleted) so the chain re-runs.
     func clear(bookId: String) {
         queue.sync {

@@ -99,11 +99,43 @@ final class BookRepository {
             }
         }
         guard !missing.isEmpty else { return result }
+        let fetched = await fetchBooksFromFirestore(ids: missing)
+        cacheQueue.sync {
+            for (requestedId, b) in fetched {
+                memoryCache[requestedId] = b
+                memoryCache[b.id] = b
+            }
+        }
+        for (requestedId, b) in fetched { result[requestedId] = b }
+        return result
+    }
+
+    /// Fresh Firestore read for these ids, overwriting the memory cache — the
+    /// launch path prewarms the cache from disk and `getBooks` serves it forever,
+    /// so book-doc changes (cover overrides, dedup merges, metadata fixes) need
+    /// this bypass to ever reach a user who already holds the book locally.
+    func refreshBooks(ids: [String]) async -> [String: Book] {
+        let unique = Array(Set(ids))
+        guard !unique.isEmpty else { return [:] }
+        let fetched = await fetchBooksFromFirestore(ids: unique)
+        cacheQueue.sync {
+            for (requestedId, b) in fetched {
+                memoryCache[requestedId] = b
+                memoryCache[b.id] = b
+            }
+        }
+        var result: [String: Book] = [:]
+        for (requestedId, b) in fetched { result[requestedId] = b }
+        return result
+    }
+
+    /// Batched `in`-query fetch (30 ids per query, in parallel). Pairs of
+    /// (requested id, resolved book): a dedup tombstone resolves to the canonical
+    /// doc it was merged into, but stays keyed by the id the caller asked for so
+    /// old references keep rendering.
+    private func fetchBooksFromFirestore(ids missing: [String]) async -> [(String, Book)] {
         let chunks = stride(from: 0, to: missing.count, by: 30).map { Array(missing[$0..<min($0 + 30, missing.count)]) }
-        // Pairs of (requested id, resolved book): a dedup tombstone resolves to
-        // the canonical doc it was merged into, but stays keyed by the id the
-        // caller asked for so old references keep rendering.
-        let fetched = await withTaskGroup(of: [(String, Book)].self) { group in
+        return await withTaskGroup(of: [(String, Book)].self) { group in
             for chunk in chunks {
                 group.addTask { [self] in
                     do {
@@ -131,14 +163,6 @@ final class BookRepository {
             for await pairs in group { all.append(contentsOf: pairs) }
             return all
         }
-        cacheQueue.sync {
-            for (requestedId, b) in fetched {
-                memoryCache[requestedId] = b
-                memoryCache[b.id] = b
-            }
-        }
-        for (requestedId, b) in fetched { result[requestedId] = b }
-        return result
     }
 
     /// Resolves `book` to the community's canonical document, creating one only

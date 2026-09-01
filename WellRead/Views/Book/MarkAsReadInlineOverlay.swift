@@ -84,6 +84,10 @@ struct MarkAsReadInlineOverlay: View {
             showDateError = false
             MentionCatalog.shared.ensureLoadedForCurrentUser()
         }
+        // Half-typed thoughts survive a deep-link tap: if this card is inside a
+        // presented sheet, the tap would otherwise take the sheet (and the
+        // typing) with it.
+        .composerDraftGuard(isPresented ? markAsReadThoughts : "")
     }
 
     private var card: some View {

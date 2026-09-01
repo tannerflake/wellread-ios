@@ -24,7 +24,6 @@ struct BookBlendStoryView: View {
         case archetype
         case sharedIntro
         case bookReveal(Int)
-        case genres
         case insight(BookBlend.Insight)
         case recs(uid: String)
         case freshPicks
@@ -59,9 +58,6 @@ struct BookBlendStoryView: View {
             list.append(.sharedIntro)
             for i in result.sharedBooks.indices { list.append(.bookReveal(i)) }
         }
-        if !result.sharedGenres.isEmpty || !(result.distinctGenres[myUid] ?? []).isEmpty || !(result.distinctGenres[otherUid] ?? []).isEmpty {
-            list.append(.genres)
-        }
         for insight in result.insights.prefix(2) { list.append(.insight(insight)) }
         // One slide per direction: all of a reader's picks together.
         if !(result.recs[myUid] ?? []).isEmpty { list.append(.recs(uid: myUid)) }
@@ -79,7 +75,6 @@ struct BookBlendStoryView: View {
         case .bookReveal: return 4.4
         // Three titles to skim (and Add to Queue to hit on my page).
         case .recs: return 8.0
-        case .genres: return 9.0
         default: return 7.0
         }
     }
@@ -252,7 +247,6 @@ struct BookBlendStoryView: View {
         case .archetype: archetypePage
         case .sharedIntro: sharedIntroPage
         case .bookReveal(let index): bookRevealPage(index)
-        case .genres: genresPage
         case .insight(let insight): insightPage(insight)
         case .recs(let uid): recsPage(uid: uid)
         case .freshPicks: freshPicksPage
@@ -400,19 +394,6 @@ struct BookBlendStoryView: View {
         )
     }
 
-    private var genresPage: some View {
-        BlendTasteMapPage(
-            sharedGenres: result?.sharedGenres ?? [],
-            myGenres: result?.distinctGenres[myUid] ?? [],
-            theirGenres: result?.distinctGenres[otherUid] ?? [],
-            myName: myName,
-            otherName: otherName,
-            myPhotoURL: blend.participants[myUid]?.photoURL,
-            otherPhotoURL: blend.participants[otherUid]?.photoURL,
-            progress: pageProgress
-        )
-    }
-
     private func insightPage(_ insight: BookBlend.Insight) -> some View {
         VStack(spacing: 18) {
             Spacer()
@@ -457,7 +438,7 @@ struct BookBlendStoryView: View {
             .padding(.horizontal, 28)
             VStack(spacing: 12) {
                 ForEach(Array(recs.enumerated()), id: \.offset) { i, rec in
-                    recRow(rec, isMine: isMine, revealed: pageProgress > 0.06 + Double(i) * 0.13)
+                    recRow(rec, isMine: isMine, shelfOwner: shelfOwner, revealed: pageProgress > 0.06 + Double(i) * 0.13)
                 }
             }
             .padding(.horizontal, 24)
@@ -469,7 +450,7 @@ struct BookBlendStoryView: View {
         .sensoryFeedback(.impact(weight: .light), trigger: recs.indices.filter { pageProgress > 0.06 + Double($0) * 0.13 }.count)
     }
 
-    private func recRow(_ rec: BookBlend.Rec, isMine: Bool, revealed: Bool) -> some View {
+    private func recRow(_ rec: BookBlend.Rec, isMine: Bool, shelfOwner: String, revealed: Bool) -> some View {
         HStack(spacing: 14) {
             BookCoverView(book: bookFor(rec: rec), size: 64)
                 .shadow(color: Theme.shadowInk.opacity(0.4), radius: 8, y: 4)
@@ -482,6 +463,16 @@ struct BookBlendStoryView: View {
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Theme.paperFixed.opacity(0.65))
                     .lineLimit(1)
+                if let tier = shelfTier(rec) {
+                    HStack(spacing: 6) {
+                        TierBadge(tier: tier, size: .mini)
+                        Text("\(shelfOwner)'s rank")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Theme.paperFixed.opacity(0.55))
+                            .lineLimit(1)
+                    }
+                    .padding(.top, 2)
+                }
             }
             Spacer(minLength: 8)
             if isMine {
@@ -497,6 +488,18 @@ struct BookBlendStoryView: View {
         .opacity(revealed ? 1 : 0)
         .offset(y: revealed ? 0 : 24)
         .animation(.spring(response: 0.4, dampingFraction: 0.75), value: revealed)
+    }
+
+    /// The tier the shelf owner gave this pick. Stored on the rec since the blend
+    /// was generated; for picks off my own shelf, my live library entry wins so
+    /// blends generated before `sourceTier` existed still show a badge.
+    private func shelfTier(_ rec: BookBlend.Rec) -> String? {
+        var tier = rec.sourceTier
+        if rec.sourceUid == myUid,
+           let live = appState.userBook(sameWorkAs: bookFor(rec: rec), status: .read)?.normalizedTier {
+            tier = live
+        }
+        return tier.flatMap { spineTierLabels.contains($0) ? $0 : nil }
     }
 
     // MARK: Steal-page queueing
@@ -519,6 +522,29 @@ struct BookBlendStoryView: View {
         }
         .buttonStyle(.springPress)
         .disabled(queued)
+    }
+
+    /// Compact circular plus on the fresh-picks slide — same queueing path as the
+    /// steal pages, flipping to a check once the book is in the queue.
+    private func queuePlusButton(for rec: BookBlend.Rec) -> some View {
+        let queued = isRecQueued(rec)
+        return Button {
+            addRecToQueue(rec)
+        } label: {
+            Image(systemName: queued ? "checkmark" : "plus")
+                .font(.system(size: 14, weight: .heavy))
+                .foregroundStyle(queued ? Theme.paperFixed : Theme.inkFixed)
+                .frame(width: 30, height: 30)
+                .background(
+                    Circle()
+                        .fill(queued ? AnyShapeStyle(.white.opacity(0.22)) : AnyShapeStyle(Theme.paperFixed))
+                        .overlay(Circle().strokeBorder(Theme.inkFixed.opacity(0.25), lineWidth: 1))
+                )
+                .shadow(color: Theme.shadowInk.opacity(0.4), radius: 6, y: 3)
+        }
+        .buttonStyle(.springPress)
+        .disabled(queued)
+        .accessibilityLabel(queued ? "\(rec.title) is in your queue" : "Add \(rec.title) to your queue")
     }
 
     private func recKey(_ rec: BookBlend.Rec) -> String {
@@ -558,6 +584,10 @@ struct BookBlendStoryView: View {
                 ForEach(Array(picks.prefix(2).enumerated()), id: \.offset) { _, pick in
                     VStack(spacing: 8) {
                         BookCoverView(book: bookFor(rec: pick), size: 92)
+                            .overlay(alignment: .bottomTrailing) {
+                                queuePlusButton(for: pick)
+                                    .padding(5)
+                            }
                         Text(pick.title)
                             .font(.system(size: 15, weight: .bold))
                             .multilineTextAlignment(.center)
@@ -575,6 +605,7 @@ struct BookBlendStoryView: View {
             .padding(.horizontal, 24)
             Spacer()
         }
+        .sensoryFeedback(.success, trigger: queuedRecKeys)
     }
 
     private var outroPage: some View {
@@ -806,155 +837,6 @@ private struct BlendBookRevealPage: View {
 
 // MARK: - Taste map
 
-/// The genre-overlap slide as a live reveal: shared genres slap down one by one
-/// like stickers (each keeps its tilt), then each reader's "brings" card swings
-/// in from its own side like a polaroid. Beats key off page progress, so
-/// hold-to-pause freezes mid-reveal and tapping forward skips the wait.
-private struct BlendTasteMapPage: View {
-    let sharedGenres: [String]
-    let myGenres: [String]
-    let theirGenres: [String]
-    let myName: String
-    let otherName: String
-    let myPhotoURL: String?
-    let otherPhotoURL: String?
-    let progress: Double
-
-    private var showHeader: Bool { progress > 0.02 }
-    private var showMyCard: Bool { progress > 0.52 }
-    private var showTheirCard: Bool { progress > 0.64 }
-    private var showFooter: Bool { progress > 0.74 }
-
-    /// Chips land one at a time; the stagger compresses so long lists still
-    /// finish before the cards arrive.
-    private func chipVisible(_ index: Int) -> Bool {
-        progress > min(0.10 + Double(index) * 0.055, 0.46)
-    }
-
-    private var visibleChipCount: Int {
-        sharedGenres.indices.filter { chipVisible($0) }.count
-    }
-
-    private func chipTilt(_ index: Int) -> Double {
-        [-3, 2.5, -2, 3, -1.5, 2][index % 6]
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            Spacer(minLength: 70)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("THE TASTE MAP")
-                    .font(.system(size: 11, weight: .heavy))
-                    .tracking(2)
-                    .foregroundStyle(Theme.paperFixed.opacity(0.6))
-                Text(sharedGenres.first.map { "\($0) is your common ground" } ?? "Different shelves, same energy")
-                    .font(.system(size: 27, weight: .bold))
-                    .foregroundStyle(Theme.paperFixed)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .opacity(showHeader ? 1 : 0)
-            .offset(y: showHeader ? 0 : 14)
-            .animation(.spring(response: 0.45, dampingFraction: 0.8), value: showHeader)
-
-            if !sharedGenres.isEmpty {
-                FlowLayout(spacing: 10) {
-                    ForEach(Array(sharedGenres.enumerated()), id: \.offset) { i, genre in
-                        stickerChip(genre, index: i, revealed: chipVisible(i))
-                    }
-                }
-            }
-
-            HStack(alignment: .top, spacing: 14) {
-                bringsCard(
-                    name: myName, photoURL: myPhotoURL, genres: myGenres,
-                    revealed: showMyCard, tilt: -1.8, slideFrom: -60
-                )
-                bringsCard(
-                    name: otherName, photoURL: otherPhotoURL, genres: theirGenres,
-                    revealed: showTheirCard, tilt: 1.8, slideFrom: 60
-                )
-            }
-            .padding(.top, 4)
-
-            Text("Put it all together and that's some serious range.")
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(Theme.paperFixed.opacity(0.75))
-                .frame(maxWidth: .infinity, alignment: .center)
-                .opacity(showFooter ? 1 : 0)
-                .offset(y: showFooter ? 0 : 10)
-                .animation(.spring(response: 0.45, dampingFraction: 0.8), value: showFooter)
-
-            Spacer()
-        }
-        .padding(.horizontal, 24)
-        .sensoryFeedback(.impact(weight: .light), trigger: visibleChipCount)
-        .sensoryFeedback(.impact(weight: .medium), trigger: showMyCard)
-        .sensoryFeedback(.impact(weight: .medium), trigger: showTheirCard)
-    }
-
-    /// A shared genre as a physical sticker: paper fill, permanent tilt, and a
-    /// stamp-down landing (scales from oversized, like the AGREED! stamp).
-    private func stickerChip(_ genre: String, index: Int, revealed: Bool) -> some View {
-        Text(genre)
-            .font(.system(size: 14, weight: .bold))
-            .foregroundStyle(Theme.inkFixed)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 9)
-            .background(Capsule().fill(Theme.paperFixed))
-            .shadow(color: Theme.shadowInk.opacity(0.35), radius: 6, y: 3)
-            .rotationEffect(.degrees(chipTilt(index)))
-            .opacity(revealed ? 1 : 0)
-            .scaleEffect(revealed ? 1 : 1.8)
-            .animation(.spring(response: 0.32, dampingFraction: 0.62), value: revealed)
-    }
-
-    private func bringsCard(
-        name: String, photoURL: String?, genres: [String],
-        revealed: Bool, tilt: Double, slideFrom: CGFloat
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                BlendAvatar(urlString: photoURL, name: name, size: 26)
-                Text("\(name.uppercased()) BRINGS")
-                    .font(.system(size: 10, weight: .heavy))
-                    .tracking(1.4)
-                    .foregroundStyle(Theme.paperFixed.opacity(0.6))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
-            if genres.isEmpty {
-                Text("Pure overlap")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Theme.paperFixed.opacity(0.75))
-            } else {
-                ForEach(genres.prefix(3), id: \.self) { genre in
-                    Text(genre)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Theme.paperFixed)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(Capsule().strokeBorder(Theme.paperFixed.opacity(0.45), lineWidth: 1.5))
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 18)
-                .fill(.white.opacity(0.10))
-                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.14), lineWidth: 1))
-        )
-        .shadow(color: Theme.shadowInk.opacity(0.3), radius: 10, y: 6)
-        .rotationEffect(.degrees(revealed ? tilt : tilt * 3))
-        .opacity(revealed ? 1 : 0)
-        .offset(x: revealed ? 0 : slideFrom, y: revealed ? 0 : 26)
-        .animation(.spring(response: 0.45, dampingFraction: 0.7), value: revealed)
-    }
-}
-
 #if DEBUG
 extension BookBlend {
     /// Demo blend for `-uiPreviewBlend` simulator runs — exercises every story page.
@@ -999,12 +881,12 @@ extension BookBlend {
                 ],
                 recs: [
                     me: [
-                        Rec(title: "The Secret History", author: "Donna Tartt", bookId: nil, coverURL: nil, reason: "Alex's highest-rated fiction — dark academia you'd devour.", sourceUid: them),
-                        Rec(title: "Mexican Gothic", author: "Silvia Moreno-Garcia", bookId: nil, coverURL: nil, reason: "The horror gateway Alex swears by.", sourceUid: them),
+                        Rec(title: "The Secret History", author: "Donna Tartt", bookId: nil, coverURL: nil, reason: "Alex's highest-rated fiction — dark academia you'd devour.", sourceUid: them, sourceTier: "S"),
+                        Rec(title: "Mexican Gothic", author: "Silvia Moreno-Garcia", bookId: nil, coverURL: nil, reason: "The horror gateway Alex swears by.", sourceUid: them, sourceTier: "A"),
                     ],
                     them: [
-                        Rec(title: "Basic Economics", author: "Thomas Sowell", bookId: nil, coverURL: nil, reason: "Tanner's A-tier — the nonfiction spine of his shelf.", sourceUid: me),
-                        Rec(title: "Endurance", author: "Alfred Lansing", bookId: nil, coverURL: nil, reason: "Survival stakes with none of the fiction.", sourceUid: me),
+                        Rec(title: "Basic Economics", author: "Thomas Sowell", bookId: nil, coverURL: nil, reason: "Tanner's A-tier — the nonfiction spine of his shelf.", sourceUid: me, sourceTier: "A"),
+                        Rec(title: "Endurance", author: "Alfred Lansing", bookId: nil, coverURL: nil, reason: "Survival stakes with none of the fiction.", sourceUid: me, sourceTier: "B"),
                     ],
                 ],
                 freshPicks: [

@@ -22,8 +22,8 @@ final class OnboardingWizardModel: ObservableObject {
 
     enum WizardStep: Int, CaseIterable {
         case intro, name, greet, handle, photo, goal, characteristics, taste,
-             reading, roster, invite, notifications, appearance, stamping, card,
-             founderNote, goodreads
+             reading, phone, contacts, roster, invite, notifications, appearance,
+             stamping, card, founderNote, goodreads
 
         /// Book spines filled on the shelf meter while this step is showing.
         var spineCount: Int {
@@ -36,11 +36,12 @@ final class OnboardingWizardModel: ObservableObject {
             case .characteristics: return 5
             case .taste: return 6
             case .reading: return 7
-            case .roster: return 8
-            case .invite: return 9
-            case .notifications: return 10
-            case .appearance: return 11
-            case .stamping, .card, .founderNote, .goodreads: return 12
+            case .phone: return 8
+            case .contacts, .roster: return 9
+            case .invite: return 10
+            case .notifications: return 11
+            case .appearance: return 12
+            case .stamping, .card, .founderNote, .goodreads: return 13
             }
         }
 
@@ -111,9 +112,26 @@ final class OnboardingWizardModel: ObservableObject {
     @Published var isLoadingContacts = false
     @Published var contactsGranted = false
     @Published var invitedContactIds: Set<String> = []
+    /// People from the user's address book who are already on SPINE, matched
+    /// on device by phone number. These outrank taste-similar strangers on the
+    /// roster step: someone you actually know is the better first follow.
+    @Published var contactMatches: [MatchedMember] = []
+    @Published var isMatchingContacts = false
+    /// True once a contact match has been attempted on the roster step, so the
+    /// prompt card stops asking after the user has answered either way.
+    @Published var didAttemptContactMatch = false
+    /// Access was refused: say so quietly instead of re-prompting (a second
+    /// requestAccess call is a no-op once the user has denied).
+    @Published var contactAccessDenied = false
+    /// Phone number as typed/formatted. Optional and skippable: it exists only
+    /// so friends who already have the user in their contacts can find them.
+    @Published var phoneNumber = ""
 
     private var handleCheckTask: Task<Void, Never>?
     private var didFollowSomeone = false
+    /// One announcement per wizard run, even if the user walks back onto the
+    /// roster step and continues again.
+    private var didAnnounceJoinToContacts = false
     /// Navigation debounce: catches a same-gesture double-fire (two taps landing
     /// in the same frame) so one press can't skip a step. Scoped to the step it
     /// fired from, not to wall-clock alone: a plain time window also swallowed
@@ -145,6 +163,18 @@ final class OnboardingWizardModel: ObservableObject {
         // -uiPreviewWizardAppearance jumps to the light/dark/system step.
         if previewMode, ProcessInfo.processInfo.arguments.contains("-uiPreviewWizardAppearance") {
             step = .appearance
+        }
+        // -uiPreviewWizardPhone jumps to the phone-number step.
+        if previewMode, ProcessInfo.processInfo.arguments.contains("-uiPreviewWizardPhone") {
+            step = .phone
+        }
+        // -uiPreviewWizardTaste jumps to the genre taste step.
+        if previewMode, ProcessInfo.processInfo.arguments.contains("-uiPreviewWizardTaste") {
+            step = .taste
+        }
+        // -uiPreviewWizardContacts jumps to the contacts sync step.
+        if previewMode, ProcessInfo.processInfo.arguments.contains("-uiPreviewWizardContacts") {
+            step = .contacts
         }
     }
 
@@ -235,6 +265,17 @@ final class OnboardingWizardModel: ObservableObject {
             step = next
         }
         return true
+    }
+
+    /// Advances only when the wizard is still on `expected`. Callers that
+    /// advance after an `await` (a permission dialog, a contact scan) use this:
+    /// the step debounce is time-scoped and can't catch a second tap that lands
+    /// while the await is outstanding, and two advances would skip a step.
+    /// Unlike latching the buttons, this can never strand the user on a screen
+    /// whose await failed to return.
+    func advanceIfCurrent(_ expected: WizardStep) {
+        guard step == expected else { return }
+        advance()
     }
 
     func goBack() {
@@ -414,6 +455,51 @@ final class OnboardingWizardModel: ObservableObject {
         OnboardingCurrentlyReadingPromptStorage.markShown(for: uid)
     }
 
+    // MARK: Phone (contact matching)
+
+    /// Digits only, ignoring display formatting.
+    var phoneDigits: String { ContactSyncService.normalizePhoneNumber(phoneNumber) }
+
+    /// A real number is 10 digits, or 11 with a leading country "1". Below that
+    /// the field is blank or half typed, and "That's me" stays dim.
+    var canSubmitPhone: Bool {
+        let digits = phoneDigits
+        return digits.count == 10 || (digits.count == 11 && digits.hasPrefix("1"))
+    }
+
+    /// Reformats while typing. `old` is what lets a backspace that landed on a
+    /// separator eat the digit behind it: without that, deleting ")" leaves the
+    /// digits unchanged and the formatter snaps the character straight back,
+    /// which reads as a field that refuses to be edited.
+    func phoneInputChanged(old: String, new: String) {
+        var digits = ContactSyncService.normalizePhoneNumber(new)
+        if new.count < old.count, digits == ContactSyncService.normalizePhoneNumber(old) {
+            digits = String(digits.dropLast())
+        }
+        let formatted = ContactSyncService.formatPhoneNumberForDisplay(digits)
+        if formatted != phoneNumber { phoneNumber = formatted }
+    }
+
+    /// Prefills from the account when we already have one on file (re-running
+    /// the wizard, or a number added from Edit profile).
+    func prefillPhoneIfNeeded() {
+        guard phoneNumber.isEmpty,
+              let existing = authService?.appUser?.phoneNumber, !existing.isEmpty else { return }
+        phoneNumber = ContactSyncService.formatPhoneNumberForDisplay(existing)
+    }
+
+    /// Saves the number and moves on. Best effort, exactly like the old
+    /// ProfileCompletionView write: a failure here must never block onboarding,
+    /// so the step never waits on it and never surfaces an error.
+    func finishPhoneStep() {
+        let digits = phoneDigits
+        if !digits.isEmpty, !previewMode, let uid {
+            let repo = userRepo
+            Task { try? await repo.updatePhoneNumber(uid: uid, phoneNumber: digits) }
+        }
+        advance()
+    }
+
     // MARK: Roster + follows
 
     /// Roster entries most similar to this user: overlap between their stored
@@ -421,7 +507,10 @@ final class OnboardingWizardModel: ObservableObject {
     /// minimum (padded with the best available when overlap is thin), eight
     /// maximum; shared tags come back in the wizard's own pick order.
     var similarReaders: [(entry: RosterEntry, sharedTags: [String])] {
-        let scored = roster.map { entry -> (entry: RosterEntry, sharedTags: [String]) in
+        // Anyone already shown under "FROM YOUR CONTACTS" is out: a duplicate
+        // row with a second Follow button reads as a bug.
+        let contactUids = Set(contactMatches.map(\.uid))
+        let scored = roster.filter { !contactUids.contains($0.uid) }.map { entry -> (entry: RosterEntry, sharedTags: [String]) in
             let theirs = Set(entry.user.readingInterestTags)
             let shared = Self.characteristicTags.filter { selectedTags.contains($0) && theirs.contains($0) }
                 + Self.tasteTree.flatMap { [$0.root] + $0.children }.filter { selectedTags.contains($0) && theirs.contains($0) }
@@ -472,6 +561,7 @@ final class OnboardingWizardModel: ObservableObject {
     /// Called when leaving the roster step: one appUser refresh covers every
     /// follow made there (per-tap refreshes would restart feed listeners each time).
     func finishRosterStep() {
+        announceJoinToMatchedContacts()
         if didFollowSomeone, !previewMode {
             let service = authService
             let state = appState
@@ -485,6 +575,81 @@ final class OnboardingWizardModel: ObservableObject {
         advance()
     }
 
+    // MARK: Contacts on SPINE (roster step)
+
+    /// True when the address book can be read without showing a dialog.
+    private static var contactsAlreadyAuthorized: Bool {
+        switch ContactSyncService.authorizationStatus {
+        case .authorized, .limited: return true
+        default: return false
+        }
+    }
+
+    /// Contacts access is already granted, so the roster step can put people
+    /// the user knows first without asking for anything.
+    var canMatchContactsSilently: Bool {
+        previewMode ? false : Self.contactsAlreadyAuthorized
+    }
+
+    /// Matches the address book against SPINE members for the roster step.
+    /// `requestingPermission` is true only when the user tapped the prompt, so
+    /// the OS dialog never appears unprompted (App Store guideline 5.1.1(v)).
+    /// Contacts never leave the device; matching runs locally.
+    ///
+    /// Also fills `inviteCandidates`, so granting here means the invite step
+    /// two screens later is already loaded and asks for nothing.
+    func matchContactsForRoster(requestingPermission: Bool) async {
+        guard !isMatchingContacts else { return }
+        if previewMode {
+            isMatchingContacts = true
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            contactsGranted = true
+            didAttemptContactMatch = true
+            inviteCandidates = Self.previewContacts
+            contactMatches = Self.previewContactMatches
+            isMatchingContacts = false
+            return
+        }
+        if !Self.contactsAlreadyAuthorized {
+            guard requestingPermission else { return }
+            let granted = await ContactSyncService.requestAccess()
+            guard granted else {
+                contactAccessDenied = true
+                didAttemptContactMatch = true
+                return
+            }
+        }
+        contactsGranted = true
+        isMatchingContacts = true
+        defer {
+            isMatchingContacts = false
+            didAttemptContactMatch = true
+        }
+        let contacts = await ContactSyncService.fetchContacts()
+        // 500, matching the invite step: a contact match found beyond the
+        // roster's 300-reader display window still deserves to surface, and
+        // MatchedMember carries its own User so it renders on its own.
+        let readers = await userRepo.fetchAllReaderProfiles(excludingUid: uid, limit: 500)
+        let result = ContactSyncService.match(contacts: contacts, readers: readers)
+        contactMatches = result.onSpine.sorted {
+            $0.user.displayName.localizedCaseInsensitiveCompare($1.user.displayName) == .orderedAscending
+        }
+        inviteCandidates = result.toInvite
+    }
+
+    /// Tells the people this user matched from their address book that someone
+    /// they know just joined. Fires once, on leaving the roster step, so the
+    /// user has already had their chance to follow (the server skips anyone
+    /// they followed here). Best effort and fire-and-forget: this must never
+    /// hold up the wizard.
+    ///
+    /// Only the matched SPINE uids are sent. The address book stays on device.
+    private func announceJoinToMatchedContacts() {
+        guard !previewMode, !contactMatches.isEmpty, !didAnnounceJoinToContacts else { return }
+        didAnnounceJoinToContacts = true
+        ContactSyncService.announceJoinToMatchedContacts(contactMatches)
+    }
+
     // MARK: Contacts / invites
 
     /// Requests contacts access (OS dialog fires here and only here), then
@@ -496,6 +661,9 @@ final class OnboardingWizardModel: ObservableObject {
             inviteCandidates = Self.previewContacts
             return true
         }
+        // The roster step already synced and matched: reuse that result rather
+        // than re-scanning the address book two screens later.
+        if contactsGranted, !inviteCandidates.isEmpty { return true }
         let granted = await ContactSyncService.requestAccess()
         guard granted else { return false }
         contactsGranted = true
@@ -692,6 +860,22 @@ final class OnboardingWizardModel: ObservableObject {
         SyncedContact(id: "c2", displayName: "Katie B.", phoneNumbers: ["7375550188"], matchKeys: []),
         SyncedContact(id: "c3", displayName: "Dad", phoneNumbers: ["2145550107"], matchKeys: []),
     ]
+
+    /// Demo "already on SPINE" contact matches for -uiPreviewOnboardingWizard.
+    /// The second one keeps a different address-book name on purpose, so the
+    /// "In your contacts as ..." line has something to render.
+    static let previewContactMatches: [MatchedMember] = {
+        let entries = previewRoster.prefix(2)
+        let contacts = [
+            SyncedContact(id: "m1", displayName: entries.first?.user.displayName ?? "Maya Chen",
+                          phoneNumbers: ["5125550141"], matchKeys: []),
+            SyncedContact(id: "m2", displayName: "Katie B.",
+                          phoneNumbers: ["7375550188"], matchKeys: []),
+        ]
+        return zip(entries, contacts).map { entry, contact in
+            MatchedMember(uid: entry.uid, user: entry.user, contact: contact)
+        }
+    }()
 }
 
 // MARK: - Haptics
@@ -798,6 +982,10 @@ struct OnboardingWizardView: View {
                 WizardTasteStep(model: model)
             case .reading:
                 WizardReadingStep(model: model)
+            case .phone:
+                WizardPhoneStep(model: model)
+            case .contacts:
+                WizardContactsSyncStep(model: model)
             case .roster:
                 WizardRosterStep(model: model)
             case .invite:
@@ -865,7 +1053,7 @@ private struct WizardStepRemovalModifier: ViewModifier {
 
 struct ShelfProgressMeter: View {
     let filled: Int
-    static let totalSlots = 12
+    static let totalSlots = 13
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -885,7 +1073,7 @@ struct ShelfProgressMeter: View {
             .animation(.spring(response: 0.45, dampingFraction: 0.7), value: filled)
             Rectangle()
                 .fill(Theme.textPrimary)
-                .frame(width: 118, height: 2)
+                .frame(width: 130, height: 2)
                 .clipShape(Capsule())
         }
         .accessibilityElement(children: .ignore)

@@ -141,12 +141,14 @@ final class GoodreadsWizardModel: ObservableObject {
         importedWorkKeys = []
         persist()
         enterStep(for: s.phase)
+        warmISBNCache()
         advancePastUndecidable()
     }
 
     private func resume(_ saved: GoodreadsWizardSession) {
         session = saved
         matchStates = saved.matchedBooks.mapValues { .matched($0) }
+        warmISBNCache()
         enterStep(for: saved.phase)
         advancePastUndecidable()
     }
@@ -181,6 +183,21 @@ final class GoodreadsWizardModel: ObservableObject {
     private var pendingActiveRows: [GoodreadsRow] {
         guard let s = session else { return [] }
         return s.activeRows.filter { s.decisions[$0.id] == nil }
+    }
+
+    /// Resolve every undecided row's ISBN in bulk up front (batched cache check
+    /// + one ISBNdb bulk request), so the per-row match lookups become cache
+    /// hits. Re-kicks the match window when done, in case its first rows ran
+    /// before the warm cache landed.
+    private func warmISBNCache() {
+        guard let s = session else { return }
+        let rows = (s.readRows + s.queueRows).filter { s.decisions[$0.id] == nil && s.matchedBooks[$0.id] == nil }
+        guard !rows.isEmpty else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            await self.service.prefetchISBNs(for: rows)
+            self.prefetchMatches()
+        }
     }
 
     private func prefetchMatches() {
@@ -512,6 +529,9 @@ final class GoodreadsWizardModel: ObservableObject {
         step = .bulkImporting
         Task { [weak self] in
             guard let self, let appState = self.appState else { return }
+            // Bulk-resolve every ISBN first (cache check + one bulk API call);
+            // the per-row matches below then mostly read from cache.
+            await self.service.prefetchISBNs(for: rows)
             var failedCount = 0
             for row in rows {
                 var outcome: GoodreadsMatchOutcome
@@ -527,9 +547,11 @@ final class GoodreadsWizardModel: ObservableObject {
                         try? await Task.sleep(nanoseconds: 2_000_000_000)
                         outcome = await self.service.matchRow(row)
                     }
-                    // Pace the API: a large library in a tight loop trips rate limits,
-                    // and every throttled row used to be silently skipped.
-                    try? await Task.sleep(nanoseconds: 150_000_000)
+                    // Light pacing for rows that miss the prefetched cache and
+                    // fall to per-row API lookups (no-ISBN rows' title searches;
+                    // ISBNdb's own pacer handles its tier). Prefetched rows are
+                    // cache hits, so this loop is no longer API-bound.
+                    try? await Task.sleep(nanoseconds: 50_000_000)
                 }
                 switch outcome {
                 case .failed:

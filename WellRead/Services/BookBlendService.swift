@@ -22,6 +22,26 @@ final class BookBlendService {
 
     private init() {}
 
+    /// Books that should never surface as a Book Blend rec regardless of source
+    /// or path (deterministic fallback or AI). Matched by bookId first, then
+    /// normalized title+author so an AI-hallucinated rec with no bookId still
+    /// gets caught. Currently: "Conscience of a Conservative" (Jeff Flake) —
+    /// keeps showing up as a rec off @tan's shelf; Tanner asked it never be
+    /// recommended off his blends.
+    private static let excludedRecBookIds: Set<String> = ["9780399592928"]
+    private static let excludedRecKeys: Set<String> = ["conscienceofaconservative|flake"]
+
+    private func isExcludedFromRecs(bookId: String?, title: String, author: String) -> Bool {
+        if let bookId, Self.excludedRecBookIds.contains(bookId) { return true }
+        let probe = Book(id: "", title: title, author: author, coverURL: "", pageCount: nil, publishedDate: nil, description: nil, genres: [])
+        if let key = normalizedKey(probe), Self.excludedRecKeys.contains(key) { return true }
+        return false
+    }
+
+    private func filterExcludedRecs(_ recs: [BookBlend.Rec]) -> [BookBlend.Rec] {
+        recs.filter { !isExcludedFromRecs(bookId: $0.bookId, title: $0.title, author: $0.author) }
+    }
+
     // MARK: - Repo
 
     /// `isFromCache` is true for snapshots served from local persistence — callers
@@ -162,9 +182,14 @@ final class BookBlendService {
             if !ai.freshPicks.isEmpty { result.freshPicks = ai.freshPicks }
         }
 
-        result.recs[accepterUid] = hydrate(recs: result.recs[accepterUid] ?? [], fromShelfOf: theirReads, sourceUid: otherUid)
-        result.recs[otherUid] = hydrate(recs: result.recs[otherUid] ?? [], fromShelfOf: myReads, sourceUid: accepterUid)
-        result.freshPicks = await hydrateFreshPicks(result.freshPicks)
+        result.recs[accepterUid] = filterExcludedRecs(hydrate(recs: result.recs[accepterUid] ?? [], fromShelfOf: theirReads, sourceUid: otherUid))
+        result.recs[otherUid] = filterExcludedRecs(hydrate(recs: result.recs[otherUid] ?? [], fromShelfOf: myReads, sourceUid: accepterUid))
+        // "Neither of you has read": drop anything on either shelf (read or in
+        // progress) before and after cover resolution — the AI only sees each
+        // reader's top 35 titles, so it happily picks a book from further down.
+        let shelved = (mine + theirs).filter { $0.status != .wantToRead }
+        let freshCandidates = filterAlreadyShelved(filterExcludedRecs(result.freshPicks), shelved: shelved)
+        result.freshPicks = Array(filterAlreadyShelved(await hydrateFreshPicks(freshCandidates), shelved: shelved).prefix(2))
 
         var saved = blend
         saved.status = .ready
@@ -243,8 +268,6 @@ final class BookBlendService {
         let genresB = genreCounts(readsB)
         let setA = Set(genresA.keys), setB = Set(genresB.keys)
         let intersection = setA.intersection(setB)
-        let union = setA.union(setB)
-        let genreJaccard = union.isEmpty ? 0.0 : Double(intersection.count) / Double(union.count)
 
         let sharedGenres = intersection
             .sorted { (genresA[$0]! + genresB[$0]!) > (genresA[$1]! + genresB[$1]!) }
@@ -256,18 +279,49 @@ final class BookBlendService {
             .sorted { genresB[$0]! > genresB[$1]! }
             .prefix(4).map { $0.capitalized }
 
-        // Score: genre kinship + shared-shelf size + rating agreement → 30…98.
-        // Genre Jaccard rarely clears 0.6 even for twins, so it gets stretched.
+        // Score: genre kinship + shared-shelf size + rating agreement → 8…99.
+        //
+        // Calibrated against the first 72 real blends (2026-09-01), which the
+        // previous formula squeezed into 40–87 with a median of 55: set-Jaccard
+        // on genre tokens never cleared 0.25, rating agreement lived in 0.6–1.0
+        // because readers mostly like what they finish, and full overlap marks
+        // needed a quarter of the smaller shelf. Each signal is now measured
+        // where real pairs actually differ and stretched so the ends are reachable.
         let minLib = Double(min(readsA.count, readsB.count))
-        let genreScore = min(1.0, genreJaccard * 1.9)
-        let overlapScore = minLib < 1 ? 0.0 : min(1.0, Double(shared.count) / max(4.0, minLib * 0.25))
-        let agreementScore = agreement ?? 0.55
-        let score01 = 0.42 * genreScore + 0.30 * overlapScore + 0.28 * agreementScore
-        let score = Int((30.0 + score01 * 68.0).rounded())
+
+        // Genre kinship: cosine of sqrt-damped genre-count fingerprints. Damping
+        // keeps "fiction" from dominating; ~0.3 is a typical pair, 0.65+ twins.
+        let genreCosine = Self.dampedCosine(genresA, genresB)
+        let genreScore = Self.unit((genreCosine - 0.15) / 0.50)
+
+        // Shared shelf: full marks at 12% of the smaller shelf (floor 3), concave
+        // so the first few shared books count for the most.
+        let overlapScore = minLib < 1
+            ? 0.0
+            : Self.unit(Double(shared.count) / max(3.0, minLib * 0.12)).squareRoot()
+
+        // Rating agreement: 0.60…0.95 observed → 0…1, shrunk toward neutral when
+        // only a book or two is rated by both.
+        let agreementScore: Double
+        if let agreement, !agreements.isEmpty {
+            let n = Double(agreements.count)
+            let confidence = n / (n + 2.0)
+            agreementScore = 0.5 + (Self.unit((agreement - 0.60) / 0.35) - 0.5) * confidence
+        } else {
+            agreementScore = 0.5
+        }
+
+        let raw = 0.40 * genreScore + 0.32 * overlapScore + 0.28 * agreementScore
+        let stretched = Self.unit((raw - 0.12) / 0.72)
+        var score = 8.0 + 91.0 * stretched
+        // Tiny shelves carry little signal: pull toward a modest middle.
+        let shelfConfidence = Self.unit(minLib / 12.0)
+        score = 38.0 + (score - 38.0) * shelfConfidence
+        let scoreInt = Int(score.rounded())
 
         return BlendStats(
-            score: score,
-            verdict: Self.verdict(for: score),
+            score: scoreInt,
+            verdict: Self.verdict(for: scoreInt),
             sharedBooks: Array(shared.prefix(12)),
             sharedGenres: Array(sharedGenres),
             distinctGenres: [uidA: Array(distinctA), uidB: Array(distinctB)],
@@ -277,12 +331,29 @@ final class BookBlendService {
 
     static func verdict(for score: Int) -> String {
         switch score {
-        case 88...: return "Shelf Soulmates"
-        case 75..<88: return "Same Chapter"
-        case 62..<75: return "Plot Compatible"
-        case 48..<62: return "Cross-Genre Chemistry"
+        case 85...: return "Shelf Soulmates"
+        case 70..<85: return "Same Chapter"
+        case 55..<70: return "Plot Compatible"
+        case 38..<55: return "Cross-Genre Chemistry"
         default: return "Opposite Shelves"
         }
+    }
+
+    private static func unit(_ x: Double) -> Double { min(1.0, max(0.0, x)) }
+
+    /// Cosine similarity between two genre-count fingerprints after sqrt-damping
+    /// each count, so a shelf that is 80% "fiction" still gets compared on its
+    /// subgenres rather than on the one token everybody shares.
+    private static func dampedCosine(_ a: [String: Int], _ b: [String: Int]) -> Double {
+        var dot = 0.0
+        for (token, countA) in a {
+            guard let countB = b[token] else { continue }
+            dot += Double(countA * countB).squareRoot()
+        }
+        let normA = Double(a.values.reduce(0, +)).squareRoot()
+        let normB = Double(b.values.reduce(0, +)).squareRoot()
+        guard normA > 0, normB > 0 else { return 0 }
+        return dot / (normA * normB)
     }
 
     /// How much a reader liked a book, −1…+1 (rating first, tier fallback) —
@@ -320,6 +391,11 @@ final class BookBlendService {
         return "\(cleanTitle)|\(authorLast)"
     }
 
+    /// Tokens that describe marketing, not taste.
+    private static let ignoredGenreTokens: Set<String> = [
+        "general", "new york times bestseller", "bestseller", "bestsellers",
+    ]
+
     /// Genre token → occurrence count across a shelf ("Fiction / Thrillers" splits
     /// into comparable tokens, dropping "general" — BookSearchRanker style).
     private func genreCounts(_ reads: [UserBook]) -> [String: Int] {
@@ -330,7 +406,7 @@ final class BookBlendService {
             for genre in genres {
                 for part in genre.split(separator: "/") {
                     let token = part.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                    if !token.isEmpty && token != "general" { tokens.insert(token) }
+                    if !token.isEmpty && !Self.ignoredGenreTokens.contains(token) { tokens.insert(token) }
                 }
             }
             for token in tokens { counts[token, default: 0] += 1 }
@@ -400,6 +476,7 @@ final class BookBlendService {
             .filter { entry in
                 guard !targetIds.contains(entry.bookId) else { return false }
                 if let key = normalizedKey(entry.book), targetKeys.contains(key) { return false }
+                if isExcludedFromRecs(bookId: entry.book?.id, title: entry.book?.title ?? "", author: entry.book?.author ?? "") { return false }
                 return (affinity(rating: entry.rating, tier: entry.tier) ?? -1) > 0.4
             }
             .sorted { (affinity(rating: $0.rating, tier: $0.tier) ?? 0) > (affinity(rating: $1.rating, tier: $1.tier) ?? 0) }
@@ -412,7 +489,8 @@ final class BookBlendService {
                     bookId: book.id,
                     coverURL: book.coverURL,
                     reason: "One of \(otherName)'s top-shelf reads.",
-                    sourceUid: sourceUid
+                    sourceUid: sourceUid,
+                    sourceTier: entry.tier
                 )
             }
     }
@@ -445,7 +523,7 @@ final class BookBlendService {
           "insights": [{"title": "2-4 word punchy header", "body": "one specific sentence about their combined taste"}, x3],
           "recsForA": [{"title": "...", "author": "...", "reason": "one punchy line on why A should steal this from B's shelf"}, x3 — MUST be books from B's list that A has not read],
           "recsForB": [same, from A's shelf, x3],
-          "freshPicks": [{"title": "...", "author": "...", "reason": "why this fits both"}, x2 — real books NEITHER has read, to read together]
+          "freshPicks": [{"title": "...", "author": "...", "reason": "why this fits both"}, x4 — real books NEITHER has read, to read together. Never pick anything from either shelf or the do-not-pick list; the first two that pass are shown]
         }
         """
         let user = """
@@ -461,6 +539,9 @@ final class BookBlendService {
 
         \(nameB)'s shelf (best first):
         \(shelfSummary(libraryB))
+
+        Do NOT pick as fresh picks (already on a shelf, beyond the lists above):
+        \(doNotPickList(libraryA + libraryB))
         """
         // Time-boxed: the accepter is staring at the "Blending" screen. Past 30s
         // the deterministic fallback content ships instead.
@@ -468,6 +549,33 @@ final class BookBlendService {
             return nil
         }
         return parseAIContent(text, uidA: uidA, uidB: uidB)
+    }
+
+    /// Every read / in-progress title across both shelves that the best-35 shelf
+    /// summaries leave out — Discover-style avoid list so Claude doesn't burn
+    /// fresh picks on books one reader finished years ago.
+    private func doNotPickList(_ libraries: [UserBook]) -> String {
+        let shown = Set(libraries.filter { $0.status == .read }
+            .sorted { (affinity(rating: $0.rating, tier: $0.tier) ?? -2) > (affinity(rating: $1.rating, tier: $1.tier) ?? -2) }
+            .prefix(35).map(\.bookId))
+        var seen = Set<String>()
+        let titles = libraries
+            .filter { $0.status != .wantToRead && !shown.contains($0.bookId) }
+            .compactMap { $0.book?.title }
+            .filter { seen.insert($0.lowercased()).inserted }
+        return titles.prefix(200).joined(separator: "; ")
+    }
+
+    /// Discover's exclusion rule applied to blend picks: a pick is out if its
+    /// resolved bookId is on a shelf, or its title/author names the same work
+    /// as any shelved book (editions differ, Google resolves to other volumes).
+    private func filterAlreadyShelved(_ picks: [BookBlend.Rec], shelved: [UserBook]) -> [BookBlend.Rec] {
+        let shelvedIds = Set(shelved.map(\.bookId))
+        let shelvedBooks = shelved.compactMap(\.book)
+        return picks.filter { pick in
+            if let id = pick.bookId, shelvedIds.contains(id) { return false }
+            return !shelvedBooks.contains { LibraryDedup.matches(title: pick.title, author: pick.author, book: $0) }
+        }
     }
 
     private func shelfSummary(_ library: [UserBook]) -> String {
@@ -529,7 +637,7 @@ final class BookBlendService {
                 uidA: recs("recsForA", sourceUid: uidB),
                 uidB: recs("recsForB", sourceUid: uidA),
             ],
-            freshPicks: Array(freshPicks.prefix(2))
+            freshPicks: Array(freshPicks.prefix(4))
         )
     }
 
@@ -538,18 +646,21 @@ final class BookBlendService {
     /// AI recs come back as title+author; match them to the source shelf for real
     /// bookId/cover. Unmatched recs are kept (title-only placeholder covers render fine).
     private func hydrate(recs: [BookBlend.Rec], fromShelfOf source: [UserBook], sourceUid: String) -> [BookBlend.Rec] {
-        var byKey: [String: Book] = [:]
+        var byKey: [String: UserBook] = [:]
         for entry in source {
-            if let book = entry.book, let key = normalizedKey(book) { byKey[key] = book }
+            if let book = entry.book, let key = normalizedKey(book) { byKey[key] = entry }
         }
         return recs.map { rec in
-            guard rec.coverURL == nil || rec.coverURL?.isEmpty == true else { return rec }
             var rec = rec
             let probe = Book(id: "", title: rec.title, author: rec.author, coverURL: "", pageCount: nil, publishedDate: nil, description: nil, genres: [])
-            if let key = normalizedKey(probe), let book = byKey[key] {
+            guard let key = normalizedKey(probe), let entry = byKey[key], let book = entry.book else { return rec }
+            // The shelf owner's tier rides along even when the rec already carries a
+            // cover — the story slides show whose rank the pick came from.
+            rec.sourceTier = rec.sourceTier ?? entry.tier
+            rec.sourceUid = sourceUid
+            if rec.coverURL == nil || rec.coverURL?.isEmpty == true {
                 rec.bookId = book.id
                 rec.coverURL = book.coverURL
-                rec.sourceUid = sourceUid
             }
             return rec
         }
@@ -558,7 +669,7 @@ final class BookBlendService {
     /// Fresh picks exist nowhere in either library — best-effort Google Books lookup for covers.
     private func hydrateFreshPicks(_ picks: [BookBlend.Rec]) async -> [BookBlend.Rec] {
         var hydrated: [BookBlend.Rec] = []
-        for pick in picks.prefix(2) {
+        for pick in picks.prefix(4) {
             var pick = pick
             if let results = try? await GoogleBooksService.shared.search(query: "\(pick.title) \(pick.author)", searchAuthors: false),
                let match = results.first {

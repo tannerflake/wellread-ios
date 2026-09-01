@@ -131,6 +131,14 @@ struct WizardTasteStep: View {
     @ObservedObject var model: OnboardingWizardModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// Frames of each root section (row plus its expanded children), measured in
+    /// the scroll viewport's coordinate space, so a section that sits below the
+    /// fold reads maxY greater than the viewport height.
+    @State private var sectionFrames: [String: CGRect] = [:]
+    @State private var viewportHeight: CGFloat = 0
+
+    private static let scrollSpace = "wizardTasteScroll"
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             TypewriterText(
@@ -139,24 +147,32 @@ struct WizardTasteStep: View {
                 centered: false
             )
 
-            Text("Tap what you reach for. Each pick opens more. Two is enough, five makes your Discover scary-good.")
+            Text("These picks help us recommend books you'll love.")
                 .font(.system(size: 16))
                 .foregroundStyle(Theme.textSecondary)
                 .padding(.top, 10)
                 .wizardReveal(delay: 0.2)
 
-            ScrollView {
-                VStack(spacing: 10) {
-                    ForEach(OnboardingWizardModel.tasteTree, id: \.root) { entry in
-                        rootSection(root: entry.root, children: entry.children)
+            ScrollViewReader { scrollProxy in
+                ScrollView {
+                    VStack(spacing: 10) {
+                        ForEach(OnboardingWizardModel.tasteTree, id: \.root) { entry in
+                            rootSection(root: entry.root, children: entry.children, scrollProxy: scrollProxy)
+                        }
                     }
+                    .padding(.top, 2)
+                    .padding(.bottom, 12)
+                    .animation(
+                        reduceMotion ? nil : Animation.spring(response: 0.38, dampingFraction: 0.8),
+                        value: model.selectedTags
+                    )
                 }
-                .padding(.top, 2)
-                .padding(.bottom, 12)
-                .animation(
-                    reduceMotion ? nil : Animation.spring(response: 0.38, dampingFraction: 0.8),
-                    value: model.selectedTags
-                )
+                .coordinateSpace(.named(Self.scrollSpace))
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.size.height
+                } action: { height in
+                    viewportHeight = height
+                }
             }
             .padding(.top, 18)
             .wizardReveal(delay: 0.3)
@@ -203,11 +219,11 @@ struct WizardTasteStep: View {
     // MARK: - Root rows
 
     @ViewBuilder
-    private func rootSection(root: String, children: [String]) -> some View {
+    private func rootSection(root: String, children: [String], scrollProxy: ScrollViewProxy) -> some View {
         let isSelected = model.selectedTags.contains(root)
         VStack(alignment: .leading, spacing: 10) {
             Button {
-                toggleRoot(root, children: children)
+                toggleRoot(root, children: children, scrollProxy: scrollProxy)
             } label: {
                 HStack {
                     Text(root)
@@ -237,6 +253,12 @@ struct WizardTasteStep: View {
                 childrenBlock(children: children)
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
+        }
+        .id(root)
+        .onGeometryChange(for: CGRect.self) { proxy in
+            proxy.frame(in: .named(Self.scrollSpace))
+        } action: { frame in
+            sectionFrames[root] = frame
         }
     }
 
@@ -287,7 +309,7 @@ struct WizardTasteStep: View {
 
     // MARK: - Selection
 
-    private func toggleRoot(_ root: String, children: [String]) {
+    private func toggleRoot(_ root: String, children: [String], scrollProxy: ScrollViewProxy) {
         WizardHaptics.selection()
         if model.selectedTags.contains(root) {
             model.selectedTags.remove(root)
@@ -296,6 +318,38 @@ struct WizardTasteStep: View {
             }
         } else {
             model.selectedTags.insert(root)
+            revealChildren(of: root, scrollProxy: scrollProxy)
+        }
+    }
+
+    /// After a root expands, pull the new subgenre chips into view if any of them
+    /// landed below the fold. If the expansion already fits on screen, leave the
+    /// scroll position exactly where the user put it.
+    private func revealChildren(of root: String, scrollProxy: ScrollViewProxy) {
+        let settleDelay = reduceMotion ? 0.05 : 0.42
+        DispatchQueue.main.asyncAfter(deadline: .now() + settleDelay) {
+            guard viewportHeight > 0,
+                  model.selectedTags.contains(root),
+                  let frame = sectionFrames[root] else { return }
+
+            let slack: CGFloat = 8
+            let fits = frame.height <= viewportHeight - slack
+            let anchor: UnitPoint
+            if frame.maxY > viewportHeight - slack {
+                // Chips ran off the bottom. Sections shorter than the viewport can sit
+                // flush with its bottom edge; taller ones put their header at the top
+                // so the chips fill the screen.
+                anchor = fits ? .bottom : .top
+            } else if frame.minY < slack {
+                // Expanding pushed the row (and its first chip row) off the top.
+                anchor = .top
+            } else {
+                // The chips already landed on screen: leave the scroll position alone.
+                return
+            }
+            withAnimation(reduceMotion ? nil : .spring(response: 0.42, dampingFraction: 0.9)) {
+                scrollProxy.scrollTo(root, anchor: anchor)
+            }
         }
     }
 

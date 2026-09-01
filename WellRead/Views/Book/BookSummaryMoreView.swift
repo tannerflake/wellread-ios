@@ -180,7 +180,7 @@ struct BookSummaryMoreView: View {
     private func summarySection(_ s: String) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             ForEach(paragraphs(of: s), id: \.self) { paragraph in
-                Text(paragraph)
+                Text(markdown: paragraph)
                     .font(Theme.body())
                     .foregroundStyle(Theme.textPrimary)
                     .lineSpacing(Theme.bodyLineSpacing)
@@ -242,7 +242,7 @@ struct BookSummaryMoreView: View {
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .padding(.leading, 40)
         } else {
-            Text(turn.text)
+            Text(markdown: turn.text)
                 .font(.system(size: 15, weight: .regular))
                 .foregroundStyle(Theme.textPrimary)
                 .lineSpacing(3)

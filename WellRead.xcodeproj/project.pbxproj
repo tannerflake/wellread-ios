@@ -97,7 +97,6 @@
 		B0010101 /* GoodreadsWizardSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010101 /* GoodreadsWizardSession.swift */; };
 		B0010102 /* GoodreadsExportWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010102 /* GoodreadsExportWebView.swift */; };
 		B0010103 /* CoverResolutionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010103 /* CoverResolutionStore.swift */; };
-		B0017747 /* CoverRegenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0017747 /* CoverRegenerationService.swift */; };
 		B0010104 /* ITunesCoverService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010104 /* ITunesCoverService.swift */; };
 		B0010105 /* BookSearchRanker.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010105 /* BookSearchRanker.swift */; };
 		B0010106 /* DiscoverCriteria.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010106 /* DiscoverCriteria.swift */; };
@@ -116,9 +115,13 @@
 		B0010331 /* ProfilePhotoNudgeStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010331 /* ProfilePhotoNudgeStorage.swift */; };
 		B0010332 /* ProfilePhotoNudgeModal.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010332 /* ProfilePhotoNudgeModal.swift */; };
 		B0010333 /* OnboardingCurrentlyReadingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010333 /* OnboardingCurrentlyReadingView.swift */; };
+		B0010731 /* SearchQueryCompletion.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010731 /* SearchQueryCompletion.swift */; };
 		B0010777 /* ReadingYearListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010777 /* ReadingYearListView.swift */; };
 		B0010833 /* BookDiscussionSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010833 /* BookDiscussionSection.swift */; };
+		B0010901 /* PhoneNumberNudgeStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010901 /* PhoneNumberNudgeStorage.swift */; };
+		B0010902 /* PhoneNumberNudgeModal.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010902 /* PhoneNumberNudgeModal.swift */; };
 		B0010C47 /* CircularPhotoCropView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0010C47 /* CircularPhotoCropView.swift */; };
+		B0017747 /* CoverRegenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0017747 /* CoverRegenerationService.swift */; };
 		B0018D71 /* BookSummaryMoreService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0018D71 /* BookSummaryMoreService.swift */; };
 		B0018D72 /* BookSummaryMoreView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0018D72 /* BookSummaryMoreView.swift */; };
 		B00B1E01 /* BookBlend.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00B1E01 /* BookBlend.swift */; };
@@ -143,6 +146,8 @@
 		B00D2A1B /* PeopleStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00D2A1B /* PeopleStrip.swift */; };
 		B00D2A1C /* ProfileSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00D2A1C /* ProfileSettingsView.swift */; };
 		B00E7C31 /* UserAvatarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00E7C31 /* UserAvatarView.swift */; };
+		B00F3A17 /* NotificationsBellButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00F3A17 /* NotificationsBellButton.swift */; };
+		B00F3A2A /* MarkdownText.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00F3A2A /* MarkdownText.swift */; };
 		B04F3B71 /* NotificationsRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = F04F3B71 /* NotificationsRepository.swift */; };
 		B04F3B72 /* NotificationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F04F3B72 /* NotificationsView.swift */; };
 		B07E4D21 /* UserFeedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F07E4D21 /* UserFeedView.swift */; };
@@ -279,7 +284,6 @@
 		F0010101 /* GoodreadsWizardSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoodreadsWizardSession.swift; sourceTree = "<group>"; };
 		F0010102 /* GoodreadsExportWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoodreadsExportWebView.swift; sourceTree = "<group>"; };
 		F0010103 /* CoverResolutionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverResolutionStore.swift; sourceTree = "<group>"; };
-		F0017747 /* CoverRegenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverRegenerationService.swift; sourceTree = "<group>"; };
 		F0010104 /* ITunesCoverService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ITunesCoverService.swift; sourceTree = "<group>"; };
 		F0010105 /* BookSearchRanker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookSearchRanker.swift; sourceTree = "<group>"; };
 		F0010106 /* DiscoverCriteria.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoverCriteria.swift; sourceTree = "<group>"; };
@@ -298,9 +302,13 @@
 		F0010331 /* ProfilePhotoNudgeStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfilePhotoNudgeStorage.swift; sourceTree = "<group>"; };
 		F0010332 /* ProfilePhotoNudgeModal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfilePhotoNudgeModal.swift; sourceTree = "<group>"; };
 		F0010333 /* OnboardingCurrentlyReadingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingCurrentlyReadingView.swift; sourceTree = "<group>"; };
+		F0010731 /* SearchQueryCompletion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchQueryCompletion.swift; sourceTree = "<group>"; };
 		F0010777 /* ReadingYearListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingYearListView.swift; sourceTree = "<group>"; };
 		F0010833 /* BookDiscussionSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookDiscussionSection.swift; sourceTree = "<group>"; };
+		F0010901 /* PhoneNumberNudgeStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneNumberNudgeStorage.swift; sourceTree = "<group>"; };
+		F0010902 /* PhoneNumberNudgeModal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneNumberNudgeModal.swift; sourceTree = "<group>"; };
 		F0010C47 /* CircularPhotoCropView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CircularPhotoCropView.swift; sourceTree = "<group>"; };
+		F0017747 /* CoverRegenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverRegenerationService.swift; sourceTree = "<group>"; };
 		F0018D71 /* BookSummaryMoreService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookSummaryMoreService.swift; sourceTree = "<group>"; };
 		F0018D72 /* BookSummaryMoreView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookSummaryMoreView.swift; sourceTree = "<group>"; };
 		F00B1E01 /* BookBlend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookBlend.swift; sourceTree = "<group>"; };
@@ -325,6 +333,8 @@
 		F00D2A1B /* PeopleStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeopleStrip.swift; sourceTree = "<group>"; };
 		F00D2A1C /* ProfileSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileSettingsView.swift; sourceTree = "<group>"; };
 		F00E7C31 /* UserAvatarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserAvatarView.swift; sourceTree = "<group>"; };
+		F00F3A17 /* NotificationsBellButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsBellButton.swift; sourceTree = "<group>"; };
+		F00F3A2A /* MarkdownText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownText.swift; sourceTree = "<group>"; };
 		F04F3B71 /* NotificationsRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsRepository.swift; sourceTree = "<group>"; };
 		F04F3B72 /* NotificationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsView.swift; sourceTree = "<group>"; };
 		F07E4D21 /* UserFeedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserFeedView.swift; sourceTree = "<group>"; };
@@ -529,6 +539,7 @@
 				F0017747 /* CoverRegenerationService.swift */,
 				F0010104 /* ITunesCoverService.swift */,
 				F0010105 /* BookSearchRanker.swift */,
+				F0010731 /* SearchQueryCompletion.swift */,
 				F0010202 /* ContactSyncService.swift */,
 				F0010204 /* RecommendationRepository.swift */,
 				F0010205 /* AppLinks.swift */,
@@ -537,6 +548,7 @@
 				F0010047 /* PushRegistrationDiagnostics.swift */,
 				F0010050 /* PushNotificationNudgeStorage.swift */,
 				F0010331 /* ProfilePhotoNudgeStorage.swift */,
+				F0010901 /* PhoneNumberNudgeStorage.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -570,6 +582,7 @@
 				F0010049 /* PushNotificationPromptView.swift */,
 				F0010051 /* PushNotificationNudgeModal.swift */,
 				F0010332 /* ProfilePhotoNudgeModal.swift */,
+				F0010902 /* PhoneNumberNudgeModal.swift */,
 				F0010333 /* OnboardingCurrentlyReadingView.swift */,
 				F0010029 /* ReviewerLoginView.swift */,
 			);
@@ -591,6 +604,8 @@
 			children = (
 				F00D1A01 /* TypewriterText.swift */,
 				F001000F /* BookCoverView.swift */,
+				F00F3A17 /* NotificationsBellButton.swift */,
+				F00F3A2A /* MarkdownText.swift */,
 				F0010107 /* TagCatalogPicker.swift */,
 				F00100FA /* Toast.swift */,
 				F0010045 /* FlowLayout.swift */,
@@ -939,6 +954,8 @@
 				B001000E /* BookSearchRow.swift in Sources */,
 				B0010100 /* NoSuggestionsTextField.swift in Sources */,
 				B001000F /* BookCoverView.swift in Sources */,
+				B00F3A17 /* NotificationsBellButton.swift in Sources */,
+				B00F3A2A /* MarkdownText.swift in Sources */,
 				B00100FA /* Toast.swift in Sources */,
 				B0010010 /* FeedView.swift in Sources */,
 				B0010011 /* DiscoverView.swift in Sources */,
@@ -995,6 +1012,7 @@
 				B0017747 /* CoverRegenerationService.swift in Sources */,
 				B0010104 /* ITunesCoverService.swift in Sources */,
 				B0010105 /* BookSearchRanker.swift in Sources */,
+				B0010731 /* SearchQueryCompletion.swift in Sources */,
 				B0010106 /* DiscoverCriteria.swift in Sources */,
 				B0010202 /* ContactSyncService.swift in Sources */,
 				B0010203 /* BookRecommendation.swift in Sources */,
@@ -1016,6 +1034,8 @@
 				B0010050 /* PushNotificationNudgeStorage.swift in Sources */,
 				B0010331 /* ProfilePhotoNudgeStorage.swift in Sources */,
 				B0010332 /* ProfilePhotoNudgeModal.swift in Sources */,
+				B0010901 /* PhoneNumberNudgeStorage.swift in Sources */,
+				B0010902 /* PhoneNumberNudgeModal.swift in Sources */,
 				B0010333 /* OnboardingCurrentlyReadingView.swift in Sources */,
 				B0010048 /* PushDiagnosticsView.swift in Sources */,
 				B0010049 /* PushNotificationPromptView.swift in Sources */,
@@ -1429,7 +1449,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = WellRead/WellRead.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = T32N9X64JM;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = WellRead/Info.plist;
@@ -1440,7 +1460,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 3.4;
+				MARKETING_VERSION = 3.5.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.wellread.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -1457,7 +1477,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = WellRead/WellRead.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = T32N9X64JM;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = WellRead/Info.plist;
@@ -1468,7 +1488,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 3.4;
+				MARKETING_VERSION = 3.5.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.wellread.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;

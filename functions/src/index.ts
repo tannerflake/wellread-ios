@@ -5,6 +5,7 @@ import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
 import { onDocumentCreated, onDocumentUpdated, onDocumentWritten } from "firebase-functions/v2/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as logger from "firebase-functions/logger";
 import type { DocumentData, Firestore } from "firebase-admin/firestore";
 
@@ -465,6 +466,100 @@ export const onUserFollowingChanged = onDocumentUpdated(
         followerUid
       );
     }
+  }
+);
+
+/** Days after joining that a member still counts as "just joined" for contact alerts. */
+const CONTACT_JOIN_WINDOW_DAYS = 14;
+
+/** Most contact matches one call may notify. A real address book match set is small. */
+const CONTACT_JOIN_MAX_TARGETS = 50;
+
+/**
+ * A new member's device matched their address book against SPINE and found
+ * these members. Notifies each of them that someone they know just joined.
+ *
+ * The address book itself never leaves the device (see ContactSyncService):
+ * the client sends only the resulting SPINE uids, which is why this is a
+ * callable rather than a Firestore trigger. The server has no contact data of
+ * its own and could not derive this on its own.
+ *
+ * Guarded so it can only ever congratulate a genuinely new account, once per
+ * pair: an existing member re-syncing contacts must not re-announce themselves.
+ */
+export const notifyContactsOfJoin = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    const joinerUid = request.auth?.uid;
+    if (!joinerUid) {
+      throw new HttpsError("unauthenticated", "Sign in required");
+    }
+    const raw = request.data as { uids?: unknown } | undefined;
+    const requested = Array.isArray(raw?.uids) ? raw.uids : [];
+    const targets = Array.from(
+      new Set(
+        requested
+          .filter((u): u is string => typeof u === "string" && u.length > 0)
+          .filter((u) => u !== joinerUid)
+      )
+    ).slice(0, CONTACT_JOIN_MAX_TARGETS);
+    if (targets.length === 0) return { notified: 0 };
+
+    const joinerSnap = await db.collection("users").doc(joinerUid).get();
+    const joiner = joinerSnap.data();
+    if (!joinerSnap.exists || !joiner) {
+      throw new HttpsError("failed-precondition", "No profile for this account");
+    }
+    // Test accounts are invisible everywhere else; they don't get to announce
+    // themselves to real members either.
+    if (joiner.isTestAccount === true) return { notified: 0 };
+
+    // Only a genuinely new member "joined". Without this, any later contact
+    // re-sync would re-announce an account that has been here for months.
+    const joinedAt = joiner.joinedAt as Timestamp | undefined;
+    const ageMs = joinedAt ? Date.now() - joinedAt.toMillis() : Number.MAX_SAFE_INTEGER;
+    if (ageMs > CONTACT_JOIN_WINDOW_DAYS * 24 * 60 * 60 * 1000) {
+      return { notified: 0 };
+    }
+
+    const first = firstNameFromUser(joiner);
+    const photo = (joiner.profileImageURL as string | undefined) ?? null;
+    let notified = 0;
+
+    for (const target of targets) {
+      if (!hiddenAccountCanNotify(joinerUid, target)) continue;
+      // One alert per (joiner, target) forever. The ledger id is the pair, so a
+      // retried call or a second contact sync is a no-op rather than a repeat.
+      const ledger = db.collection("contactJoinNotifications").doc(`${joinerUid}_${target}`);
+      try {
+        await ledger.create({
+          joinerUid,
+          targetUid: target,
+          createdAt: FieldValue.serverTimestamp(),
+        });
+      } catch {
+        // Already exists: this pair has been alerted.
+        continue;
+      }
+      const targetSnap = await db.collection("users").doc(target).get();
+      const targetData = targetSnap.data();
+      if (!targetSnap.exists || !targetData) continue;
+      // They already found each other. Nothing to announce.
+      const following = (targetData.following as string[] | undefined) ?? [];
+      if (following.includes(joinerUid)) continue;
+
+      await notifyUser(
+        target,
+        `Your contact ${first} joined SPINE.`,
+        "Follow them!",
+        { type: "contact_joined", followerId: joinerUid },
+        joinerUid,
+        photo
+      );
+      notified += 1;
+    }
+    logger.info("notifyContactsOfJoin", { joinerUid, requested: targets.length, notified });
+    return { notified };
   }
 );
 
@@ -1107,5 +1202,244 @@ export const onUserBookCreatedDedup = onDocumentCreated(
     } catch (err) {
       logger.error("userBook dedup remap failed", { bookId, err });
     }
+  }
+);
+
+/* ------------------------------------------------------------------------- *
+ * Founder blend outreach
+ *
+ * Once a member has ranked FOUNDER_BLEND_RANK_THRESHOLD books, their library is
+ * rich enough for a Book Blend to say something real. 24 hours after they cross
+ * that line, the founder (@tan) sends them a blend request automatically.
+ *
+ * Two stages so the 24h delay is durable across deploys:
+ *   1. onUserBookRankedForFounderBlend — the crossing writes a one-per-user
+ *      ledger doc at `founderBlendSchedules/{uid}` with `dueAt = now + 24h`.
+ *   2. sendDueFounderBlendRequests — hourly sweep creates the pending
+ *      `bookBlends` doc, which `onBookBlendWritten` turns into the invite push.
+ *
+ * The ledger doc is never deleted, so each member gets at most one of these
+ * ever — a member who declines is not asked again.
+ * ------------------------------------------------------------------------- */
+
+/** Ranked = the book sits in a tier on the tier list. Mirrors `spineTierLabels`. */
+const TIER_VALUES = ["S", "A", "B", "C", "D", "F"] as const;
+
+/** Books ranked before the founder reaches out. */
+const FOUNDER_BLEND_RANK_THRESHOLD = 50;
+
+const FOUNDER_BLEND_DELAY_MS = 24 * 60 * 60 * 1000;
+
+/** Quiet hours guard (app home timezone) — a due request waits for the next
+ * sweep rather than buzzing someone's phone at 4am. */
+const FOUNDER_BLEND_SEND_HOUR_START = 9;
+const FOUNDER_BLEND_SEND_HOUR_END = 21;
+
+const FOUNDER_BLEND_SCHEDULES = "founderBlendSchedules";
+
+/** Hour (0-23) in the app's home timezone. */
+function appHour(date: Date): number {
+  const hour = new Intl.DateTimeFormat("en-US", {
+    timeZone: APP_DAY_TIMEZONE,
+    hour: "2-digit",
+    hour12: false,
+  }).format(date);
+  return parseInt(hour, 10);
+}
+
+/** Empty strings are legacy "unranked" — `UserBook.normalizedTier` collapses them too. */
+function normalizedTier(data: DocumentData | undefined): string | null {
+  const raw = data?.tier;
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+async function rankedBookCount(uid: string): Promise<number> {
+  const snap = await db
+    .collection("userBooks")
+    .where("userId", "==", uid)
+    .where("tier", "in", [...TIER_VALUES])
+    .count()
+    .get();
+  return snap.data().count;
+}
+
+/** Sorted pair id, matching `BookBlend.pairId` on the client. */
+function blendPairId(a: string, b: string): string {
+  return [a, b].sort().join("_");
+}
+
+/** Participant snapshot in the shape `BookBlend.Participant` decodes. */
+async function blendParticipant(uid: string): Promise<Record<string, unknown>> {
+  const data = (await db.collection("users").doc(uid).get()).data();
+  const photoURL = (data?.profileImageURL as string | undefined)?.trim();
+  return {
+    firstName: firstNameFromUser(data),
+    ...(photoURL ? { photoURL } : {}),
+    readCount: 0,
+  };
+}
+
+/**
+ * A book moved from unranked into a tier. Once that pushes the member past the
+ * threshold, schedule the founder's blend request for 24h out — unless they
+ * already have a blend pair doc with him (requested, declined, or watched),
+ * were scheduled before, or are a test account.
+ */
+export const onUserBookRankedForFounderBlend = onDocumentWritten(
+  {
+    document: "userBooks/{userBookId}",
+    database: DATABASE_ID,
+  },
+  async (event) => {
+    const after = event.data?.after?.exists ? event.data.after.data() : undefined;
+    if (!after) return;
+    const beforeTier = normalizedTier(event.data?.before?.exists ? event.data.before.data() : undefined);
+    const afterTier = normalizedTier(after);
+    // Only a newly ranked book can raise the count. Re-tiering an already
+    // ranked book leaves it unchanged.
+    if (beforeTier !== null || afterTier === null) return;
+
+    const uid = (after.userId as string | undefined)?.trim();
+    if (!uid || uid === FOUNDER_UID) return;
+
+    try {
+      const scheduleRef = db.collection(FOUNDER_BLEND_SCHEDULES).doc(uid);
+      if ((await scheduleRef.get()).exists) return;
+
+      const pairId = blendPairId(uid, FOUNDER_UID);
+      if ((await db.collection("bookBlends").doc(pairId).get()).exists) return;
+
+      const user = await db.collection("users").doc(uid).get();
+      if (!user.exists || user.data()?.isTestAccount === true) return;
+
+      const rankedCount = await rankedBookCount(uid);
+      if (rankedCount < FOUNDER_BLEND_RANK_THRESHOLD) return;
+
+      await scheduleRef.create({
+        uid,
+        rankedCount,
+        status: "scheduled",
+        createdAt: FieldValue.serverTimestamp(),
+        dueAt: Timestamp.fromMillis(Date.now() + FOUNDER_BLEND_DELAY_MS),
+      });
+      logger.info("founder blend scheduled", { uid, rankedCount });
+    } catch (err) {
+      // ALREADY_EXISTS means a sibling write won the race — that's the intended outcome.
+      if ((err as { code?: number }).code === 6) return;
+      logger.error("founder blend scheduling failed", { uid, error: (err as Error).message });
+    }
+  }
+);
+
+/**
+ * Hourly sweep: every schedule whose 24h wait has elapsed becomes a pending
+ * `bookBlends` doc from the founder. Everything is re-checked at send time —
+ * the member may have unranked books, requested the blend themselves, or
+ * deleted their account during the wait.
+ */
+async function sweepDueFounderBlendRequests(ignoreQuietHours: boolean): Promise<number> {
+  const hour = appHour(new Date());
+  if (!ignoreQuietHours && (hour < FOUNDER_BLEND_SEND_HOUR_START || hour >= FOUNDER_BLEND_SEND_HOUR_END)) {
+    logger.info("founder blend sweep skipped (quiet hours)", { hour });
+    return 0;
+  }
+
+  const due = await db
+    .collection(FOUNDER_BLEND_SCHEDULES)
+    .where("status", "==", "scheduled")
+    .where("dueAt", "<=", Timestamp.now())
+    .orderBy("dueAt")
+    .limit(50)
+    .get();
+  if (due.empty) return 0;
+
+  const founder = await blendParticipant(FOUNDER_UID);
+  let sent = 0;
+
+  for (const doc of due.docs) {
+    const uid = doc.id;
+    const skip = async (reason: string): Promise<void> => {
+      await doc.ref.update({ status: "skipped", skippedReason: reason, resolvedAt: FieldValue.serverTimestamp() });
+      logger.info("founder blend skipped", { uid, reason });
+    };
+    try {
+      const user = await db.collection("users").doc(uid).get();
+      if (!user.exists) {
+        await skip("user_missing");
+        continue;
+      }
+      if (user.data()?.isTestAccount === true) {
+        await skip("test_account");
+        continue;
+      }
+      const pairId = blendPairId(uid, FOUNDER_UID);
+      const blendRef = db.collection("bookBlends").doc(pairId);
+      if ((await blendRef.get()).exists) {
+        await skip("blend_exists");
+        continue;
+      }
+      const rankedCount = await rankedBookCount(uid);
+      if (rankedCount < FOUNDER_BLEND_RANK_THRESHOLD) {
+        await skip("below_threshold");
+        continue;
+      }
+
+      const userIds = [uid, FOUNDER_UID].sort();
+      // `create` (not `set`): a blend the member opened seconds ago must win.
+      await blendRef.create({
+        userIds,
+        requesterId: FOUNDER_UID,
+        recipientId: uid,
+        status: "pending",
+        createdAt: Timestamp.now(),
+        respondedAt: null,
+        participants: {
+          [FOUNDER_UID]: founder,
+          [uid]: await blendParticipant(uid),
+        },
+        result: null,
+      });
+      await doc.ref.update({
+        status: "sent",
+        rankedCount,
+        sentAt: FieldValue.serverTimestamp(),
+        resolvedAt: FieldValue.serverTimestamp(),
+      });
+      sent += 1;
+      logger.info("founder blend sent", { uid, rankedCount });
+    } catch (err) {
+      if ((err as { code?: number }).code === 6) {
+        await skip("blend_exists");
+        continue;
+      }
+      logger.error("founder blend send failed", { uid, error: (err as Error).message });
+    }
+  }
+  return sent;
+}
+
+export const sendDueFounderBlendRequests = onSchedule(
+  {
+    schedule: "every 60 minutes",
+    timeZone: APP_DAY_TIMEZONE,
+    region: "us-central1",
+  },
+  async () => {
+    await sweepDueFounderBlendRequests(false);
+  }
+);
+
+/** Founder-only manual trigger for the sweep (bypasses quiet hours) — how this
+ * feature gets verified end to end without waiting on the hourly schedule. */
+export const runFounderBlendSweepNow = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    if (request.auth?.uid !== FOUNDER_UID) {
+      throw new HttpsError("permission-denied", "Founder only.");
+    }
+    const sent = await sweepDueFounderBlendRequests(true);
+    return { ok: true, sent };
   }
 );

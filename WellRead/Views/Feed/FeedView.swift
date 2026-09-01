@@ -41,6 +41,11 @@ struct FeedView: View {
     @State private var isScrolledToFeedTop = true
     /// Profile sheet opened by tapping an @mention inside a review caption.
     @State private var mentionProfileToView: MentionedReader? = nil
+    /// Bell in the FEED row: pushes the notifications feed. Notifications are
+    /// social activity (follows, likes, comments, blends) so Feed — the tab
+    /// people land on and where that activity actually happens — is their
+    /// other home alongside the Profile tab's bell.
+    @State private var showNotifications = false
 
     private struct MentionedReader: Identifiable {
         let uid: String
@@ -61,7 +66,16 @@ struct FeedView: View {
                 ScrollViewReader { scrollProxy in
                     ScrollView {
                         VStack(spacing: 0) {
+                            // Bell rides with the people strip rather than
+                            // floating fixed on screen — it should scroll
+                            // away with the rest of the header, not stay
+                            // pinned while the feed scrolls underneath it.
                             PeopleStrip(model: peopleModel)
+                                .overlay(alignment: .topTrailing) {
+                                    NotificationsBellButton(size: .compact) { showNotifications = true }
+                                        .padding(.top, 4)
+                                        .padding(.trailing, Theme.horizontalPadding)
+                                }
                             feedFriendsDivider
                             feedSectionLabel
                             if appState.isFeedLoading {
@@ -97,12 +111,14 @@ struct FeedView: View {
                         scrollToPushedPostIfNeeded(proxy: scrollProxy)
                     }
                     .onReceive(NotificationCenter.default.publisher(for: .spineFeedTabTappedAgain)) { _ in
-                        // Pushed into a profile/book from the feed: the re-tap
-                        // means "take me back to the feed", not scroll/refresh.
-                        if !navPath.isEmpty || selectedBookForProfile != nil {
+                        // Pushed into a profile/book (or the notifications
+                        // feed) from the feed: the re-tap means "take me back
+                        // to the feed", not scroll/refresh.
+                        if !navPath.isEmpty || selectedBookForProfile != nil || showNotifications {
                             navPath = NavigationPath()
                             selectedBookForProfile = nil
                             bookProfileSourceUid = nil
+                            showNotifications = false
                         } else if isScrolledToFeedTop {
                             Task { await refreshFeed() }
                         } else {
@@ -132,6 +148,11 @@ struct FeedView: View {
             .toolbarBackground(Theme.background, for: .navigationBar)
             .navigationDestination(for: String.self) { userId in
                 UserLibraryDetailView(userId: userId)
+                    .environmentObject(authService)
+                    .environmentObject(appState)
+            }
+            .navigationDestination(isPresented: $showNotifications) {
+                NotificationsView()
                     .environmentObject(authService)
                     .environmentObject(appState)
             }
@@ -335,8 +356,9 @@ struct FeedView: View {
         return appState.userReadBook(forBookId: bid)?.tier
     }
 
-    /// A friend-review push was tapped: scroll the feed to that post and tint it briefly. Waits for the
-    /// feed listener to deliver posts (cold start); gives up once the feed has loaded without the post.
+    /// A deep link opened a post's drawer: scroll the feed to that post behind it and tint it briefly, so
+    /// dismissing lands on the review. Waits for the feed listener to deliver posts (cold start); gives up
+    /// once the feed has loaded without the post (e.g. a hidden read-discussion carrier).
     private func scrollToPushedPostIfNeeded(proxy: ScrollViewProxy) {
         guard let id = appState.scrollToFeedPostId else { return }
         // The post may render standalone or inside a day-group carousel — scroll
@@ -535,6 +557,12 @@ struct FeedPostRow: View {
     @State private var commentTapPulse = 0
     /// Long-press the author's avatar to blow their photo up full screen.
     @State private var showAvatarZoom = false
+    /// Drives the heart that pops over the card on a double-tap like.
+    @State private var showLikeBurst = false
+    @State private var likeBurstScale: CGFloat = 0.5
+    @State private var likeBurstOpacity: Double = 0
+    /// Invalidates in-flight burst timers when a new double-tap lands.
+    @State private var likeBurstToken = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -543,7 +571,7 @@ struct FeedPostRow: View {
 
             if let book = post.book {
                 HStack(alignment: .top, spacing: 14) {
-                    BookCoverView(book: book, size: 80, onTap: onBookTap != nil ? { onBookTap?(book) } : nil)
+                    BookCoverView(book: book, size: 80)
                     VStack(alignment: .leading, spacing: 6) {
                         Text(book.title)
                             .font(Theme.headline())
@@ -559,15 +587,18 @@ struct FeedPostRow: View {
                             TierBadge(tier: t)
                         }
                     }
-                    .contentShape(Rectangle())
-                    .onTapGesture { onBookTap?(book) }
                     Spacer()
                 }
                 .padding(.horizontal)
+                // Cover and title open the book on a single tap, but a double
+                // tap belongs to the review body's like gesture.
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) { handleDoubleTapLike() }
+                .onTapGesture { onBookTap?(book) }
             }
 
             if let caption = post.caption, !caption.isEmpty {
-                ExpandableReviewText(text: caption)
+                ExpandableReviewText(text: caption, onDoubleTap: { handleDoubleTapLike() })
                     .padding(.horizontal)
             }
 
@@ -616,6 +647,9 @@ struct FeedPostRow: View {
             }
         }
         .padding(.top, 14)
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) { handleDoubleTapLike() }
+        .overlay(likeBurstOverlay)
         .avatarZoom(
             isPresented: $showAvatarZoom,
             urlString: post.user?.profileImageURL,
@@ -632,6 +666,52 @@ struct FeedPostRow: View {
             let all = await CommentRepository().fetchComments(postId: post.id.uuidString)
             withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                 previewComments = Array(all.suffix(2))
+            }
+        }
+    }
+
+    /// Double-tapping the review body likes it. Like Instagram, it only ever
+    /// likes: a second double-tap on an already-liked post re-pops the heart
+    /// instead of quietly unliking it (the pill is there for that).
+    private func handleDoubleTapLike() {
+        popLikeBurst()
+        guard !isLiked else { return }
+        onLikeToggle?(true)
+    }
+
+    /// Heart that springs up over the card and fades out.
+    @ViewBuilder
+    private var likeBurstOverlay: some View {
+        if showLikeBurst {
+            Image(systemName: "heart.fill")
+                .font(.system(size: 72, weight: .bold))
+                .foregroundStyle(Theme.punch)
+                .shadow(color: Theme.shadowInk.opacity(0.25), radius: 8, x: 0, y: 4)
+                .scaleEffect(likeBurstScale)
+                .opacity(likeBurstOpacity)
+                .allowsHitTesting(false)
+        }
+    }
+
+    private func popLikeBurst() {
+        likeBurstToken += 1
+        let token = likeBurstToken
+        likeBurstScale = 0.5
+        likeBurstOpacity = 0
+        showLikeBurst = true
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.55)) {
+            likeBurstScale = 1
+            likeBurstOpacity = 1
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.42) {
+            guard token == likeBurstToken else { return }
+            withAnimation(.easeOut(duration: 0.28)) {
+                likeBurstOpacity = 0
+                likeBurstScale = 1.3
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                guard token == likeBurstToken else { return }
+                showLikeBurst = false
             }
         }
     }
@@ -815,14 +895,19 @@ struct FeedPostRow: View {
 struct ExpandableReviewText: View {
     let text: String
     let collapsedLineLimit: Int
+    /// Double-tapping the review text likes the post — the text owns its own
+    /// tap gesture, so the like has to be recognized here rather than by an
+    /// ancestor (a child gesture wins over the parent's).
+    let onDoubleTap: (() -> Void)?
 
     @State private var expanded = false
     /// True once measurement shows the full text is taller than the collapsed limit.
     @State private var truncatable = false
 
-    init(text: String, collapsedLineLimit: Int = 14) {
+    init(text: String, collapsedLineLimit: Int = 14, onDoubleTap: (() -> Void)? = nil) {
         self.text = text
         self.collapsedLineLimit = collapsedLineLimit
+        self.onDoubleTap = onDoubleTap
     }
 
     var body: some View {
@@ -854,6 +939,7 @@ struct ExpandableReviewText: View {
             }
         }
         .contentShape(Rectangle())
+        .onTapGesture(count: 2) { onDoubleTap?() }
         .onTapGesture {
             guard truncatable else { return }
             withAnimation(.easeInOut(duration: 0.2)) { expanded.toggle() }

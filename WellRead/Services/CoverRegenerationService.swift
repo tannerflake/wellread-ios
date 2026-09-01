@@ -63,9 +63,77 @@ final class CoverRegenerationService {
 
     // MARK: - View support
 
+    /// The locked winner currently backing this book's cover on this device.
+    func resolvedCoverURL(for book: Book) -> URL? {
+        CoverResolutionStore.shared.resolvedURL(bookId: book.id, signature: Self.signature(for: book))
+    }
+
     /// The control only makes sense when a real cover image is on screen.
     func canRegenerate(book: Book) -> Bool {
-        CoverResolutionStore.shared.resolvedURL(bookId: book.id, signature: Self.signature(for: book)) != nil
+        resolvedCoverURL(for: book) != nil
+    }
+
+    /// Book ids whose covers any member touched since `since` — one small query
+    /// against the regeneration log, used by AppState's per-launch delta check so
+    /// the library can stay fully local unless a cover actually changed.
+    /// Nil on failure (offline) so the caller can retry later instead of skipping edits.
+    func coverEditedBookIds(since: Date) async -> Set<String>? {
+        do {
+            let snapshot = try await db.collection("coverRegenerations")
+                .whereField("updatedAt", isGreaterThan: Timestamp(date: since))
+                .limit(to: 500)
+                .getDocuments()
+            return Set(snapshot.documents.compactMap { $0.data()["bookId"] as? String })
+        } catch {
+            return nil
+        }
+    }
+
+    /// The chain already gave up on this book (title placeholder is showing).
+    func hasRecordedFailure(book: Book) -> Bool {
+        CoverResolutionStore.shared.hasRecentFailure(bookId: book.id, signature: Self.signature(for: book))
+    }
+
+    /// A cover never resolved and the member tapped "Bad cover?" anyway: wipe the
+    /// recorded failure and re-probe the full chain once (was it just a loading
+    /// glitch?). Local only — no override, no rejected list, no log; a success
+    /// here is simply the organic cover finally arriving.
+    func retryResolve(book: Book) async -> Bool {
+        let signature = Self.signature(for: book)
+        if CoverResolutionStore.shared.resolvedURL(bookId: book.id, signature: signature) != nil { return true }
+        CoverResolutionStore.shared.clearFailure(bookId: book.id, signature: signature)
+        var candidates = book.coverImageURLsToTry
+        candidates += await ITunesCoverService.shared.artworkURLs(
+            isbn: book.isbn, title: book.title, author: book.author
+        )
+        let start = Date()
+        var found = false
+        for url in candidates {
+            if Date().timeIntervalSince(start) > 12 { break }
+            if case .success = await CoverImageCache.shared.fetch(for: url) {
+                CoverResolutionStore.shared.lock(bookId: book.id, signature: signature, url: url)
+                NotificationCenter.default.post(name: .bookCoverResolutionDidChange, object: book.id)
+                found = true
+                break
+            }
+        }
+        Analytics.amplitude?.track(eventType: "Retried Cover Resolution", eventProperties: [
+            "book_id": book.id,
+            "found": found,
+        ])
+        return found
+    }
+
+    /// Which API served a cover URL — founder-only debug caption on the book
+    /// profile, for judging source quality when tuning the fallback chain.
+    static func coverSource(for url: URL) -> String {
+        let host = url.host ?? ""
+        if host.contains("isbndb.com") { return "ISBNdb" }
+        if host.contains("books.google") || host.contains("googleusercontent") { return "Google" }
+        if host.contains("openlibrary.org") { return "Open Library" }
+        if host.contains("mzstatic.com") || host.contains("itunes.apple.com") { return "iTunes" }
+        if host.contains("firebasestorage") { return "SPINE upload" }
+        return host.isEmpty ? "unknown" : host
     }
 
     /// True while this book has an un-undone regeneration from this session.
@@ -130,6 +198,7 @@ final class CoverRegenerationService {
         }
 
         CoverResolutionStore.shared.lock(bookId: book.id, signature: signature, url: newURL)
+        NotificationCenter.default.post(name: .bookCoverResolutionDidChange, object: book.id)
         let justRejected = session.currentURL.absoluteString
         session.rejected.append(justRejected)
         session.shownImages.append(newImage)
@@ -174,6 +243,7 @@ final class CoverRegenerationService {
         sessions[book.id] = nil
 
         CoverResolutionStore.shared.lock(bookId: book.id, signature: session.signature, url: session.originalURL)
+        NotificationCenter.default.post(name: .bookCoverResolutionDidChange, object: book.id)
 
         enqueuePersist(bookId: book.id) { [self] in
             var fields: [String: Any] = [

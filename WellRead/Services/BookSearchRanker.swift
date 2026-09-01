@@ -64,12 +64,26 @@ enum BookSearchRanker {
         // Collapse each work to its best-scored edition, but backfill metadata the
         // winner lacks from sibling editions: Google often lists the canonical
         // edition without a cover while a reissue of the same work has one.
+        // Grouping uses `collapseKey`, which is deliberately more aggressive than
+        // the persisted `workKey`: catalogs list the same work as "Consider the
+        // Lobster", "Consider the Lobster And Other Essays" (subtitle appended
+        // without a colon), and "…and Other Essays Lib/E" by "Unknown" — all of
+        // which must land in one row.
         var order: [String] = []
         var winners: [String: Book] = [:]
+        var groupForTitle: [String: String] = [:]
         for entry in scored {
-            let key = workKey(title: entry.candidate.book.title, author: entry.candidate.book.author)
+            let book = entry.candidate.book
+            let collapse = collapseKey(title: book.title, author: book.author)
+            var key = collapse.full
+            // Authorless catalog records ("Unknown") join the group a real author
+            // already claimed for this title instead of surviving as their own row.
+            if winners[key] == nil, collapse.surname.isEmpty,
+               let claimed = groupForTitle[collapse.titlePart] {
+                key = claimed
+            }
             if var winner = winners[key] {
-                let sibling = entry.candidate.book
+                let sibling = book
                 if winner.coverURL.isEmpty && !sibling.coverURL.isEmpty {
                     winner.coverURL = sibling.coverURL
                     winner.fallbackCoverURLs = sibling.fallbackCoverURLs
@@ -79,7 +93,10 @@ enum BookSearchRanker {
                 winners[key] = winner
             } else {
                 order.append(key)
-                winners[key] = entry.candidate.book
+                winners[key] = book
+                if !collapse.surname.isEmpty, groupForTitle[collapse.titlePart] == nil {
+                    groupForTitle[collapse.titlePart] = key
+                }
             }
         }
         return order.compactMap { winners[$0] }
@@ -108,13 +125,22 @@ enum BookSearchRanker {
         // Title match: exact > main-title exact > prefix (supports search-as-you-type)
         // > token coverage. A subtitle-only exact match ranks below the whole-title
         // one so "Sapiens" beats "Sapiens: A Graphic History" for query "sapiens".
-        if normTitle == normQuery {
-            score += 120
-        } else if normMainTitle == normQuery {
-            score += 100
-        } else if normMainTitle.hasPrefix(normQuery) || normQuery.hasPrefix(normMainTitle) {
-            score += 80
+        // Comparisons are leading-article-insensitive (like workKey): "A Game of
+        // Thrones" must take the whole-title tier for query "game of thrones",
+        // or every companion book titled "Game of Thrones: <subtitle>" outranks
+        // the actual novel on the main-title tier.
+        let coreQuery = stripLeadingArticle(normQuery)
+        let coreTitle = stripLeadingArticle(normTitle)
+        let coreMainTitle = stripLeadingArticle(normMainTitle)
+        var titleTierBonus = 0.0
+        if normTitle == normQuery || coreTitle == coreQuery {
+            titleTierBonus = 120
+        } else if normMainTitle == normQuery || coreMainTitle == coreQuery {
+            titleTierBonus = 100
+        } else if coreMainTitle.hasPrefix(coreQuery) || coreQuery.hasPrefix(coreMainTitle) {
+            titleTierBonus = 80
         }
+        score += titleTierBonus
         var titleCoverage = 0.0
         var authorCoverage = 0.0
         var tokensFoundAnywhere = 0
@@ -162,11 +188,20 @@ enum BookSearchRanker {
             score -= 18
         }
 
+        // Franchise companion/merch listings (costume books, storyboards,
+        // "...and Philosophy" litcrit) sink below real works unless asked for.
+        // Big enough to undo their main-title-exact bonus edge over token matches.
+        if containsCompanionMarker(normTitle) && !containsCompanionMarker(normQuery) {
+            score -= 30
+        }
+
         // Knockoff listings credit a publisher-sounding name ("University Press",
-        // "Readtrepreneur Publishing") as the author. Sink them hard: they only
-        // matter when nothing legitimate matches.
+        // "Readtrepreneur Publishing", "Book Of Thrones") as the author. Sink
+        // them hard — and revoke the title-tier bonus, since these listings
+        // copy the franchise title verbatim and would otherwise ride an exact
+        // match above every legitimate book except the one true exact match.
         if authorLooksLikePublisher(book.author) {
-            score -= 60
+            score -= 60 + titleTierBonus
         } else if normAuthor.isEmpty || normAuthor == "unknown" {
             score -= 20
         }
@@ -209,6 +244,27 @@ enum BookSearchRanker {
         return best
     }
 
+    /// True when one of the top `topN` results is plausibly the thing `query`
+    /// names: its main title (leading article ignored) or its author matches
+    /// the query or starts with it. The search hub asks this of the literal
+    /// query's results before spending anything on a completion (see
+    /// `SearchQueryCompletion`) — if the book or the author is already on
+    /// screen, finishing the user's last word for them would only churn the
+    /// list, and waiting on a probe to say so would only stall the field.
+    static func anyResultMatchesQuery(_ books: [Book], query: String, topN: Int = 5) -> Bool {
+        let coreQuery = stripLeadingArticle(normalize(query))
+        guard !coreQuery.isEmpty else { return false }
+        return books.prefix(topN).contains { book in
+            let mainTitle = book.title.split(separator: ":", maxSplits: 1).first.map(String.init) ?? book.title
+            let coreTitle = stripLeadingArticle(normalize(mainTitle))
+            if coreTitle == coreQuery || coreTitle.hasPrefix(coreQuery) { return true }
+            return book.author.split(separator: ",").contains { segment in
+                let author = normalize(String(segment))
+                return !author.isEmpty && author.hasPrefix(coreQuery)
+            }
+        }
+    }
+
     // MARK: - Deduplication
 
     /// Editions of the same work share a key: core title (parentheticals and
@@ -223,12 +279,8 @@ enum BookSearchRanker {
         var main = parts.first.map(String.init) ?? raw
         let subtitle = parts.count > 1 ? String(parts[1]) : ""
         main = stripEditionPhrases(from: main)
-        var norm = normalize(main)
         // Leading articles differ between catalog entries of the same work.
-        for article in ["the ", "a ", "an "] where norm.hasPrefix(article) {
-            norm = String(norm.dropFirst(article.count))
-            break
-        }
+        let norm = stripLeadingArticle(normalize(main))
         let normSubtitle = normalize(subtitle)
         let subtitleMarkers = derivativeMarkers.filter { normSubtitle.contains($0) }.joined(separator: " ")
         let subtitleDigits = subtitle.filter(\.isNumber)
@@ -237,6 +289,79 @@ enum BookSearchRanker {
         let primaryAuthor = normalize(String(author.split(separator: ",").first ?? ""))
         let surname = primaryAuthor.split(separator: " ").last.map(String.init) ?? primaryAuthor
         return norm + "|" + subtitleMarkers + subtitleDigits + "|" + surname
+    }
+
+    /// In-list edition-collapse identity, deliberately more aggressive than
+    /// `workKey`. NEVER persisted — `workKey` is stored on Firestore book docs
+    /// and queried for canonical-doc resolution, so its semantics must stay
+    /// frozen; this key only decides which search rows merge on screen. On top
+    /// of `workKey`'s stripping it removes audio/format suffixes ("Lib/E",
+    /// "MP3 CD"), drops a trailing run of collection-subtitle words appended
+    /// without a colon ("…And Other Essays", "…Essays and Arguments"), and
+    /// reports a missing/"Unknown" author as an empty surname so the dedup
+    /// loop can attach those records to a same-titled group.
+    struct CollapseKey {
+        let titlePart: String
+        let surname: String
+        var full: String { titlePart + "|" + surname }
+    }
+
+    static func collapseKey(title: String, author: String) -> CollapseKey {
+        var raw = title
+        raw = raw.replacingOccurrences(of: #"\([^)]*\)|\[[^\]]*\]"#, with: " ", options: .regularExpression)
+        raw = stripFormatSuffixes(from: raw)
+        let parts = raw.split(separator: ":", maxSplits: 1)
+        var main = parts.first.map(String.init) ?? raw
+        let subtitle = parts.count > 1 ? String(parts[1]) : ""
+        main = stripEditionPhrases(from: main)
+        var norm = stripLeadingArticle(normalize(main))
+        norm = stripTrailingCollectionWords(from: norm)
+        let normSubtitle = normalize(subtitle)
+        let subtitleMarkers = derivativeMarkers.filter { normSubtitle.contains($0) }.joined(separator: " ")
+        let subtitleDigits = subtitle.filter(\.isNumber)
+        let primaryAuthor = normalize(String(author.split(separator: ",").first ?? ""))
+        var surname = primaryAuthor.split(separator: " ").last.map(String.init) ?? primaryAuthor
+        if surname == "unknown" || surname == "anonymous" { surname = "" }
+        return CollapseKey(titlePart: norm + "|" + subtitleMarkers + subtitleDigits, surname: surname)
+    }
+
+    /// Audio/format markers catalogs bolt onto the title itself: "Lib/E" is
+    /// Blackstone's library-edition audiobook suffix, "MP3 CD" and friends are
+    /// physical-audio formats. Runs on the raw title (pre-normalize).
+    private static let formatSuffixPatterns: [String] = [
+        #"\blib\s*/?\s*e\b"#,
+        #"\bmp3\s*cd\b"#,
+        #"\baudio\s*cd\b"#,
+        #"\bcompact\s+disc\b"#,
+        #"\baudiobook\b"#
+    ]
+
+    private static func stripFormatSuffixes(from title: String) -> String {
+        var result = title
+        for pattern in formatSuffixPatterns {
+            result = result.replacingOccurrences(
+                of: pattern, with: " ", options: [.regularExpression, .caseInsensitive]
+            )
+        }
+        return result
+    }
+
+    /// Collection-subtitle words that catalogs append to the main title without
+    /// a colon ("Consider the Lobster And Other Essays"). Only a *trailing* run
+    /// is dropped, and never the whole title ("Collected Poems" stays intact).
+    private static let trailingCollectionWords: Set<String> = [
+        "and", "other", "a", "an", "the", "collected", "selected",
+        "essays", "stories", "poems", "poetry", "tales", "writings",
+        "arguments", "novellas", "novel", "memoir"
+    ]
+
+    private static func stripTrailingCollectionWords(from normalized: String) -> String {
+        var tokens = normalized.split(separator: " ")
+        while let last = tokens.last, trailingCollectionWords.contains(String(last)) {
+            tokens.removeLast()
+        }
+        guard !tokens.isEmpty else { return normalized }
+        return tokens.joined(separator: " ")
     }
 
     private static let editionPhrasePatterns: [String] = [
@@ -281,17 +406,30 @@ enum BookSearchRanker {
     /// Patterns run against *normalized* text (lowercased, punctuation collapsed
     /// to spaces), for both the title and the query.
     private static let junkListingPatterns: [String] = [
-        // Multi-book bundles: "5 Books Collection Set", "3-Book Box Set", "2 in 1".
-        #"\d+\s+(books?|volumes?|novels?)\s+(collection|set|box|boxed|bundle)"#,
+        // Multi-book bundles. SPINE users log individual books, essentially never
+        // collection listings, so bundle shapes are filtered aggressively:
+        // count-first phrasing ("3 volumes : …", "4-Book Digital Collection") is
+        // a bundle; name-first phrasing ("Volume 2", "Book 3", "tome 1") is
+        // series numbering and stays. "(?!\s+of)" spares titles like "The Five
+        // Books of Moses".
+        #"\b\d+\s+(books?|volumes?|novels?)(?!\s+of\b)"#,
         #"\bbooks?\s+(collection|set|bundle)\b"#,
-        #"\bcollection\s+set\b"#,
+        #"\bcollection\b"#,
+        #"\btrilogy\b"#,
+        #"\bomnibus\b"#,
         #"\bbox(ed)?\s+set\b"#,
         #"\b\d+\s+in\s+1\b"#,
         #"\b(double|dual)\s+edition\b"#,
-        // Study-guide / summary knockoffs, and free promotional excerpt
-        // collections ("Brandon Sanderson Sampler") that author searches surface.
+        // Study-guide / summary knockoffs, and free promotional excerpts —
+        // "Brandon Sanderson Sampler", "Hunger Games tome 1 extrait gratuit",
+        // "Smart Pop Preview 2013".
         #"summar"#,
         #"\bsampler\b"#,
+        #"\bpreview\b"#,
+        #"\bexcerpt\b"#,
+        #"\bextrait\b"#,
+        #"\bgratuit\b"#,
+        #"\bfree\s+(sample|preview|excerpt)\b"#,
         #"\bstudy\s+guide\b"#,
         #"sparknotes"#,
         #"cliffsnotes"#,
@@ -300,6 +438,17 @@ enum BookSearchRanker {
         #"\breading\s+guide\b"#,
         #"\bconversation\s+starters\b"#,
         #"\bkey\s+takeaways\b"#,
+        // Franchise merch that isn't a book at all: calendars, quiz/trivia
+        // paperbacks, coloring/sticker/tarot tie-ins, "unofficial" knockoffs.
+        #"\bcalendar\b"#,
+        #"\bunofficial\b"#,
+        #"\bquiz(zes)?\s+book\b"#,
+        #"\btrivia\s+(book|questions?|quiz)\b"#,
+        #"\bword\s+search(es)?\b"#,
+        #"\bcolou?ring\s+book\b"#,
+        #"\bsticker\s+book\b"#,
+        #"\btarot\b"#,
+        #"\bpop\s+up\s+(book|guide)\b"#,
         // Foreign-language reprints labeled in English: "(French Edition)".
         #"\b(french|spanish|german|italian|portuguese|dutch|russian|chinese|japanese|korean|polish|romanian|czech|swedish|norwegian|danish|finnish|turkish|arabic|hindi|thai|vietnamese|indonesian|greek|hebrew|ukrainian|hungarian|bulgarian|croatian|serbian|slovak|persian|urdu|bengali|multilingual|bilingual)\s+(edition|version)\b"#
     ]
@@ -309,13 +458,40 @@ enum BookSearchRanker {
     /// the user is deliberately hunting that kind of listing. Used as a hard filter
     /// in the search chain (the "show all editions" fallback also bypasses it, so
     /// nothing becomes unfindable).
-    static func isJunkListing(title: String, query: String) -> Bool {
+    static func isJunkListing(title: String, query: String, author: String = "") -> Bool {
         let normQuery = normalize(query)
         let matchesAny: (String) -> Bool = { text in
             junkListingPatterns.contains { text.range(of: $0, options: .regularExpression) != nil }
         }
         if matchesAny(normQuery) { return false }
-        return matchesAny(normalize(title))
+        let normTitle = normalize(title)
+        if matchesAny(normTitle) { return true }
+        // Blank-book merch ("Hunger Games NOTEBOOK" by "Games, The Hunger"): a
+        // notebook/journal-class title whose "author" is just the title's own
+        // words rearranged is never a real book. Both signals are required —
+        // real novels named "The Notebook" and real dream journals by real
+        // authors have authors that share nothing with the title.
+        if normTitle.range(of: blankBookMarkerPattern, options: .regularExpression) != nil,
+           authorIsTitleClone(author: author, normalizedTitle: normTitle) {
+            return true
+        }
+        return false
+    }
+
+    private static let blankBookMarkerPattern =
+        #"\b(notebook|notepad|journal|diary|planner|sketchbook|log\s+book)\b"#
+
+    /// True when every non-article author token appears among the title's own
+    /// tokens (and there is at least one) — the author is the franchise name,
+    /// not a person. "Games, The Hunger" vs "hunger games notebook" → true;
+    /// "Nicholas Sparks" vs "the notebook" → false.
+    private static func authorIsTitleClone(author: String, normalizedTitle: String) -> Bool {
+        let stopwords: Set<String> = ["the", "a", "an", "of", "and"]
+        let authorTokens = normalize(author).split(separator: " ").map(String.init)
+            .filter { !stopwords.contains($0) }
+        guard !authorTokens.isEmpty else { return false }
+        let titleTokens = Set(normalizedTitle.split(separator: " ").map(String.init))
+        return authorTokens.allSatisfy { titleTokens.contains($0) }
     }
 
     /// Words marking a distinct derivative work rather than another edition:
@@ -328,12 +504,38 @@ enum BookSearchRanker {
         derivativeMarkers.contains { normalized.contains($0) }
     }
 
+    /// Franchise companion/merch/litcrit signals, matched on word boundaries
+    /// against normalized text ("art of" must not hit "heart of darkness").
+    /// Soft ranking penalty only — never a hard filter, since a few real works
+    /// legitimately carry these words.
+    private static let companionMarkerPatterns: [String] = [
+        #"\bcostumes?\b"#, #"\bstoryboards?\b"#, #"\bconcept art\b"#,
+        #"\bart of\b"#, #"\bmaking of\b"#, #"\bbehind the scenes\b"#,
+        #"\band philosophy\b"#, #"\ba to z\b"#, #"\ba z\b"#, #"\bhandbook\b"#,
+        #"\bofficial guide\b"#, #"\bviewers? guide\b"#, #"\bepisode guide\b"#,
+        #"\btribute guide\b"#, #"\bmovie companion\b"#, #"\bfilm companion\b"#,
+        #"\ba guide to\b"#, #"\b(complete|essential|ultimate|insiders?|unauthorized) guide\b"#,
+        #"\btrivia\b"#, #"\bquotes? from\b"#, #"\bwit and wisdom\b"#,
+        // Blank-book merch ("Hunger Games NOTEBOOK"). Soft on purpose: real
+        // novels exist named "The Notebook" — exact-title queries still win.
+        #"\bnotebook\b"#, #"\bnotepad\b"#, #"\bplanner\b"#, #"\bsketchbook\b"#
+    ]
+
+    private static func containsCompanionMarker(_ normalized: String) -> Bool {
+        companionMarkerPatterns.contains {
+            normalized.range(of: $0, options: .regularExpression) != nil
+        }
+    }
+
     /// Publisher names credited as the author are a strong knockoff signal
     /// ("University Press", "Summareads Media"). Matches whole words only, so
     /// real authors with e.g. surname "Pressfield" are unaffected.
     private static let publisherAuthorTerms: Set<String> = [
         "press", "publishing", "publishers", "publication", "publications",
-        "media", "summaries", "library", "editions", "print", "books"
+        "media", "summaries", "library", "editions", "print", "books",
+        // Franchise-knockoff "authors" ("Book Of Thrones", "History of Thrones",
+        // "HBO") — brand words, not names anyone is actually called.
+        "book", "history", "hbo", "netflix", "official", "unofficial"
     ]
 
     private static func authorLooksLikePublisher(_ author: String) -> Bool {
@@ -355,11 +557,7 @@ enum BookSearchRanker {
     static func popularityKey(title: String, author: String) -> String {
         var raw = title.replacingOccurrences(of: #"\([^)]*\)|\[[^\]]*\]"#, with: " ", options: .regularExpression)
         raw = raw.split(separator: ":", maxSplits: 1).first.map(String.init) ?? raw
-        var t = normalize(raw)
-        for article in ["the ", "a ", "an "] where t.hasPrefix(article) {
-            t = String(t.dropFirst(article.count))
-            break
-        }
+        let t = stripLeadingArticle(normalize(raw))
         guard !t.isEmpty else { return "" }
         let primary = normalize(String(author.split(separator: ",").first ?? ""))
         let surname = primary.split(separator: " ").last.map(String.init) ?? ""
@@ -425,6 +623,14 @@ enum BookSearchRanker {
     ]
 
     // MARK: - Text utilities
+
+    /// Drops one leading English article from already-normalized text.
+    static func stripLeadingArticle(_ normalized: String) -> String {
+        for article in ["the ", "a ", "an "] where normalized.hasPrefix(article) {
+            return String(normalized.dropFirst(article.count))
+        }
+        return normalized
+    }
 
     /// Lowercased, diacritics folded, apostrophes removed, all other
     /// punctuation collapsed to single spaces.

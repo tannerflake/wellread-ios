@@ -88,6 +88,8 @@ struct RecommendBookSheet: View {
             FindFriendsView(inviteBookTitle: book.title)
                 .environmentObject(appState)
         }
+        // An unsent note survives a deep-link tap.
+        .composerDraftGuard(note)
         .task {
             let list = await UserRepository().fetchAllReaderProfiles(excludingUid: appState.authUserId, limit: 500)
             readers = list.map { Reader(uid: $0.uid, user: $0.user) }
@@ -213,10 +215,7 @@ struct RecommendBookSheet: View {
 
     private var filteredReaders: [Reader] {
         guard !searchText.isEmpty else { return readers }
-        return readers.filter {
-            $0.user.displayName.localizedCaseInsensitiveContains(searchText)
-                || $0.user.username.localizedCaseInsensitiveContains(searchText)
-        }
+        return PersonSearch.ranked(readers, query: searchText, user: { $0.user })
     }
 
     private func send(to reader: Reader) {

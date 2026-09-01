@@ -280,19 +280,33 @@ struct PeopleStrip: View {
         Set(authService.appUser?.following ?? [])
     }
 
+    /// Skeleton at the loaded strip's exact footprint — header label bar, then
+    /// avatar circles + name bars at the real cell metrics — so the feed below
+    /// doesn't shift when the roster lands.
     private var loadingRow: some View {
-        HStack(spacing: 8) {
-            ProgressView()
-                .controlSize(.small)
-                .tint(Theme.chrome)
-            Text("loading readers")
-                .font(.system(size: 13, weight: .regular))
-                .foregroundStyle(Theme.textTertiary)
-            Spacer(minLength: 0)
+        VStack(alignment: .leading, spacing: 6) {
+            ShimmerBar(height: 12, cornerRadius: 3)
+                .frame(width: 82)
+                .frame(height: 16)
+                .padding(.horizontal, Theme.horizontalPadding)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: Self.peopleCellSpacing) {
+                    ForEach(0..<6, id: \.self) { _ in
+                        VStack(spacing: 8) {
+                            ShimmerCircle(size: 64)
+                            ShimmerBar(height: 9, cornerRadius: 3)
+                                .frame(width: 48)
+                        }
+                        .frame(width: Self.peopleCellWidth)
+                    }
+                }
+                .padding(.horizontal, Theme.horizontalPadding)
+                .padding(.top, 7)
+                .padding(.bottom, 10)
+            }
+            .disabled(true)
         }
-        .padding(.horizontal, Theme.horizontalPadding)
-        .frame(height: 88)
-        .padding(.bottom, 8)
+        .accessibilityLabel("Loading readers")
     }
 
     /// Content-space x where the not-yet-followed group starts in the strip.

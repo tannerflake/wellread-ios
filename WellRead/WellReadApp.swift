@@ -102,7 +102,8 @@ class AppDelegate: NSObject, UIApplicationDelegate, MessagingDelegate, UNUserNot
             let parts = raw.split(separator: ":", maxSplits: 2).map(String.init)
             var userInfo: [AnyHashable: Any] = ["type": parts[0]]
             if parts.count > 1 {
-                userInfo[parts[0] == "new_follower" ? "followerId" : "postId"] = parts[1]
+                let profileTypes = ["new_follower", "contact_joined"]
+                userInfo[profileTypes.contains(parts[0]) ? "followerId" : "postId"] = parts[1]
             }
             if parts.count > 2 {
                 userInfo["commentId"] = parts[2]
@@ -171,7 +172,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, MessagingDelegate, UNUserNot
             return true
         }
         if let postId = WellreadDeepLink.postId(from: url) {
-            NotificationCenter.default.post(name: .wellreadOpenFeedPost, object: nil, userInfo: ["postId": postId])
+            // Same rule as a push tap: an open sheet/drawer gets torn down first so
+            // the thread opens now, not whenever the user closes it.
+            PushNotificationService.routeAfterClearingPresentedModals {
+                NotificationCenter.default.post(name: .wellreadOpenFeedPost, object: nil, userInfo: ["postId": postId])
+            }
             return true
         }
         if GIDSignIn.sharedInstance.handle(url) {
@@ -212,7 +217,12 @@ struct WellReadApp: App {
                     if url.scheme == "wellread", url.host == "goodreads-import" {
                         handleGoodreadsImportFromShare()
                     } else if let postId = WellreadDeepLink.postId(from: url) {
-                        NotificationCenter.default.post(name: .wellreadOpenFeedPost, object: nil, userInfo: ["postId": postId])
+                        // Same rule as a push tap: an open sheet/drawer is torn down
+                        // first so the thread opens now, not whenever the user
+                        // happens to close it.
+                        PushNotificationService.routeAfterClearingPresentedModals {
+                            NotificationCenter.default.post(name: .wellreadOpenFeedPost, object: nil, userInfo: ["postId": postId])
+                        }
                     } else if url.isFileURL {
                         handleFileURLFromShare(url)
                     } else {

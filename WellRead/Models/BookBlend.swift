@@ -50,7 +50,7 @@ struct BookBlend: Identifiable, Equatable {
     // MARK: - Generated result
 
     struct Result: Codable, Equatable {
-        /// 30–98 compatibility percentage.
+        /// 8–99 compatibility percentage (see BookBlendService.computeStats).
         var score: Int
         /// Score-band verdict, e.g. "Shelf Soulmates".
         var verdict: String
@@ -95,6 +95,9 @@ struct BookBlend: Identifiable, Equatable {
         var reason: String
         /// Set when the pick came off the other reader's shelf.
         var sourceUid: String?
+        /// `sourceUid`'s tier letter for the book (S/A/B/C/D/F) when they ranked it.
+        /// Absent on older blends and on fresh picks nobody has read.
+        var sourceTier: String?
     }
 
     // MARK: - Firestore mapping

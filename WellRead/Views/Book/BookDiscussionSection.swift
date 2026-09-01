@@ -21,6 +21,13 @@ struct BookDiscussionReader: Identifiable {
     let isFollowed: Bool
 }
 
+/// Identifies a comment's author for the inline-preview profile sheet
+/// (distinct from `BookDiscussionReader` since a commenter need not be one
+/// of the book's readers).
+private struct CommentAuthor: Identifiable {
+    let id: String
+}
+
 struct BookDiscussionSection: View {
     let book: Book
     let readers: [BookDiscussionReader]
@@ -40,6 +47,9 @@ struct BookDiscussionSection: View {
     /// Readers whose discussion stub is being created right now (blocks double-taps).
     @State private var stubBusyUids: Set<String> = []
     @State private var commentSheetPost: Post? = nil
+    /// Set when an inline comment preview's avatar/name is tapped, to open
+    /// that commenter's profile (they may not be one of the book's readers).
+    @State private var commentAuthorToView: CommentAuthor? = nil
     @State private var showAllOthers = false
     /// Long threads (10+ comments) the viewer chose to expand inline.
     @State private var expandedThreadPostIds: Set<String> = []
@@ -120,6 +130,23 @@ struct BookDiscussionSection: View {
                 .environmentObject(appState)
                 .environmentObject(authService)
         }
+        .sheet(item: $commentAuthorToView) { author in
+            NavigationStack {
+                ZStack {
+                    Theme.background.ignoresSafeArea()
+                    UserLibraryDetailView(userId: author.id)
+                }
+                .toolbarBackground(Theme.background, for: .navigationBar)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done") { commentAuthorToView = nil }
+                            .foregroundStyle(Theme.accent)
+                    }
+                }
+            }
+            .environmentObject(appState)
+            .environmentObject(authService)
+        }
     }
 
     private var taskKey: String {
@@ -159,10 +186,13 @@ struct BookDiscussionSection: View {
         lastSheetPost = nil
         let pid = post.id.uuidString
         let comments = await CommentRepository().fetchComments(postId: pid)
+        // The sheet can like the post too, so take its fresh count back.
+        let fresh = await PostRepository().fetchPost(postId: pid)
         await MainActor.run {
             commentsByPostId[pid] = comments
             if var p = postByUid[post.userId] {
                 p.commentCount = comments.count
+                if let fresh { p.likeCount = fresh.likeCount }
                 postByUid[post.userId] = p
             }
         }
@@ -451,21 +481,31 @@ struct BookDiscussionSection: View {
     /// the body under it; replies indent behind a vertical thread line.
     private func inlineCommentRow(_ comment: Comment, isReply: Bool) -> some View {
         HStack(alignment: .top, spacing: 8) {
-            UserAvatarView(
-                urlString: comment.profileImageURL,
-                displayName: comment.displayName,
-                size: isReply ? 20 : 24
-            )
+            Button {
+                commentAuthorToView = CommentAuthor(id: comment.userId)
+            } label: {
+                UserAvatarView(
+                    urlString: comment.profileImageURL,
+                    displayName: comment.displayName,
+                    size: isReply ? 20 : 24
+                )
+            }
+            .buttonStyle(.plain)
             VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(comment.displayName ?? "Someone")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(Theme.textPrimary)
-                    Text(Theme.commentRelativeTimestamp(comment.createdAt, now: Date()))
-                        .font(.system(size: 10, weight: .regular))
-                        .tracking(0.5)
-                        .foregroundStyle(Theme.textTertiary)
+                Button {
+                    commentAuthorToView = CommentAuthor(id: comment.userId)
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(comment.displayName ?? "Someone")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(Theme.textPrimary)
+                        Text(Theme.commentRelativeTimestamp(comment.createdAt, now: Date()))
+                            .font(.system(size: 10, weight: .regular))
+                            .tracking(0.5)
+                            .foregroundStyle(Theme.textTertiary)
+                    }
                 }
+                .buttonStyle(.plain)
                 Text(MentionScanner.attributed(comment.text, mentionColor: Theme.chrome))
                     .font(.system(size: 13, weight: .regular))
                     .foregroundStyle(Theme.textSecondary)

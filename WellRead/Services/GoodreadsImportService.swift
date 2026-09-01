@@ -34,6 +34,48 @@ enum GoodreadsMatchOutcome {
 final class GoodreadsImportService {
     private let googleBooks = GoogleBooksService.shared
 
+    /// ISBNs already warmed this session, so re-entering a phase (or the bulk
+    /// "import all") doesn't redo the cache check for rows prefetched earlier.
+    private var prefetchedDigits = Set<String>()
+
+    /// Warm the shared search cache for every row ISBN in one pass, so the
+    /// per-row `matchRow` lookups that follow are cache hits instead of one
+    /// paced API request each:
+    ///   1. Batched Firestore check of which `isbn:` cache entries are already
+    ///      fresh (30 keys per read — any ISBN any user has resolved recently).
+    ///   2. One bulk ISBNdb `POST /books` request per 1,000 remaining ISBNs.
+    ///   3. Write each hit through to the shared cache under the exact key
+    ///      `matchRow`'s `search(query: "isbn:…")` will look up.
+    /// Best-effort by design: any failure just leaves those rows to the
+    /// unchanged per-row chain. Rows with no ISBN (Kindle/audio editions) are
+    /// untouched — they always take the title+author path.
+    func prefetchISBNs(for rows: [GoodreadsRow]) async {
+        guard ISBNdbService.shared.isConfigured else { return }
+        // Same preference order as matchRow: the row's ISBN-13, else ISBN-10.
+        // (The 10 is only fetched here when it's the row's best ISBN; matchRow's
+        // rare 13-failed-confidence → try-10 fallback stays a per-row lookup.)
+        var digitsList: [String] = []
+        for row in rows {
+            guard let digits = [row.isbn13, row.isbn]
+                .compactMap({ $0?.filter(\.isNumber) })
+                .first(where: { $0.count == 10 || $0.count == 13 }),
+                prefetchedDigits.insert(digits).inserted else { continue }
+            digitsList.append(digits)
+        }
+        guard !digitsList.isEmpty else { return }
+        // Must mirror GoogleBooksService.search's cacheKey for "isbn:" queries:
+        // lowercased normalized query, no prefixes (author merge and language
+        // restriction don't apply to ISBN lookups).
+        func cacheKey(_ digits: String) -> String { "isbn:\(digits)" }
+        let fresh = await BookSearchCacheService.shared.freshKeys(cacheKeys: digitsList.map(cacheKey))
+        let missing = digitsList.filter { !fresh.contains(cacheKey($0)) }
+        guard !missing.isEmpty,
+              let resolved = try? await ISBNdbService.shared.lookupISBNs(missing) else { return }
+        for (digits, book) in resolved {
+            BookSearchCacheService.shared.store(cacheKey: cacheKey(digits), books: [book], source: .isbndb)
+        }
+    }
+
     /// Resolve one Goodreads row to a catalog book. Errors from the search API
     /// surface as `.failed`, never as `.noMatch`.
     func matchRow(_ row: GoodreadsRow) async -> GoodreadsMatchOutcome {

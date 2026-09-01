@@ -22,9 +22,13 @@ enum MentionScanner {
     /// local-parts or chosen handles).
     private static let handleCharacters = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-")
 
-    /// The mention being typed: text ends in "@" + 1+ handle characters, with
-    /// the "@" at the start of the text or after whitespace (so emails don't
-    /// trigger). Returns the partial handle (lowercased) or nil.
+    /// The mention being typed: text ends in "@" + what's been typed since,
+    /// with the "@" at the start of the text or after whitespace (so emails
+    /// don't trigger). Returns the partial query (lowercased) or nil.
+    ///
+    /// One interior space is allowed so a full name ("@tanner f") keeps
+    /// suggesting; a trailing space ends the mention, which is what closes the
+    /// bar after `insertMention` appends one.
     ///
     /// Trailing-token only: SwiftUI text fields don't expose the cursor, and
     /// people type mentions at the end of what they're writing.
@@ -35,8 +39,19 @@ enum MentionScanner {
             guard before.isWhitespace || before.isNewline else { return nil }
         }
         let tail = text[text.index(after: atIndex)...]
-        guard !tail.isEmpty else { return nil }
-        for ch in tail.unicodeScalars where !handleCharacters.contains(ch) { return nil }
+        guard !tail.isEmpty, tail.count <= 40 else { return nil }
+        guard let last = tail.last, !last.isWhitespace else { return nil }
+        var spaces = 0
+        for ch in tail {
+            if ch == " " {
+                spaces += 1
+                if spaces > 1 { return nil }
+                continue
+            }
+            guard ch.unicodeScalars.count == 1,
+                  let scalar = ch.unicodeScalars.first,
+                  handleCharacters.contains(scalar) else { return nil }
+        }
         return tail.lowercased()
     }
 
@@ -138,19 +153,12 @@ final class MentionCatalog: ObservableObject {
         }
     }
 
-    /// Accounts matching the partial handle — prefix match on handle, first,
-    /// last, or display name. `query` is the text typed after "@" (lowercased).
+    /// Accounts matching what's been typed after "@" — name matches first,
+    /// handle matches after (see `PersonSearch`).
     func suggestions(matching query: String, limit: Int = 5) -> [(uid: String, user: User)] {
-        let q = query.lowercased()
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty else { return [] }
-        return profiles.filter { row in
-            if row.user.username.lowercased().hasPrefix(q) { return true }
-            if let f = row.user.firstName?.lowercased(), f.hasPrefix(q) { return true }
-            if let l = row.user.lastName?.lowercased(), l.hasPrefix(q) { return true }
-            return row.user.displayName.lowercased().split(separator: " ").contains { $0.hasPrefix(q) }
-        }
-        .prefix(limit)
-        .map { $0 }
+        return Array(PersonSearch.ranked(profiles, query: q, user: { $0.user }).prefix(limit))
     }
 
     /// Handle for a uid — from the loaded roster, else a one-off fetch (e.g.
@@ -224,5 +232,49 @@ struct MentionSuggestionBar: View {
             RoundedRectangle(cornerRadius: 10)
                 .stroke(Theme.chrome.opacity(0.4), lineWidth: 1)
         )
+    }
+}
+
+// MARK: - Person search ranking
+
+/// Shared name-first matching for every place we search people (mention
+/// autocomplete, the Users scope of Search, recommend/find-friends sheets).
+///
+/// Names are what people actually know each other by, so a name hit always
+/// outranks a handle hit; handles are the fallback for people who type them.
+enum PersonSearch {
+    /// Lower is a better match; nil means no match at all.
+    static func rank(_ user: User, query: String) -> Int? {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !q.isEmpty else { return 0 }
+
+        let name = user.displayName.lowercased()
+        let handle = user.username.lowercased()
+        // Full name plus the parts, so "flake" and "tanner flake" both hit.
+        var nameWords = name.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        if let f = user.firstName?.lowercased(), !f.isEmpty { nameWords.append(f) }
+        if let l = user.lastName?.lowercased(), !l.isEmpty { nameWords.append(l) }
+
+        if name == q { return 0 }
+        if name.hasPrefix(q) { return 1 }
+        if nameWords.contains(where: { $0.hasPrefix(q) }) { return 2 }
+        if handle == q { return 3 }
+        if handle.hasPrefix(q) { return 4 }
+        if name.contains(q) { return 5 }
+        if handle.contains(q) { return 6 }
+        return nil
+    }
+
+    /// Matching people, best match first, ties broken alphabetically by name.
+    static func ranked<T>(_ rows: [T], query: String, user: (T) -> User) -> [T] {
+        let scored = rows.compactMap { row -> (row: T, score: Int, name: String)? in
+            guard let score = rank(user(row), query: query) else { return nil }
+            return (row, score, user(row).displayName)
+        }
+        return scored.sorted { a, b in
+            if a.score != b.score { return a.score < b.score }
+            return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
+        }
+        .map(\.row)
     }
 }

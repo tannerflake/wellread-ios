@@ -178,7 +178,7 @@ struct BookRefresherView: View {
 
     @ViewBuilder
     private func refresherSections(_ r: BookRefresher) -> some View {
-        Text(r.plot)
+        Text(markdown: r.plot)
             .font(Theme.body())
             .foregroundStyle(Theme.textPrimary)
             .lineSpacing(Theme.bodyLineSpacing)
@@ -197,7 +197,7 @@ struct BookRefresherView: View {
                         Text(character.name)
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(Theme.textPrimary)
-                        Text(character.detail)
+                        Text(markdown: character.detail)
                             .font(.system(size: 14, weight: .regular))
                             .foregroundStyle(Theme.textSecondary)
                             .lineSpacing(2)
@@ -220,7 +220,7 @@ struct BookRefresherView: View {
                         RoundedRectangle(cornerRadius: 2)
                             .fill(Theme.punch.opacity(0.7))
                             .frame(width: 3)
-                        Text(moment)
+                        Text(markdown: moment)
                             .font(Theme.body())
                             .italic()
                             .foregroundStyle(Theme.textPrimary)
@@ -242,7 +242,7 @@ struct BookRefresherView: View {
                         .fill(bulletColor)
                         .frame(width: 5, height: 5)
                         .padding(.top, 7)
-                    Text(item)
+                    Text(markdown: item)
                         .font(.system(size: 15, weight: .regular))
                         .foregroundStyle(Theme.textPrimary)
                         .lineSpacing(2)
@@ -297,7 +297,7 @@ struct BookRefresherView: View {
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .padding(.leading, 40)
         } else {
-            Text(turn.text)
+            Text(markdown: turn.text)
                 .font(.system(size: 15, weight: .regular))
                 .foregroundStyle(Theme.textPrimary)
                 .lineSpacing(3)

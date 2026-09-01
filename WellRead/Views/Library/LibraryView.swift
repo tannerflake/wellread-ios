@@ -35,18 +35,12 @@ struct ProfileLibraryView: View {
     /// Tapping your avatar opens your own profile card page: card, rosters,
     /// and the settings gear (which took over the old avatar menu's actions).
     @State private var showMyCard = false
-    /// Feature flag: the notifications bell is built but not launched yet —
-    /// flip to true to unhide it. `-uiPreviewNotifications` overrides in DEBUG.
-    private static let notificationsBellEnabled = true
     /// Bell beside the avatar: pushes the notifications feed.
     @State private var showNotifications = false
     /// List button in the header row: pushes the by-year list with multi-select year moves.
     @State private var showYearList = false
     /// Feed button beside the list button: pushes your own post history.
     @State private var showUserFeed = false
-    /// Unread rows exist — the bell shows a badge dot until the feed is opened.
-    @State private var hasUnreadNotifications = false
-    private let notificationsRepo = NotificationsRepository()
     @AppStorage(AppearancePreference.storageKey) private var appearanceRaw = AppearancePreference.defaultValue.rawValue
     #if DEBUG
     #endif
@@ -340,10 +334,8 @@ struct ProfileLibraryView: View {
                     },
                     floats: true
                 )
-                if Self.isNotificationsBellVisible {
-                    notificationsBell
-                        .padding(.trailing, 4)
-                }
+                notificationsBell
+                    .padding(.trailing, 4)
                 toolbarProfilePhoto
             }
         }
@@ -579,54 +571,11 @@ struct ProfileLibraryView: View {
         return true
     }
 
-    /// Flag plus the DEBUG preview override — keeps the bell verifiable in the
-    /// simulator while it stays hidden from users.
-    private static var isNotificationsBellVisible: Bool {
-        #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("-uiPreviewNotifications") { return true }
-        #endif
-        return notificationsBellEnabled
-    }
-
-    /// Bell to the left of your avatar: opens the notifications feed. Shows a
-    /// badge dot while unread rows exist; opening the feed marks them read.
+    /// Bell to the left of your avatar: opens the notifications feed. Shared
+    /// with the Feed tab's bell (`NotificationsBellButton`) so both look and
+    /// clear their badge identically.
     private var notificationsBell: some View {
-        Button {
-            showNotifications = true
-            hasUnreadNotifications = false
-        } label: {
-            Image(systemName: "bell")
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(Theme.textPrimary)
-                // Badge anchors to the glyph, not the tap frame, so it hugs the
-                // bell's top-right shoulder.
-                .overlay(alignment: .topTrailing) {
-                    if hasUnreadNotifications {
-                        Circle()
-                            .fill(Theme.danger)
-                            .frame(width: 10, height: 10)
-                            .overlay(Circle().strokeBorder(Theme.background, lineWidth: 1.5))
-                            .offset(x: -2, y: 3)
-                    }
-                }
-                .frame(width: 34, height: 34)
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(hasUnreadNotifications ? "Notifications, new activity" : "Notifications")
-        .task(id: authService.firebaseUser?.uid) {
-            #if DEBUG
-            if ProcessInfo.processInfo.arguments.contains("-uiPreviewNotifications") {
-                hasUnreadNotifications = true
-                return
-            }
-            #endif
-            guard let uid = authService.firebaseUser?.uid else {
-                hasUnreadNotifications = false
-                return
-            }
-            hasUnreadNotifications = await notificationsRepo.hasUnread(uid: uid)
-        }
+        NotificationsBellButton { showNotifications = true }
     }
 
     /// Your avatar in the header: opens your own profile card page (card front
@@ -798,6 +747,8 @@ struct ProfileLibraryView: View {
                 },
                 onBookTap: { selectedBookForProfile = $0 },
                 highlightedBookId: appState.pendingTierHighlightBookId,
+                autoScrollsToHighlight: appState.tierHighlightScrollPending,
+                onHighlightAutoScrolled: { appState.tierHighlightScrollPending = false },
                 yearFilter: availableYears.isEmpty ? nil : TierYearFilter(
                     availableYears: availableYears,
                     selectedYear: selectedYear,
@@ -949,6 +900,8 @@ private struct MarkAsReadQueueSheet: View {
             }
         }
         .presentationDetents([.large])
+        // Half-typed thoughts survive a deep-link tap.
+        .composerDraftGuard(markAsReadThoughts)
         .onAppear {
             markAsReadDate = Date()
             markAsReadPostToFeed = true
